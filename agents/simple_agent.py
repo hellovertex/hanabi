@@ -38,9 +38,14 @@ class SimpleAgent(Agent):
     # Check if there are any pending hints and play the card corresponding to
     # the hint.
     for card_index, hint in enumerate(observation['card_knowledge'][0]):
+
+      # print(observation['card_knowledge'][1])
       if hint['color'] is not None or hint['rank'] is not None:
+        #print(observation['card_knowledge'][0])
+        print(observation['pyhanabi'])
         return {'action_type': 'PLAY', 'card_index': card_index}
 
+    # print(observation['card_knowledge'][0])
     # Check if it's possible to hint a card to your colleagues.
     fireworks = observation['fireworks']
     if observation['information_tokens'] > 0:

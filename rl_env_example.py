@@ -34,30 +34,6 @@ class Runner(object):
         self.environment = rl_env.make('Hanabi-Full', num_players=flags['players'])
         self.agent_class = AGENT_CLASSES[flags['agent_class']]
 
-    @staticmethod
-    def print_observation(observation):
-        """Print some basic information about an agent observation."""
-        print("--- Observation ---")
-        print(observation)
-
-        print("### Information about the observation retrieved separately ###")
-        print("### Current player, relative to self: {}".format(
-            observation.cur_player_offset()))
-        print("### Observed hands: {}".format(observation.observed_hands()))
-        print("### Card knowledge: {}".format(observation.card_knowledge()))
-        print("### Discard pile: {}".format(observation.discard_pile()))
-        print("### Fireworks: {}".format(observation.fireworks()))
-        print("### Deck size: {}".format(observation.deck_size()))
-        move_string = "### Last moves:"
-        for move_tuple in observation.last_moves():
-            move_string += " {}".format(move_tuple)
-        print(move_string)
-        print("### Information tokens: {}".format(observation.information_tokens()))
-        print("### Life tokens: {}".format(observation.life_tokens()))
-        print("### Legal moves: {}".format(observation.legal_moves()))
-        print("--- EndObservation ---")
-        # print(observation)
-
     def run(self):
         """Run episodes."""
         rewards = []
@@ -74,6 +50,8 @@ class Runner(object):
                     observation = observations['player_observations'][agent_id]
                     # print(f"Player {observation['current_player']} to move:")
                     # print(observation['observed_hands'])
+                    # print(observation.keys())
+                    # print(observation['card_knowledge'])
                     action = agent.act(observation)
                     if observation['current_player'] == agent_id:
 
