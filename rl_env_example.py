@@ -25,57 +25,95 @@ AGENT_CLASSES = {'SimpleAgent': SimpleAgent, 'RandomAgent': RandomAgent}
 
 
 class Runner(object):
-  """Runner class."""
+    """Runner class."""
 
-  def __init__(self, flags):
-    """Initialize runner."""
-    self.flags = flags
-    self.agent_config = {'players': flags['players']}
-    self.environment = rl_env.make('Hanabi-Full', num_players=flags['players'])
-    self.agent_class = AGENT_CLASSES[flags['agent_class']]
+    def __init__(self, flags):
+        """Initialize runner."""
+        self.flags = flags
+        self.agent_config = {'players': flags['players']}
+        self.environment = rl_env.make('Hanabi-Full', num_players=flags['players'])
+        self.agent_class = AGENT_CLASSES[flags['agent_class']]
 
-  def run(self):
-    """Run episodes."""
-    rewards = []
-    for episode in range(flags['num_episodes']):
-      observations = self.environment.reset()
-      agents = [self.agent_class(self.agent_config)
-                for _ in range(self.flags['players'])]
-      done = False
-      episode_reward = 0
-      while not done:
-        for agent_id, agent in enumerate(agents):
-          observation = observations['player_observations'][agent_id]
-          action = agent.act(observation)
-          if observation['current_player'] == agent_id:
-            assert action is not None
-            current_player_action = action
-          else:
-            assert action is None
-        # Make an environment step.
-        print('Agent: {} action: {}'.format(observation['current_player'],
-                                            current_player_action))
-        observations, reward, done, unused_info = self.environment.step(
-            current_player_action)
-        episode_reward += reward
-      rewards.append(episode_reward)
-      print('Running episode: %d' % episode)
-      print('Max Reward: %.3f' % max(rewards))
-    return rewards
+    @staticmethod
+    def print_observation(observation):
+        """Print some basic information about an agent observation."""
+        print("--- Observation ---")
+        print(observation)
+
+        print("### Information about the observation retrieved separately ###")
+        print("### Current player, relative to self: {}".format(
+            observation.cur_player_offset()))
+        print("### Observed hands: {}".format(observation.observed_hands()))
+        print("### Card knowledge: {}".format(observation.card_knowledge()))
+        print("### Discard pile: {}".format(observation.discard_pile()))
+        print("### Fireworks: {}".format(observation.fireworks()))
+        print("### Deck size: {}".format(observation.deck_size()))
+        move_string = "### Last moves:"
+        for move_tuple in observation.last_moves():
+            move_string += " {}".format(move_tuple)
+        print(move_string)
+        print("### Information tokens: {}".format(observation.information_tokens()))
+        print("### Life tokens: {}".format(observation.life_tokens()))
+        print("### Legal moves: {}".format(observation.legal_moves()))
+        print("--- EndObservation ---")
+        # print(observation)
+
+    def run(self):
+        """Run episodes."""
+        rewards = []
+        cards_played_correctly = []
+        for episode in range(flags['num_episodes']):
+            observations = self.environment.reset()
+            agents = [self.agent_class(self.agent_config)
+                      for _ in range(self.flags['players'])]
+            done = False
+            episode_reward = 0
+            episode_correct_cards = 0
+            while not done:
+                for agent_id, agent in enumerate(agents):
+                    observation = observations['player_observations'][agent_id]
+                    # print(f"Player {observation['current_player']} to move:")
+                    # print(observation['observed_hands'])
+                    action = agent.act(observation)
+                    if observation['current_player'] == agent_id:
+
+                        assert action is not None
+                        current_player_action = action
+                        break
+
+                    else:
+                        assert action is None
+
+                # Make an environment step.
+                print('Agent: {} action: {}'.format(observation['current_player'],
+                                                    current_player_action))
+                observations, reward, done, unused_info = self.environment.step(
+                    current_player_action)
+                episode_reward += reward
+                if reward > 0:
+                    episode_correct_cards += 1
+
+            rewards.append(episode_reward)
+            cards_played_correctly.append(episode_correct_cards)
+            print('Running episode: %d' % episode)
+            print('Max Reward: %.3f' % max(rewards))
+            print(f'Max Cards played correctly: {max(cards_played_correctly)}')
+        return rewards
+
 
 if __name__ == "__main__":
-  flags = {'players': 2, 'num_episodes': 1, 'agent_class': 'SimpleAgent'}
-  options, arguments = getopt.getopt(sys.argv[1:], '',
-                                     ['players=',
-                                      'num_episodes=',
-                                      'agent_class='])
-  if arguments:
-    sys.exit('usage: rl_env_example.py [options]\n'
-             '--players       number of players in the game.\n'
-             '--num_episodes  number of game episodes to run.\n'
-             '--agent_class   {}'.format(' or '.join(AGENT_CLASSES.keys())))
-  for flag, value in options:
-    flag = flag[2:]  # Strip leading --.
-    flags[flag] = type(flags[flag])(value)
-  runner = Runner(flags)
-  runner.run()
+    flags = {'players': 2, 'num_episodes': 1, 'agent_class': 'SimpleAgent'}
+    options, arguments = getopt.getopt(sys.argv[1:], '',
+                                       ['players=',
+                                        'num_episodes=',
+                                        'agent_class='])
+    if arguments:
+        sys.exit('usage: rl_env_example.py [options]\n'
+                 '--players       number of players in the game.\n'
+                 '--num_episodes  number of game episodes to run.\n'
+                 '--agent_class   {}'.format(' or '.join(AGENT_CLASSES.keys())))
+    for flag, value in options:
+        flag = flag[2:]  # Strip leading --.
+        flags[flag] = type(flags[flag])(value)
+    runner = Runner(flags)
+    runner.run()
