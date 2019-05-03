@@ -78,6 +78,7 @@ def run_game(game_parameters):
       game, enc_type=pyhanabi.ObservationEncoderType.CANONICAL)
 
   state = game.new_initial_state()
+
   while not state.is_terminal():
     if state.cur_player() == pyhanabi.CHANCE_PLAYER_ID:
       state.deal_random_card()
@@ -95,7 +96,7 @@ def run_game(game_parameters):
 
     move = np.random.choice(legal_moves)
     print("Chose random legal move: {}".format(move))
-
+    print("TYPE OF MOVE IS", type(move))
     state.apply_move(move)
 
   print("")

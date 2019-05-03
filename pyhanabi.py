@@ -917,6 +917,7 @@ class HanabiObservation(object):
       moves.append(HanabiMove(move))
     return moves
 
+
   def card_playable_on_fireworks(self, color, rank):
     """Returns true if and only if card can be successfully played.
 
