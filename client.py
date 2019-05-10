@@ -8,7 +8,6 @@ import time
 """ PROJECT LVL IMPORTS """
 import commandsWebSocket as cmd
 
-
 class Client:
     def __init__(self, url, cookie):
         """ Client wrapped around the agents, so they can play on Zamiels server
@@ -25,24 +24,59 @@ class Client:
         # Set on_open seperately as it does crazy things otherwise #pythonWebsockets
         self.ws.on_open = lambda ws: self.on_open(ws)
 
-        # Tell the Client, where in the process of joining/playing we are
-        self.gottaJoinGame = True
-        self.gameHasStarted = False
-
         # listen for incoming messages
         self.daemon = threading.Thread(target=self.ws.run_forever)
         self.daemon.daemon = True
         self.daemon.start()  # [do this before self.run(), s.t. we can hand over the daemon to another Thread]
 
+        # Store incoming server messages here, to get observations etc.
         self.msg_buf = list()
 
+        # throttle to avoid race conditions
+        self.throttle = 0.05  # 50 ms
+
+        # Tell the Client, where in the process of joining/playing we are
+        self.gottaJoinGame = False
+        self.gameHasStarted = False
+        self.gameInitPhase = False
+
+        # Will always be set to the game created last (on the server side ofc)
+        self.gameID = None
+        self.lastGameID = None
+
     def on_message(self, ws, message):
+
         print("message = ", message)
-        self.msg_buf.append(message)
-        if "gameStarted" in message:
-            ws.send(cmd.hello())
-        if "init" in message:
-            ws.send(cmd.ready())
+        # ############### #
+        # -- Set FLAGS -- #
+        # ############### #
+        # JOIN GAME
+        if message.strip().startswith('table'):  # last opened games ID
+            # To play another game after one is finished
+            oldGameID = None
+
+            # If no game has been created yet, we will join the next one
+            if self.gameID is None:
+                self.gottaJoinGame = True
+            else:
+                oldGameID = self.gameID
+
+            # get current latest opened game lobby id
+            self.gameID = message.split('id":')[1][0]
+
+            # Join the next game
+            if oldGameID is not None and self.gameID > oldGameID:
+                self.gottaJoinGame = True
+
+        # START GAME
+        if message.strip().startswith('gameStart'):
+            print("GAME STARTED")
+            self.gameHasStarted = True
+        # INIT GAME
+        if message.strip().startswith('init'):
+            print("GAME INITIALIZED")
+            self.gameInitPhase = True
+
 
     @staticmethod
     def on_error(ws, error):
@@ -58,30 +92,44 @@ class Client:
 
     @staticmethod
     def on_open(ws):
+        """ Zamiels server doesnt require any hello-messages"""
         pass
 
-    def run(self):
+    def run(self, gameID=None):
+        """ Basically the main workhorse.
+        This implements the event-loop where we process incoming and outgoing messages """
 
-        print("GOTTA JOIN MAN")
+        # Client automatically sets gameID to the last opened game [so best only open one at a time]
+        if gameID is None:
+            gameID = self.gameID
+
+        # Just in case, as we sometimes get delays in the beginning (idk why)
         conn_timeout = 5
         while not self.ws.sock.connected and conn_timeout:
             time.sleep(1)
             conn_timeout -= 1
 
+        # Loop to play the best game in the world :)
         while self.ws.sock.connected:
-            if self.gottaJoinGame:
-                throttle = 2
-                time.sleep(throttle)
-                self.ws.send(cmd.gameJoin(gameID='4'))
+            # JOIN GAME
+            if self.gottaJoinGame and self.gameID:
+                time.sleep(self.throttle)
+                self.ws.send(cmd.gameJoin(gameID=self.gameID))
                 self.gottaJoinGame = False
-            # if gameStarted:
-            #     ws.send(cmd.hello())
-            #     ws.send(cmd.ready())
+            # ACK GAME START
+            if self.gameHasStarted:
+                self.ws.send(cmd.hello())
+                self.gameHasStarted = False
+            # ACK GAME INIT
+            if self.gameInitPhase:
+                self.ws.send(cmd.ready())
+                self.gameInitPhase = False
+
             time.sleep(0.1)
 
 
 class ProgressThread(threading.Thread):
-    """ Mainly for debugging. Prints out the incoming messages, so that we can easier parse it."""
+    """ Mainly for debugging. Can be removed later"""
     def __init__(self, client_daemon, ws):
         super(ProgressThread, self).__init__()
 
@@ -93,7 +141,7 @@ class ProgressThread(threading.Thread):
             if not self.worker.is_alive():
                 'Client has disconnected'
                 return True
-
+            print("thread2")
             print(self.ws.msg_buf)
             time.sleep(1.0)
 
@@ -167,7 +215,7 @@ def get_addrs():
     """ We will use this in private networks, to avoid localhost-related bugs for now.
     However, we have to get the localhost-settings running at some point."""
     # addr = get_local_ip()  # TODO
-    # addr = "localhost"  # TODO fix setting of cookies, s.t. we can run anywher
+    # addr = "localhost"  # TODO fix setting of cookies, s.t. we can run anywhere
     # referer = "http://localhost/"
     addr = '192.168.178.26'
     referer = "http://192.168.178.26/"
@@ -184,10 +232,6 @@ if __name__ == "__main__":
 
     # Connect the agent to websocket url
     url = 'ws://' + addr + '/ws'
-    print("should print this at least")
     agent = Client(url, cookie)
-    print("TST?")
     agent.run()
-    progress = ProgressThread(agent.daemon, agent.ws)
-    progress.start()
-    progress.join()
+
