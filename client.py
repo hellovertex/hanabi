@@ -28,6 +28,7 @@ class Client:
         self.gottaJoinGame = True
         self.gameHasStarted = False
 
+    @staticmethod
     def on_message(ws, message):
         print("message = ", message)
         if "gameStarted" in message:
@@ -35,17 +36,46 @@ class Client:
         if "init" in message:
             ws.send(cmd.ready())
 
+    @staticmethod
     def on_error(ws, error):
         print("Error: ", error)
 
+    @staticmethod
     def on_close(ws):
         print("### closed ###")
 
+    @staticmethod
     def on_data(ws, data):
         print("data", data)
 
+    @staticmethod
     def on_open(ws):
         pass
+
+    def run(self):
+        #
+        wst = threading.Thread(target=self.ws.run_forever)
+        wst.daemon = True
+        wst.start()
+
+        print("GOTTA JOIN MAN")
+        conn_timeout = 5
+        while not self.ws.sock.connected and conn_timeout:
+            time.sleep(1)
+            conn_timeout -= 1
+
+        while self.ws.sock.connected:
+            if self.gottaJoinGame:
+                throttle = 2
+                time.sleep(throttle)
+                self.ws.send(cmd.gameJoin(gameID='4'))
+                self.ws.send(cmd.hello())
+                self.gottaJoinGame = False
+            # if gameStarted:
+            #     ws.send(cmd.hello())
+            #     ws.send(cmd.ready())
+            time.sleep(0.1)
+
 
 def login(url, referer):
     """ Make POST request to /login page"""
@@ -154,43 +184,26 @@ def connect_websocket(url, cookie):
     join_game(ws, 1)
 
 
-def get_local_ip():
+def get_addrs():
     """ We will use this in private networks, to avoid localhost-related bugs for now.
     However, we have to get the localhost-settings running at some point."""
-    pass
-
-if __name__ == "__main__":
     # addr = get_local_ip()  # TODO
     # addr = "localhost"  # TODO fix setting of cookies, s.t. we can run anywher
+    # referer = "http://localhost/"
     addr = '192.168.178.26'
     referer = "http://192.168.178.26/"
-    # referer = "http://localhost/"
+    return addr, referer
+
+if __name__ == "__main__":
+
+    # Returns subnet ipv4 in private network and localhost otherwise
+    addr, referer = get_addrs()
+
+    # Login to Zamiels server (session-based)
     session, cookies = login(url='http://' + addr, referer=referer)
     cookie = upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookies=cookies)
 
+    # Connect the agent to websocket url
     url='ws://' + addr + '/ws'
     agent = Client(url, cookie)
-
-    wst = threading.Thread(target=agent.ws.run_forever)
-    wst.daemon = True
-    wst.start()
-
-    gottaJoin = True
-
-    print("GOTTA JOIN MAN")
-    conn_timeout = 5
-    while not agent.ws.sock.connected and conn_timeout:
-        time.sleep(1)
-        conn_timeout -= 1
-
-    while agent.ws.sock.connected:
-        if gottaJoin:
-            throttle = 2
-            time.sleep(throttle)
-            agent.ws.send(cmd.gameJoin(gameID='4'))
-            agent.ws.send(cmd.hello())
-            gottaJoin = False
-        # if gameStarted:
-        #     ws.send(cmd.hello())
-        #     ws.send(cmd.ready())
-        time.sleep(0.1)
+    agent.run()
