@@ -4,16 +4,48 @@ import requests
 import websocket
 import threading
 import time
-# try:
-#     import thread
-# except ImportError:
-#     import _thread as thread
 
 """ PROJECT LVL IMPORTS """
 import commandsWebSocket as cmd
 
+class Client:
+    def __init__(self, url, cookie):
+        """ Client wrapped around the agents, so they can play on Zamiels server
+         https://github.com/Zamiell/hanabi-live. They compute actions offline
+         and send back the corresponding json-encoded action on their turn."""
 
-gameStarted = False
+        # Opens a websocket on url:80
+        self.ws = websocket.WebSocketApp(url=url,
+                        on_message = lambda ws, msg: self.on_message(ws, msg),
+                        on_error = lambda ws, msg: self.on_message(ws, msg),
+                        on_close = lambda ws, msg: self.on_message(ws, msg),
+                        cookie = cookie)
+
+        # Set on_open seperately as it does crazy things otherwise #pythonWS
+        self.ws.on_open = lambda ws: self.on_open(ws)
+
+        # Tell the Client, where in the process of joining/playing we are
+        self.gottaJoinGame = True
+        self.gameHasStarted = False
+
+    def on_message(ws, message):
+        print("message = ", message)
+        if "gameStarted" in message:
+            ws.send(cmd.hello())
+        if "init" in message:
+            ws.send(cmd.ready())
+
+    def on_error(ws, error):
+        print("Error: ", error)
+
+    def on_close(ws):
+        print("### closed ###")
+
+    def on_data(ws, data):
+        print("data", data)
+
+    def on_open(ws):
+        pass
 
 def login(url, referer):
     """ Make POST request to /login page"""
@@ -122,13 +154,9 @@ def connect_websocket(url, cookie):
     join_game(ws, 1)
 
 
-def join_game(ws, game_id):
-    print("Joining game")
-    #ws.send(f"gameJoin gameId: {1}")
-    return
-
-
 def get_local_ip():
+    """ We will use this in private networks, to avoid localhost-related bugs for now.
+    However, we have to get the localhost-settings running at some point."""
     pass
 
 if __name__ == "__main__":
@@ -141,39 +169,9 @@ if __name__ == "__main__":
     cookie = upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookies=cookies)
 
     url='ws://' + addr + '/ws'
-    # connect_websocket(url='ws://' + addr + '/ws', cookie=cookie)
-    def on_message(ws, message):
+    agent = Client(url, cookie)
 
-
-        print("message = ", message)
-        if "gameStarted" in message:
-            ws.send(cmd.hello())
-        if "init" in message:
-            ws.send(cmd.ready())
-
-    def on_error(ws, error):
-        print("Error: ", error)
-
-    def on_close(ws):
-        print("### closed ###")
-
-    def on_data(ws, data):
-        print("data", data)
-
-
-    def on_open(ws):
-        pass
-
-    ws = websocket.WebSocketApp(url=url,
-                                on_message=on_message,
-                                on_error=on_error,
-                                on_close=on_close,
-                                cookie=cookie)
-    ws.on_open = on_open
-    # websocket.enableTrace(True)
-    # ws.run_forever()
-    # thread.start_new_thread(ws.run_forever, ())
-    wst = threading.Thread(target=ws.run_forever)
+    wst = threading.Thread(target=agent.ws.run_forever)
     wst.daemon = True
     wst.start()
 
@@ -181,16 +179,16 @@ if __name__ == "__main__":
 
     print("GOTTA JOIN MAN")
     conn_timeout = 5
-    while not ws.sock.connected and conn_timeout:
+    while not agent.ws.sock.connected and conn_timeout:
         time.sleep(1)
         conn_timeout -= 1
 
-    while ws.sock.connected:
+    while agent.ws.sock.connected:
         if gottaJoin:
             throttle = 2
             time.sleep(throttle)
-            ws.send(cmd.gameJoin(gameID='3'))
-            ws.send(cmd.hello())
+            agent.ws.send(cmd.gameJoin(gameID='4'))
+            agent.ws.send(cmd.hello())
             gottaJoin = False
         # if gameStarted:
         #     ws.send(cmd.hello())
