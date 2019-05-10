@@ -1,8 +1,21 @@
+#!/usr/bin/python3
+""" PYTHON IMPORTS """
 import requests
 import websocket
+import threading
+import time
+# try:
+#     import thread
+# except ImportError:
+#     import _thread as thread
+
+""" PROJECT LVL IMPORTS """
+import commandsWebSocket as cmd
 
 
-def login(url, referer="http://192.168.178.26/"):
+gameStarted = False
+
+def login(url, referer):
     """ Make POST request to /login page"""
     ses = requests.session()
     # set up header
@@ -30,7 +43,10 @@ def login(url, referer="http://192.168.178.26/"):
     response = ses.post(url=url, data=data, headers=headers)
 
     # store cookies because we need them for web socket establishment
+
     cookieJar = ses.cookies
+    print(response, referer)
+    print(cookieJar.items())
     assert response.status_code == 200  # assert login was successful
     print(f"COOKIES: {cookieJar.items()[0]}")
 
@@ -60,24 +76,123 @@ def upgrade_to_websocket(url, session, cookies):
 
     assert response.status_code == 101  # 101 means SWITCHING_PROTOCOL, i.e. success
 
-    return url, cookie
+    return id+'='+cookie
 
 
-def run_websocket(url, cookie):
+def connect_websocket(url, cookie):
+    print("Inside connect")
+    print(cookie)
+    # websocket.enableTrace(True)
 
     def on_message(ws, message):
         print("message = ", message)
 
+    def on_error(ws, error):
+        print("error")
+        print(error)
+
+    def on_close(ws):
+        print("### closed ###")
+
     def on_data(ws, data):
         print("data", data)
+
+
+    def on_open(ws):
+        pass
+        # thread.start_new_thread(ws.run_forever)
+        # def run(*args):
+        #     for i in range(3):
+        #         time.sleep(1)
+        #         ws.send("Hello %d" % i)
+        #     time.sleep(1)
+        #     ws.close()
+        #     print("thread terminating...")
+        #
+        # thread.start_new_thread(run, ())
+
     ws = websocket.WebSocketApp(url=url,
                                 on_message=on_message,
+                                on_error=on_error,
+                                on_close=on_close,
                                 cookie=cookie)
-    ws.run_forever()
+    ws.on_open = on_open
+    thread.start_new_thread(ws.run_forever, ())
+
+    join_game(ws, 1)
 
 
-addr = '192.168.178.26'
-session, cookies = login(url='http://' + addr)
-url_ws, cookie = upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookies=cookies)
-run_websocket(url=url_ws, cookie=cookie)
+def join_game(ws, game_id):
+    print("Joining game")
+    #ws.send(f"gameJoin gameId: {1}")
+    return
 
+
+def get_local_ip():
+    pass
+
+if __name__ == "__main__":
+    # addr = get_local_ip()  # TODO
+    # addr = "localhost"  # TODO fix setting of cookies, s.t. we can run anywher
+    addr = '192.168.178.26'
+    referer = "http://192.168.178.26/"
+    # referer = "http://localhost/"
+    session, cookies = login(url='http://' + addr, referer=referer)
+    cookie = upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookies=cookies)
+
+    url='ws://' + addr + '/ws'
+    # connect_websocket(url='ws://' + addr + '/ws', cookie=cookie)
+    def on_message(ws, message):
+
+
+        print("message = ", message)
+        if "gameStarted" in message:
+            ws.send(cmd.hello())
+        if "init" in message:
+            ws.send(cmd.ready())
+
+    def on_error(ws, error):
+        print("Error: ", error)
+
+    def on_close(ws):
+        print("### closed ###")
+
+    def on_data(ws, data):
+        print("data", data)
+
+
+    def on_open(ws):
+        pass
+
+    ws = websocket.WebSocketApp(url=url,
+                                on_message=on_message,
+                                on_error=on_error,
+                                on_close=on_close,
+                                cookie=cookie)
+    ws.on_open = on_open
+    # websocket.enableTrace(True)
+    # ws.run_forever()
+    # thread.start_new_thread(ws.run_forever, ())
+    wst = threading.Thread(target=ws.run_forever)
+    wst.daemon = True
+    wst.start()
+
+    gottaJoin = True
+
+    print("GOTTA JOIN MAN")
+    conn_timeout = 5
+    while not ws.sock.connected and conn_timeout:
+        time.sleep(1)
+        conn_timeout -= 1
+
+    while ws.sock.connected:
+        if gottaJoin:
+            throttle = 2
+            time.sleep(throttle)
+            ws.send(cmd.gameJoin(gameID='3'))
+            ws.send(cmd.hello())
+            gottaJoin = False
+        # if gameStarted:
+        #     ws.send(cmd.hello())
+        #     ws.send(cmd.ready())
+        time.sleep(0.1)
