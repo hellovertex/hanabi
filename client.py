@@ -8,6 +8,7 @@ import time
 """ PROJECT LVL IMPORTS """
 import commandsWebSocket as cmd
 
+
 class Client:
     def __init__(self, url, cookie):
         """ Client wrapped around the agents, so they can play on Zamiels server
@@ -16,21 +17,28 @@ class Client:
 
         # Opens a websocket on url:80
         self.ws = websocket.WebSocketApp(url=url,
-                        on_message = lambda ws, msg: self.on_message(ws, msg),
-                        on_error = lambda ws, msg: self.on_message(ws, msg),
-                        on_close = lambda ws, msg: self.on_message(ws, msg),
-                        cookie = cookie)
+                                         on_message=lambda ws, msg: self.on_message(ws, msg),
+                                         on_error=lambda ws, msg: self.on_message(ws, msg),
+                                         on_close=lambda ws, msg: self.on_message(ws, msg),
+                                         cookie=cookie)
 
-        # Set on_open seperately as it does crazy things otherwise #pythonWS
+        # Set on_open seperately as it does crazy things otherwise #pythonWebsockets
         self.ws.on_open = lambda ws: self.on_open(ws)
 
         # Tell the Client, where in the process of joining/playing we are
         self.gottaJoinGame = True
         self.gameHasStarted = False
 
-    @staticmethod
-    def on_message(ws, message):
+        # listen for incoming messages
+        self.daemon = threading.Thread(target=self.ws.run_forever)
+        self.daemon.daemon = True
+        self.daemon.start()  # [do this before self.run(), s.t. we can hand over the daemon to another Thread]
+
+        self.msg_buf = list()
+
+    def on_message(self, ws, message):
         print("message = ", message)
+        self.msg_buf.append(message)
         if "gameStarted" in message:
             ws.send(cmd.hello())
         if "init" in message:
@@ -53,10 +61,6 @@ class Client:
         pass
 
     def run(self):
-        #
-        wst = threading.Thread(target=self.ws.run_forever)
-        wst.daemon = True
-        wst.start()
 
         print("GOTTA JOIN MAN")
         conn_timeout = 5
@@ -69,7 +73,6 @@ class Client:
                 throttle = 2
                 time.sleep(throttle)
                 self.ws.send(cmd.gameJoin(gameID='4'))
-                self.ws.send(cmd.hello())
                 self.gottaJoinGame = False
             # if gameStarted:
             #     ws.send(cmd.hello())
@@ -77,18 +80,37 @@ class Client:
             time.sleep(0.1)
 
 
+class ProgressThread(threading.Thread):
+    """ Mainly for debugging. Prints out the incoming messages, so that we can easier parse it."""
+    def __init__(self, client_daemon, ws):
+        super(ProgressThread, self).__init__()
+
+        self.worker = client_daemon
+        self.ws = ws
+
+    def run(self):
+        while True:
+            if not self.worker.is_alive():
+                'Client has disconnected'
+                return True
+
+            print(self.ws.msg_buf)
+            time.sleep(1.0)
+
+
 def login(url, referer):
     """ Make POST request to /login page"""
     ses = requests.session()
     # set up header
     # set useragent to chrome, s.t. we dont have to deal with the additional firefox warning
-    ses.headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) snap Chromium/74.0.3729.131 Chrome/74.0.3729.131 Safari/537.36'
+    ses.headers[
+        'User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) snap Chromium/74.0.3729.131 Chrome/74.0.3729.131 Safari/537.36'
     ses.headers['Accept'] = '*/*'
     ses.headers['Accept-Encoding'] = 'gzip, deflate'  # only shows on firefox
-    ses.headers['Accept-Language'] = 'en-US,en;q=0.5' # only shows on firefox
+    ses.headers['Accept-Language'] = 'en-US,en;q=0.5'  # only shows on firefox
     ses.headers['Origin'] = url
 
-    url = url+'/login'
+    url = url + '/login'
     data = {
         "username": "big_python",  # try developer account
         "password": "01c77cf03d35866f8486452d09c067f538848058f12d8f005af1036740cccf98"
@@ -138,50 +160,7 @@ def upgrade_to_websocket(url, session, cookies):
 
     assert response.status_code == 101  # 101 means SWITCHING_PROTOCOL, i.e. success
 
-    return id+'='+cookie
-
-
-def connect_websocket(url, cookie):
-    print("Inside connect")
-    print(cookie)
-    # websocket.enableTrace(True)
-
-    def on_message(ws, message):
-        print("message = ", message)
-
-    def on_error(ws, error):
-        print("error")
-        print(error)
-
-    def on_close(ws):
-        print("### closed ###")
-
-    def on_data(ws, data):
-        print("data", data)
-
-
-    def on_open(ws):
-        pass
-        # thread.start_new_thread(ws.run_forever)
-        # def run(*args):
-        #     for i in range(3):
-        #         time.sleep(1)
-        #         ws.send("Hello %d" % i)
-        #     time.sleep(1)
-        #     ws.close()
-        #     print("thread terminating...")
-        #
-        # thread.start_new_thread(run, ())
-
-    ws = websocket.WebSocketApp(url=url,
-                                on_message=on_message,
-                                on_error=on_error,
-                                on_close=on_close,
-                                cookie=cookie)
-    ws.on_open = on_open
-    thread.start_new_thread(ws.run_forever, ())
-
-    join_game(ws, 1)
+    return id + '=' + cookie
 
 
 def get_addrs():
@@ -194,8 +173,8 @@ def get_addrs():
     referer = "http://192.168.178.26/"
     return addr, referer
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     # Returns subnet ipv4 in private network and localhost otherwise
     addr, referer = get_addrs()
 
@@ -204,6 +183,11 @@ if __name__ == "__main__":
     cookie = upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookies=cookies)
 
     # Connect the agent to websocket url
-    url='ws://' + addr + '/ws'
+    url = 'ws://' + addr + '/ws'
+    print("should print this at least")
     agent = Client(url, cookie)
+    print("TST?")
     agent.run()
+    progress = ProgressThread(agent.daemon, agent.ws)
+    progress.start()
+    progress.join()
