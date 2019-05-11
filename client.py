@@ -1,12 +1,13 @@
 #!/usr/bin/python3
+""" PROJECT LVL IMPORTS """
+import commandsWebSocket as cmd
 """ PYTHON IMPORTS """
 import requests
 import websocket
 import threading
 import time
+import re
 
-""" PROJECT LVL IMPORTS """
-import commandsWebSocket as cmd
 
 class Client:
     def __init__(self, url, cookie):
@@ -62,21 +63,19 @@ class Client:
                 oldGameID = self.gameID
 
             # get current latest opened game lobby id
-            self.gameID = message.split('id":')[1][0]
+            tmp = message.split('id":')[1]
+            self.gameID = str(re.search(r'\d+', tmp).group())
 
-            # Join the next game
+            # Join the latest/next game
             if oldGameID is not None and self.gameID > oldGameID:
                 self.gottaJoinGame = True
 
         # START GAME
         if message.strip().startswith('gameStart'):
-            print("GAME STARTED")
-            self.gameHasStarted = True
+            self.ws.send(cmd.hello())  # ACK GAME START
         # INIT GAME
         if message.strip().startswith('init'):
-            print("GAME INITIALIZED")
-            self.gameInitPhase = True
-
+            self.ws.send(cmd.ready())  # ACK GAME INIT
 
     @staticmethod
     def on_error(ws, error):
@@ -116,14 +115,6 @@ class Client:
                 time.sleep(self.throttle)
                 self.ws.send(cmd.gameJoin(gameID=self.gameID))
                 self.gottaJoinGame = False
-            # ACK GAME START
-            if self.gameHasStarted:
-                self.ws.send(cmd.hello())
-                self.gameHasStarted = False
-            # ACK GAME INIT
-            if self.gameInitPhase:
-                self.ws.send(cmd.ready())
-                self.gameInitPhase = False
 
             time.sleep(0.1)
 
