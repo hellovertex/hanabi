@@ -48,27 +48,10 @@ class Client:
     def on_message(self, ws, message):
 
         print("message = ", message)
-        # ############### #
-        # -- Set FLAGS -- #
-        # ############### #
+
         # JOIN GAME
-        if message.strip().startswith('table'):  # last opened games ID
-            # To play another game after one is finished
-            oldGameID = None
-
-            # If no game has been created yet, we will join the next one
-            if self.gameID is None:
-                self.gottaJoinGame = True
-            else:
-                oldGameID = self.gameID
-
-            # get current latest opened game lobby id
-            tmp = message.split('id":')[1]
-            self.gameID = str(re.search(r'\d+', tmp).group())
-
-            # Join the latest/next game
-            if oldGameID is not None and self.gameID > oldGameID:
-                self.gottaJoinGame = True
+        if message.strip().startswith('table'):  # notification opened game
+            self.auto_join_game(message)
 
         # START GAME
         if message.strip().startswith('gameStart'):
@@ -76,6 +59,24 @@ class Client:
         # INIT GAME
         if message.strip().startswith('init'):
             self.ws.send(cmd.ready())  # ACK GAME INIT
+
+    def auto_join_game(self, message):
+        # To play another game after one is finished
+        oldGameID = None
+
+        # If no game has been created yet, we will join the next one
+        if self.gameID is None:
+            self.gottaJoinGame = True
+        else:
+            oldGameID = self.gameID
+
+        # get current latest opened game lobby id
+        tmp = message.split('id":')[1]
+        self.gameID = str(re.search(r'\d+', tmp).group())
+
+        # Join the latest/next game
+        if oldGameID is not None and self.gameID > oldGameID:
+            self.gottaJoinGame = True
 
     @staticmethod
     def on_error(ws, error):
