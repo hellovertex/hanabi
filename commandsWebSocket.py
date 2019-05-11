@@ -3,7 +3,7 @@ import typing
 
 def hello() -> str:
     """ Upon joining game table """
-    return '{"hello":{}}'
+    return 'hello {}'
 
 def gameJoin(gameID: str) -> str:
     """ To join game table from lobby """
@@ -11,4 +11,4 @@ def gameJoin(gameID: str) -> str:
 
 def ready() -> str:
     """ After hello() upon joining game table """
-    return '{"ready":{}}'
+    return 'ready {}'
