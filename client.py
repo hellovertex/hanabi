@@ -43,7 +43,6 @@ class Client:
 
         # Will always be set to the game created last (on the server side ofc)
         self.gameID = None
-        self.lastGameID = None
 
     def on_message(self, ws, message):
 
