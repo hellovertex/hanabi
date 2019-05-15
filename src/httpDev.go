@@ -4,10 +4,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func httpMain(c *gin.Context) {
+func httpDev(c *gin.Context) {
 	w := c.Writer
 	data := TemplateData{
-		Title: "Main",
+		Title: "Dev",
 	}
 	httpServeTemplate(w, data, "main")
 }

@@ -118,7 +118,7 @@ func websocketConnect(ms *melody.Session) {
 		Version: version,
 
 		// Also let the user know if the server is currently performing a graceful shutdown
-		ShuttingDown: shutdiscorddiscordtingDown,
+		ShuttingDown: shuttingDown,
 	})
 
 	// Send them a random name

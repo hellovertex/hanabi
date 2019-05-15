@@ -7,7 +7,7 @@ import (
 func httpMain(c *gin.Context) {
 	w := c.Writer
 	data := TemplateData{
-		Title: "Main",
+		Title: "Dev",
 	}
 	httpServeTemplate(w, data, "main")
 }
