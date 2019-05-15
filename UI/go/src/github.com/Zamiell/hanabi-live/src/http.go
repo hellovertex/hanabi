@@ -75,7 +75,7 @@ func httpInit() {
 	sessionStore = cookie.NewStore([]byte(sessionSecret))
 	options := gsessions.Options{
 		Path:   "/",
-		Domain: domain, //"localhost" //"192.168.178.26",
+		Domain: "192.168.178.26",
 		MaxAge: 10, // in seconds
 		// After getting a cookie via "/login", the client will immediately
 		// establish a WebSocket connection via "/ws", so the cookie only needs

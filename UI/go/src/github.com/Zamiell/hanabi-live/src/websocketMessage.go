@@ -35,16 +35,11 @@ func websocketMessage(ms *melody.Session, msg []byte) {
 		return
 	}
 	command := result[0]
-	log.Info("msg = ")
-	log.Info(msg)
-	log.Info("command = ")
-	log.Info(command)
-	log.Info(result[1])
 	jsonData := []byte(result[1])
 
 	// Check to see if there is a command handler for this command
 	if _, ok := commandMap[command]; !ok {
-		log.Error("User \"" + s.Username() + "\" sent an invalid command of \"" + command + "\"." + command)
+		log.Error("User \"" + s.Username() + "\" sent an invalid command of \"" + command + "\".")
 		return
 	}
 

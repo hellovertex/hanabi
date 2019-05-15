@@ -118,7 +118,7 @@ func websocketConnect(ms *melody.Session) {
 		Version: version,
 
 		// Also let the user know if the server is currently performing a graceful shutdown
-		ShuttingDown: shutdiscorddiscordtingDown,
+		ShuttingDown: shuttingDown,
 	})
 
 	// Send them a random name
@@ -128,10 +128,9 @@ func websocketConnect(ms *melody.Session) {
 	chatSendPastFromDatabase(s, "lobby", 50)
 
 	// Send them the message(s) of the day
-	// msg := "Find teammates and discuss strategy in the "
-	// msg += "<a href=\"https://discord.gg/FADvkJp\" target=\"_blank\" rel=\"noopener noreferrer\">"
-	// msg += "Hanabi Discord chat</a>."
-	msg := "Flame your teammates from the last game here"
+	msg := "Find teammates and discuss strategy in the "
+	msg += "<a href=\"https://discord.gg/FADvkJp\" target=\"_blank\" rel=\"noopener noreferrer\">"
+	msg += "Hanabi Discord chat</a>."
 	s.NotifyChat(msg, "", false, true, time.Now(), "lobby")
 
 	// Alert everyone that a new user has logged in
