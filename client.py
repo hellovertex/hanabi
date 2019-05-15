@@ -164,23 +164,17 @@ def login(url, referer):
     }
     # attempt login and save HTTP response
     response = ses.post(url=url, data=data, headers=headers)
+    # store cookie because we need them for web socket establishment
+    cookie = response.headers['set-cookie']
 
-    # store cookies because we need them for web socket establishment
-
-    cookieJar = ses.cookies
-    print(response, referer)
-    print(cookieJar.items())
     assert response.status_code == 200  # assert login was successful
-    print(f"COOKIES: {cookieJar.items()[0]}")
-
-    return ses, cookieJar
 
 
-def upgrade_to_websocket(url, session, cookies):
+    return ses, cookie
+
+
+def upgrade_to_websocket(url, session, cookie):
     """ Make a GET request to UPGRADE HTTP to Websocket"""
-    # cookies is a cookieJar obj which stores [(id, cookie)]
-    id = cookies.items()[0][0]
-    cookie = cookies.items()[0][1]
 
     # headers
     headers = {
@@ -189,7 +183,7 @@ def upgrade_to_websocket(url, session, cookies):
         "Cache-Control": "no-cache",
         "Upgrade": "websocket",
         "Sec-Websocket-Version": "13",
-        "Cookie": f"{id}={cookie}",
+        "Cookie": cookie,
         "Sec-WebSocket-Key": "6R/+PZjR24OnAaKVwAnTRA==",  # Base64 encoded
         "Sec-Websocket-Extensions": "permessage-deflate; client_max_window_bits"
     }
@@ -199,7 +193,7 @@ def upgrade_to_websocket(url, session, cookies):
 
     assert response.status_code == 101  # 101 means SWITCHING_PROTOCOL, i.e. success
 
-    return id + '=' + cookie
+    return
 
 
 def get_addrs():
@@ -218,8 +212,8 @@ if __name__ == "__main__":
     addr, referer = get_addrs()
 
     # Login to Zamiels server (session-based)
-    session, cookies = login(url='http://' + addr, referer=referer)
-    cookie = upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookies=cookies)
+    session, cookie = login(url='http://' + addr, referer=referer)
+    upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookie=cookie)
 
     # Connect the agent to websocket url
     url = 'ws://' + addr + '/ws'
