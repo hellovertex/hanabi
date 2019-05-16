@@ -31,7 +31,7 @@ class Client:
         self.daemon.start()  # [do this before self.run(), s.t. we can hand over the daemon to another Thread]
 
         # Store incoming server messages here, to get observations etc.
-        self.msg_buf = list()
+        self.msg_buf = list()  # maybe replace this with a game_state object
 
         # throttle to avoid race conditions
         self.throttle = 0.05  # 50 ms
@@ -44,13 +44,19 @@ class Client:
         # Will always be set to the game created last (on the server side ofc)
         self.gameID = None
 
+        # Stores observations for each agent
+        self.gameState = GameStateWrapper()
+
+        # Hanabi playing agent
+        self.agent = AgentWrapper()  # Once we have em, we can directly initialize our implemented and other agents here
+
     def on_message(self, ws, message):
 
         print("message = ", message)
 
         # JOIN GAME
         if message.strip().startswith('table'):  # notification opened game
-            self.auto_join_game(message)
+            self._set_auto_join_game(message)
 
         # START GAME
         if message.strip().startswith('gameStart'):
@@ -59,7 +65,11 @@ class Client:
         if message.strip().startswith('init'):
             self.ws.send(cmd.ready())  # ACK GAME INIT
 
-    def auto_join_game(self, message):
+        # CARDS DEALT
+        if message.startswith('notifyList '):
+            self.gameState.deal_cards()
+
+    def _set_auto_join_game(self, message):
         # To play another game after one is finished
         oldGameID = None
 
@@ -87,7 +97,8 @@ class Client:
 
     @staticmethod
     def on_data(ws, data):
-        print("data", data)
+        # print("data", data)
+        pass
 
     @staticmethod
     def on_open(ws):
@@ -95,28 +106,44 @@ class Client:
         pass
 
     def run(self, gameID=None):
-        """ Basically the main workhorse.
-        This implements the event-loop where we process incoming and outgoing messages """
+            """ Basically the main workhorse.
+            This implements the event-loop where we process incoming and outgoing messages """
 
-        # Client automatically sets gameID to the last opened game [so best only open one at a time]
-        if gameID is None:
-            gameID = self.gameID
+            # Client automatically sets gameID to the last opened game [so best only open one at a time]
+            if gameID is None:
+                gameID = self.gameID
 
-        # Just in case, as we sometimes get delays in the beginning (idk why)
-        conn_timeout = 5
-        while not self.ws.sock.connected and conn_timeout:
-            time.sleep(1)
-            conn_timeout -= 1
+            # Just in case, as we sometimes get delays in the beginning (idk why)
+            conn_timeout = 5
+            while not self.ws.sock.connected and conn_timeout:
+                time.sleep(1)
+                conn_timeout -= 1
 
-        # Loop to play the best game in the world :)
-        while self.ws.sock.connected:
-            # JOIN GAME
-            if self.gottaJoinGame and self.gameID:
-                time.sleep(self.throttle)
-                self.ws.send(cmd.gameJoin(gameID=self.gameID))
-                self.gottaJoinGame = False
+            # Loop to play the best game in the world :)
+            while self.ws.sock.connected:
+                # JOIN GAME
+                if self.gottaJoinGame and self.gameID:
+                    time.sleep(self.throttle)
+                    self.ws.send(cmd.gameJoin(gameID=self.gameID))
+                    self.gottaJoinGame = False
+                # ON AGENTS TURN [we set the corresponding flag in self.on_message()] #todo
+                # obs = self.gameState.get_observation(player)
+                # call agent.act(obs)
+                # depending on whether the server sends a message for own action, we may have to update the game state
+                # here instead of in self.on_message()
+                time.sleep(0.1)
 
-            time.sleep(0.1)
+
+class GameStateWrapper:
+    def deal_cards(self, cards):
+        pass
+
+    # todo implement all actions necessary to come up with observations as deepminds repo
+
+
+class AgentWrapper:
+    # can probably be removed as we instantiate given agentclasses directly (i.e. in the client itself)
+    pass
 
 
 class ProgressThread(threading.Thread):
@@ -200,14 +227,19 @@ def get_addrs():
     """ We will use this in private networks, to avoid localhost-related bugs for now.
     However, we have to get the localhost-settings running at some point."""
     # addr = get_local_ip()  # TODO
-    # addr = "localhost"  # TODO fix setting of cookies, s.t. we can run anywhere
-    # referer = "http://localhost/"
-    addr = '192.168.178.26'
-    referer = "http://192.168.178.26/"
+    addr = "localhost"
+    referer = "http://localhost/"
+    # addr = '192.168.178.26'
+    # referer = "http://192.168.178.26/"
     return addr, referer
 
 
 if __name__ == "__main__":
+    """ maybe add following args: 
+    - use_localhost // use_remote
+    - num of agents (client instances) 
+    - [AGENTCLASSES] """
+
     # Returns subnet ipv4 in private network and localhost otherwise
     addr, referer = get_addrs()
 

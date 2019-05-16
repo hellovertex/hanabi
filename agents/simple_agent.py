@@ -42,7 +42,8 @@ class SimpleAgent(Agent):
       # print(observation['card_knowledge'][1])
       if hint['color'] is not None or hint['rank'] is not None:
         #print(observation['card_knowledge'][0])
-
+        print("LEGAL MOVES ARE: ")
+        print(type(observation), type(observation['legal_moves']), observation['legal_moves'])
         return {'action_type': 'PLAY', 'card_index': card_index}
 
     # print(observation['card_knowledge'][0])
