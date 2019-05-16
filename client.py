@@ -67,7 +67,7 @@ class Client:
 
         # CARDS DEALT
         if message.startswith('notifyList '):
-            self.gameState.deal_cards()
+            self.gameState.deal_cards(message)
 
     def _set_auto_join_game(self, message):
         # To play another game after one is finished
@@ -238,7 +238,8 @@ if __name__ == "__main__":
     """ maybe add following args: 
     - use_localhost // use_remote
     - num of agents (client instances) 
-    - [AGENTCLASSES] """
+    - [AGENTCLASSES] 
+    - lobbyname (e.g. for when playing online), used in run() method of the client"""
 
     # Returns subnet ipv4 in private network and localhost otherwise
     addr, referer = get_addrs()
@@ -249,6 +250,6 @@ if __name__ == "__main__":
 
     # Connect the agent to websocket url
     url = 'ws://' + addr + '/ws'
-    agent = Client(url, cookie)
-    agent.run()
+    app = Client(url, cookie)
+    app.run()
 
