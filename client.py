@@ -137,11 +137,12 @@ class Client:
 
                 # ON AGENTS TURN [we set the corresponding flag in self.on_message()] #todo
                 agent_id = self.game.players.index(agent_name)
+                # Compute ACTION
                 if self.game.players.index(agent_name) == self.game.cur_player:
-                    # compute action remotely and then parse it to send to server
                     obs = self.gameState.get_observation(agent_id)
                     a = agent.act(obs)
-                    self.ws.send(self.game.parse_action(a))
+                    # Send to server
+                    self.ws.send(self.game.parse_action_to_msg(a))
                 time.sleep(0.1)
 
 
