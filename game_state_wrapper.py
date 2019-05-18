@@ -1,6 +1,7 @@
 import ast
 import typing
 
+
 class GameStateWrapper:
 
     def __init__(self):
@@ -143,7 +144,7 @@ class GameStateWrapper:
         target = dict_clue['target']
         touched_cards = dict_clue['List']
         for c in touched_cards:
-            idx_c = tmp = self.card_numbers[target].index(c)
+            idx_c = self.card_numbers[target].index(c)
             if clue['type'] == 0:
                 self.clues[target][idx_c]['rank'] = clue['value']
             else:
@@ -161,8 +162,8 @@ class GameStateWrapper:
         pass
 
     def get_observation(self, agent_id):
-        """ Will always return observation of the calling agent. We just use agent_id for consistency
-        and readability"""
+        """ Will always return observation of the calling agent as this is the only thing needed. We just use agent_id
+        for consistency and readability"""
         assert agent_id == self.cur_player
         observation = {
             'current_player': agent_id,
