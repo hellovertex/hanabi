@@ -127,5 +127,5 @@ def action(type: int, target: int, clue: Dict[str, str]) -> str:
     cluetype = str(clue["type"])
     cluevalue = str(clue["value"])
 
-    return 'action {"type":'+type+',"target":'+target+'"clue":{"type":'+cluetype+',"value:":'+cluevalue
+    return 'action {"type":'+type+',"target":'+target+'"clue":{"type":'+cluetype+',"value:":'+cluevalue+'}}'
 
