@@ -7,10 +7,10 @@ import websocket
 import threading
 import time
 import re
-
+from game_state_wrapper import GameStateWrapper
 
 class Client:
-    def __init__(self, url, cookie):
+    def __init__(self, url, cookie, username):
         """ Client wrapped around the agents, so they can play on Zamiels server
          https://github.com/Zamiell/hanabi-live. They compute actions offline
          and send back the corresponding json-encoded action on their turn."""
@@ -45,15 +45,16 @@ class Client:
         self.gameID = None
 
         # Stores observations for each agent
-        self.gameState = GameStateWrapper()
+        self.game = GameStateWrapper()
 
         # Hanabi playing agent
         self.agent = AgentWrapper()  # Once we have em, we can directly initialize our implemented and other agents here
+        self.agent_name = username
 
     def on_message(self, ws, message):
-
+        """ Forwards messages to game state wrapper and sets flags for self.run() """
         print("message = ", message)
-
+        # TODO: write parse_msg() method and just dijkstra on CONSTs here
         # JOIN GAME
         if message.strip().startswith('table'):  # notification opened game
             self._set_auto_join_game(message)
@@ -61,15 +62,22 @@ class Client:
         # START GAME
         if message.strip().startswith('gameStart'):
             self.ws.send(cmd.hello())  # ACK GAME START
+
         # INIT GAME
         if message.strip().startswith('init'):
             self.ws.send(cmd.ready())  # ACK GAME INIT
+            self.game.init_players(message)  # set list of players
 
         # CARDS DEALT
         if message.startswith('notifyList '):
-            self.gameState.deal_cards(message)
+            self.game.deal_cards(message)
+
+        # UPDATE GAME STATE
+        if message.startswith('notify {'):
+            self.game.update_state(message)
 
     def _set_auto_join_game(self, message):
+        """ Set joingame-flags for self.run(), s.t. it joins created games whenever possible"""
         # To play another game after one is finished
         oldGameID = None
 
@@ -126,19 +134,16 @@ class Client:
                     time.sleep(self.throttle)
                     self.ws.send(cmd.gameJoin(gameID=self.gameID))
                     self.gottaJoinGame = False
+
                 # ON AGENTS TURN [we set the corresponding flag in self.on_message()] #todo
-                # obs = self.gameState.get_observation(player)
+                agent_id = self.game.players.index(agent_name)
+                if self.game.players.index(agent_name) == self.game.cur_player:
+                    obs = self.gameState.get_observation(agent_id)
+
                 # call agent.act(obs)
                 # depending on whether the server sends a message for own action, we may have to update the game state
                 # here instead of in self.on_message()
                 time.sleep(0.1)
-
-
-class GameStateWrapper:
-    def deal_cards(self, cards):
-        pass
-
-    # todo implement all actions necessary to come up with observations as deepminds repo
 
 
 class AgentWrapper:
@@ -164,7 +169,7 @@ class ProgressThread(threading.Thread):
             time.sleep(1.0)
 
 
-def login(url, referer):
+def login(url, referer, username="big_python", password="01c77cf03d35866f8486452d09c067f538848058f12d8f005af1036740cccf98"):
     """ Make POST request to /login page"""
     ses = requests.session()
     # set up header
@@ -178,8 +183,8 @@ def login(url, referer):
 
     url = url + '/login'
     data = {
-        "username": "big_python",  # try developer account
-        "password": "01c77cf03d35866f8486452d09c067f538848058f12d8f005af1036740cccf98"
+        "username": username,
+        "password": password
     }
     headers = {
         # "Accept": "*/*",
@@ -195,7 +200,6 @@ def login(url, referer):
     cookie = response.headers['set-cookie']
 
     assert response.status_code == 200  # assert login was successful
-
 
     return ses, cookie
 
@@ -227,10 +231,10 @@ def get_addrs():
     """ We will use this in private networks, to avoid localhost-related bugs for now.
     However, we have to get the localhost-settings running at some point."""
     # addr = get_local_ip()  # TODO
-    addr = "localhost"
-    referer = "http://localhost/"
-    # addr = '192.168.178.26'
-    # referer = "http://192.168.178.26/"
+    #addr = "localhost"
+    #referer = "http://localhost/"
+    addr = '192.168.178.26'
+    referer = "http://192.168.178.26/"
     return addr, referer
 
 
@@ -250,6 +254,7 @@ if __name__ == "__main__":
 
     # Connect the agent to websocket url
     url = 'ws://' + addr + '/ws'
-    app = Client(url, cookie)
+    username = "big_python"  # todo: get this from the loop that we have to do from argvs
+    app = Client(url, cookie, username)
     app.run()
 
