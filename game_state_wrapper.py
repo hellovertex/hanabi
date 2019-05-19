@@ -6,21 +6,19 @@ import copy
 
 class GameStateWrapper:
 
-    def __init__(self, num_players):
+    def __init__(self, num_players, agent_name):
         """
         # ################################################ #
         # -------------------- CONFIG -------------------- #
         # ################################################ #
         """
         self.players = None  # list of names of players currently ingame
+        self.agent_name = agent_name  # used to identify absolute position on table
         self.num_players = num_players  # number of players ingame
         self.deck_size = None  # number of remaining cards in the deck
         self.life_tokens = 3  # todo get from config
         self.information_tokens = 8  # todo get from config
         self.deck_size = 50  # todo get from config
-
-        # absolute reference
-        self.cur_player = None  # int position of current player
 
         """
         # ################################################ #
@@ -53,11 +51,15 @@ class GameStateWrapper:
         # rl_env.HanabiEnvobservation._extract_from_dict method, but we need a history so we add this here.
         # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         self.last_moves = list()
+        self.agents_turn = False
+        self.game_ended = True
 
     def init_players(self, notify_msg: str):
         """ Sets self.players to a list of the players currently ingame and creates empty hands """
         self.reset()
-        player_dict = ast.literal_eval(notify_msg.split('init ')[1].replace('false', 'False').replace('list', 'List'))
+        self.game_ended = False
+        player_dict = ast.literal_eval(notify_msg.split('init ')[1].replace('false', 'False').replace('list',
+                                                                                                      'List').replace('true', 'True'))
         self.players = player_dict['names']
         self.num_players = len(self.players)
         self.hand_list = [list() for _ in range(self.num_players)]
@@ -71,7 +73,8 @@ class GameStateWrapper:
         "order":0},...'"""
 
         # list of dictionaries storing the draws
-        card_list = ast.literal_eval(notify_msg.split('notifyList ')[1].replace('false', 'False').replace('list', 'List'))
+        card_list = ast.literal_eval(notify_msg.split('notifyList ')[1].replace('false', 'False').replace('list',
+                                                                                                          'List').replace('true', 'True'))
 
         for d in card_list:
             if d['type'] == 'draw':  # add card to hand of player with id d['who'] from left to right
@@ -79,8 +82,8 @@ class GameStateWrapper:
 
             if d['type'] == 'turn':
                 # notifyList message also contains info on who goes first
-                self.cur_player = d['who']
-        assert self.cur_player is not None
+                if d['who'] == self.players.index(self.agent_name):
+                    self.agents_turn = True
 
         return
 
@@ -98,7 +101,7 @@ class GameStateWrapper:
 
         # the new card has no clues on it when drawn
         self.clues[d['who']].append({'color': None, 'rank': None})
-        return
+
 
     def discard(self, d):
         """
@@ -106,6 +109,11 @@ class GameStateWrapper:
         Need to reference by card_number, as we cannot access the card by rank and suit, if we discard own card,
         because its values are not known to us at the time of discarding
         """
+        print('BEFORE')
+        print('--------------------------------')
+        print(self.hand_list)
+        print(self.card_numbers)
+        print(self.clues)
         pid = d['which']['index']
         # Remove card number reference
         idx_card = self.card_numbers[pid].index(d['which']['order'])
@@ -119,7 +127,11 @@ class GameStateWrapper:
 
         # Update discard pile
         self.discard_pile.append(self.card(d['which']['suit'], d['which']['rank']))
-
+        print('AFTER')
+        print('--------------------------------')
+        print(self.hand_list)
+        print(self.card_numbers)
+        print(self.clues)
         return
 
     def update_state(self, notify_msg):
@@ -129,7 +141,9 @@ class GameStateWrapper:
         """
 
         'Create dictionary from server message that contains actions'
-        d = ast.literal_eval(notify_msg.split('notify ')[1].replace('false', 'False').replace('list', 'List'))
+        d = ast.literal_eval(notify_msg.split('notify ')[1].replace('false', 'False').replace('list',
+                                                                                              'List').replace(
+            'true', 'True'))
         print(d['type'])
 
         # DISCARD
@@ -154,9 +168,17 @@ class GameStateWrapper:
             self.update_clues(d)
             self.information_tokens -= 1  # validity has previously been checked by the server so were good with that
 
-        # Set next player
-        if d['type'] in ['turn', 'play', 'discard', 'clue']:
-            self.cur_player = self.next_player(offset=1)
+
+        # Set current player flag
+        if d['type'] == 'turn':
+            if d['who'] == self.players.index(self.agent_name):
+                self.agents_turn = True
+            else:
+                self.agents_turn = False
+
+        # On end of game, reset state
+        if d['type'] == 'turn' and d['who'] == -1:
+            self.game_ended = True
 
         # Add to history
         # self.append_to_last_moves()
@@ -191,15 +213,13 @@ class GameStateWrapper:
         """ Agent expects list of observations, always starting with his own cards. So we sort it here. """
         # moves self.cur_player hand to the front
         hand_list = copy.deepcopy(self.hand_list)
-        hand_list.insert(0, hand_list.pop(hand_list.index(hand_list[self.cur_player])))
+        hand_list.insert(0, hand_list.pop(hand_list.index(hand_list[self.players.index(self.agent_name)])))
         return hand_list
 
-    def get_observation(self, agent_id):
-        """ Will always return observation of the calling agent as this is the only thing needed. We just use agent_id
-        for consistency and readability"""
-        assert agent_id == self.cur_player
+    def get_agent_observation(self):
+        """ Returns state as perceived by the calling agent """
         observation = {
-            'current_player': agent_id,
+            'current_player': self.players.index(self.agent_name),
             'current_player_offset': 0,
             'life_tokens': self.life_tokens,
             'information_tokens': self.information_tokens,
@@ -226,7 +246,7 @@ class GameStateWrapper:
         return {'color': self.convert_suit(suit), 'rank': rank}
 
     def next_player(self, offset):
-        return divmod(self.cur_player + int(offset), self.num_players)[1]
+        return divmod(self.players.index(self.agent_name) + int(offset), self.num_players)[1]
 
     @staticmethod
     def convert_suit(suit: int) -> Optional[str]:
@@ -288,7 +308,10 @@ class GameStateWrapper:
         """ Returns action message that the server can read. """
         # one of ['REVEAL_COLOR', 'REVEAL_RANK', 'PLAY', 'DISCARD']
         action_type = action['action_type']
-
+        print('PLAYER TO ACT IS ACCORDING TO GAME:')
+        print('---------')
+        print(self.players.index(self.agent_name))
+        print('---------')
         # return value
         a = ''
 
@@ -318,7 +341,7 @@ class GameStateWrapper:
             type = '1'
             card_index = action['card_index']
             # target is referenced by absolute card number, gotta convert from given index
-            target = str(self.card_numbers[self.cur_player][card_index])
+            target = str(self.card_numbers[self.players.index(self.agent_name)][card_index])
 
             a = 'action {"type":' + type + ',"target":' + target + '}'
 
@@ -327,7 +350,7 @@ class GameStateWrapper:
             type = '2' # 2 for type 'DISCARD'
             card_index = action['card_index']
             # target is referenced by absolute card number, gotta convert from given index
-            target = str(self.card_numbers[self.cur_player][card_index])
+            target = str(self.card_numbers[self.players.index(self.agent_name)][card_index])
 
             a = 'action {"type":' + type + ',"target":' + target + '}'
 

@@ -20,8 +20,8 @@ class Client:
         # Opens a websocket on url:80
         self.ws = websocket.WebSocketApp(url=url,
                                          on_message=lambda ws, msg: self.on_message(ws, msg),
-                                         on_error=lambda ws, msg: self.on_message(ws, msg),
-                                         on_close=lambda ws, msg: self.on_message(ws, msg),
+                                         on_error=lambda ws, msg: self.on_error(ws, msg),
+                                         on_close=lambda ws, msg: self.on_close(ws, msg),
                                          cookie=cookie)
 
         # Set on_open seperately as it does crazy things otherwise #pythonWebsockets
@@ -46,11 +46,10 @@ class Client:
         self.gameID = None
 
         # Stores observations for each agent
-        self.game = GameStateWrapper(agent_config['players'])
+        self.game = GameStateWrapper(agent_config['players'], username)
 
         # Hanabi playing agent
         self.agent = SimpleAgent(agent_config)
-        self.agent_name = username
 
         # configuration required for agent initialization
         self.config = agent_config
@@ -60,15 +59,18 @@ class Client:
         print("message = ", message)
         # TODO: write parse_msg() method and just dijkstra on CONSTs here
         # JOIN GAME
-        if message.strip().startswith('table'):  # notification opened game
+        if message.strip().startswith('table') and not self.gameHasStarted:  # notification opened game
+            print("We are printing from inside table message")
             self._set_auto_join_game(message)
 
         # START GAME
         if message.strip().startswith('gameStart'):
+            print("We are printing from inside gameStart message")
             self.ws.send(cmd.hello())  # ACK GAME START
 
         # INIT GAME
         if message.strip().startswith('init'):
+            print("We are printing from inside init message")
             self.ws.send(cmd.ready())  # ACK GAME INIT
             self.game.init_players(message)  # set list of players
             self.gameHasStarted = True
@@ -142,14 +144,15 @@ class Client:
 
                 if self.gameHasStarted:
                     # ON AGENTS TURN [we set the corresponding flag in self.on_message()] #todo
-                    agent_id = self.game.players.index(self.agent_name)
-                    # Compute ACTION
-                    if self.game.players.index(self.agent_name) == self.game.cur_player:
 
-                        obs = self.game.get_observation(agent_id)
+                    # Compute ACTION
+                    if self.game.agents_turn:
+                        time.sleep(1)
+                        obs = self.game.get_agent_observation()
                         a = self.agent.act(obs)
                         # Send to server
                         self.ws.send(self.game.parse_action_to_msg(a))
+
 
                 time.sleep(1)
 
