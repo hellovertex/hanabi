@@ -7,8 +7,12 @@ import websocket
 import threading
 import time
 import re
+import sys
 from game_state_wrapper import GameStateWrapper
 from agents.simple_agent import SimpleAgent
+
+browsers = ['Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) snap Chromium/74.0.3729.131 Chrome/74.0.3729.131 Safari/537.36','Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 '
+            'Safari/537.36', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36']
 
 
 class Client:
@@ -183,13 +187,14 @@ class ProgressThread(threading.Thread):
             time.sleep(1.0)
 
 
-def login(url, referer, username="big_python", password="01c77cf03d35866f8486452d09c067f538848058f12d8f005af1036740cccf98"):
+def login(url, referer, username="big_python",
+          password="01c77cf03d35866f8486452d09c067f538848058f12d8f005af1036740cccf98", num_client=0):
     """ Make POST request to /login page"""
     ses = requests.session()
     # set up header
     # set useragent to chrome, s.t. we dont have to deal with the additional firefox warning
     ses.headers[
-        'User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) snap Chromium/74.0.3729.131 Chrome/74.0.3729.131 Safari/537.36'
+        'User-Agent'] = browsers[num_client]
     ses.headers['Accept'] = '*/*'
     ses.headers['Accept-Encoding'] = 'gzip, deflate'  # only shows on firefox
     ses.headers['Accept-Language'] = 'en-US,en;q=0.5'  # only shows on firefox
@@ -210,6 +215,7 @@ def login(url, referer, username="big_python", password="01c77cf03d35866f8486452
     }
     # attempt login and save HTTP response
     response = ses.post(url=url, data=data, headers=headers)
+
     # store cookie because we need them for web socket establishment
     cookie = response.headers['set-cookie']
 
@@ -253,12 +259,8 @@ def get_addrs():
 
 
 if __name__ == "__main__":
-    """ maybe add following args: 
-    - use_localhost // use_remote
-    - num of agents (client instances) 
-    - [AGENTCLASSES] 
-    - lobbyname (e.g. for when playing online), used in run() method of the client"""
-
+    if len(sys.argv) > 2:
+        agentclasses = sys.argv[1]
     # Returns subnet ipv4 in private network and localhost otherwise
     addr, referer = get_addrs()
 
@@ -270,6 +272,33 @@ if __name__ == "__main__":
     url = 'ws://' + addr + '/ws'
     username = "big_python"  # todo: get this from the loop that we have to do from argvs
     config = {'players': 2}
-    app = Client(url, cookie, username, config)
-    app.run()
+
+    process = []
+
+    # for i in range(len(agentclasses)):
+    #     print(agentclasses[i], type(agentclasses[i]))
+    #     username = agentclasses[i]+'0'+str(i)
+    #     session, cookie = login(url='http://' + addr, referer=referer, username=username, num_client=i)
+    #     upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookie=cookie)
+    #
+    #     # Create one thread per agent
+    #     c = Client(url, cookie, username, config)
+    #     client_thread = threading.Thread(target=c.run)
+    #     client_thread.start()
+    #     process.append(client_thread)
+    #
+    # for thread in process:
+    #     thread.join()
+    c1 = Client(url, cookie, username, config)
+    c1_thread = threading.Thread(target=c1.run)
+    # todo implement threaded clients
+
+    c1_thread.start()
+    print(cookie)
+    session, cookie = login(url='http://' + addr, referer=referer, username=username + '2', num_client=1)
+    upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookie=cookie)
+    print(cookie)
+    c2 = Client(url, cookie, username + '2', config)
+    c2_thread = threading.Thread(target=c2.run)
+    c2_thread.start()
 

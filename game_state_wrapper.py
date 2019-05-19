@@ -240,7 +240,13 @@ class GameStateWrapper:
         return {'color': self.convert_suit(suit), 'rank': rank}
 
     def next_player(self, offset):
-        return divmod(self.players.index(self.agent_name) + int(offset), self.num_players)[1]
+        # make up for the fact, that we changed the order of the agents, s.t. self always is at first position
+        idx = self.players.index(self.agent_name)
+
+        if offset <= idx:
+            return offset -1
+
+        return offset
 
     @staticmethod
     def convert_suit(suit: int) -> Optional[str]:
@@ -309,6 +315,7 @@ class GameStateWrapper:
         print('---------')
         print(self.players.index(self.agent_name))
         print('---------')
+        print(action)
         # return value
         a = ''
 
@@ -350,7 +357,8 @@ class GameStateWrapper:
             target = str(self.card_numbers[self.players.index(self.agent_name)][card_index])
 
             a = 'action {"type":' + type + ',"target":' + target + '}'
-
+        print('action')
+        print(a)
         return a
 
     def reset(self):
