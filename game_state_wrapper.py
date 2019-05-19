@@ -3,6 +3,7 @@ from typing import Optional
 import copy
 
 
+
 class GameStateWrapper:
 
     def __init__(self, num_players):
@@ -35,6 +36,7 @@ class GameStateWrapper:
         # unfortunately, server references clue cards not by index but by an id between 0 and deck size,
         # so we need to store card_numbers to map the card ids to indices
         self.card_numbers = list()
+
 
         """
         # ################################################ #
@@ -74,6 +76,7 @@ class GameStateWrapper:
         for d in card_list:
             if d['type'] == 'draw':  # add card to hand of player with id d['who'] from left to right
                 self.draw_card(d)
+
             if d['type'] == 'turn':
                 # notifyList message also contains info on who goes first
                 self.cur_player = d['who']
@@ -84,7 +87,7 @@ class GameStateWrapper:
     def draw_card(self, d):
         """ Adds card to players hand and updates deck size. Then updates card references and clues."""
         # prepend drawn card to players hand
-        self.hand_list[d['who']].insert(0, self.card(d['suit'], d['rank']), format='server')
+        self.hand_list[d['who']].insert(0, self.card(d['suit'], d['rank']))
 
         # decrease deck size counter
         self.deck_size -= 1
@@ -156,7 +159,7 @@ class GameStateWrapper:
             self.cur_player = self.next_player(offset=1)
 
         # Add to history
-        # self.append_to_last_moves(d)
+        # self.append_to_last_moves()
 
         return
 
@@ -216,6 +219,7 @@ class GameStateWrapper:
 
     def card(self, suit: int, rank: int):
         """ Returns card format desired by agent. Rank values of None and -1 will be passed through."""
+
         if rank is not None:
             if rank > -1:  # return rank = -1 for an own unclued card
                 rank -= 1  # server cards are not 0-indexed
@@ -296,6 +300,7 @@ class GameStateWrapper:
             target = str(self.next_player(offset=target_offset))
             cluetype = '1'  # 1 for COLOR clue
             cluevalue = str(self.convert_color(action['color']))
+
             a = 'action {"type":'+type+',"target":'+target+',"clue":{"type":'+cluetype+',"value":'+cluevalue+'}}'
 
         if action_type == 'REVEAL_RANK':
@@ -305,6 +310,7 @@ class GameStateWrapper:
             target = self.next_player(offset=target_offset)
             cluetype = '0'  # 0 for RANK clue
             cluevalue = self.parse_rank(action['rank'])
+
             a = 'action {"type":' + type + ',"target":' + target + ',"clue":{"type":' + cluetype + ',"value":' + cluevalue + '}}'
 
         # -------- Convert PLAY ----------- #
@@ -313,6 +319,7 @@ class GameStateWrapper:
             card_index = action['card_index']
             # target is referenced by absolute card number, gotta convert from given index
             target = str(self.card_numbers[self.cur_player][card_index])
+
             a = 'action {"type":' + type + ',"target":' + target + '}'
 
         # -------- Convert DISCARD ----------- #
@@ -321,6 +328,7 @@ class GameStateWrapper:
             card_index = action['card_index']
             # target is referenced by absolute card number, gotta convert from given index
             target = str(self.card_numbers[self.cur_player][card_index])
+
             a = 'action {"type":' + type + ',"target":' + target + '}'
 
         return a
