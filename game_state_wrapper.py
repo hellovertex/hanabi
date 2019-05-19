@@ -16,6 +16,8 @@ class GameStateWrapper:
         self.agent_name = agent_name  # used to identify absolute position on table
         self.num_players = num_players  # number of players ingame
         self.deck_size = None  # number of remaining cards in the deck
+        self.max_life_tokens = 3
+        self.max_info_tokens = 8
         self.life_tokens = 3  # todo get from config
         self.information_tokens = 8  # todo get from config
         self.deck_size = 50  # todo get from config
@@ -77,6 +79,8 @@ class GameStateWrapper:
         for d in card_list:
             if d['type'] == 'draw':  # add card to hand of player with id d['who'] from left to right
                 self.draw_card(d)
+                # the new card has no clues on it when drawn
+                self.clues[d['who']].append({'color': None, 'rank': None})
 
             if d['type'] == 'turn':
                 # notifyList message also contains info on who goes first
@@ -96,9 +100,6 @@ class GameStateWrapper:
         # unfortunately, server references clued cards by absolute number and not its index on the hand
         # so we store the number too, to map it onto indices for playing and discarding
         self.card_numbers[d['who']].insert(0, d['order'])
-
-        # the new card has no clues on it when drawn
-        self.clues[d['who']].append({'color': None, 'rank': None})
 
     def discard(self, d):
         """
@@ -140,7 +141,7 @@ class GameStateWrapper:
         if d['type'] == 'discard':
             self.discard(d)
             # only recover info token when not discarding through failed play
-            if 'failed' in d and d['failed'] is True:
+            if 'failed' in d and d['failed'] is False:
                 self.information_tokens += 1
 
         # DRAW - if player with pid draws a card, it is prepended to hand_list[pid]
@@ -357,6 +358,8 @@ class GameStateWrapper:
         self.clues = list()
         self.card_numbers = list()
         self.fireworks = {'R': 0, 'Y': 0, 'G': 0, 'W': 0, 'B': 0}
+        self.information_tokens = self.max_info_tokens
+        self.life_tokens = self.max_life_tokens
         self.discard_pile = list()
         self.last_moves = list()
         return
