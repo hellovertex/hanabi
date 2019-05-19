@@ -4,21 +4,20 @@ from typing import Dict
 
 def hello() -> str:
     """ Upon joining game table """
-    print("FROM INSIDE HELLO WEBSOCKET")
     return 'hello {}'
 
 
 def gameJoin(gameID: str) -> str:
     """ To join game table from lobby """
-    print("FROM INSIDE JOIN WEBSOCKET")
     return 'gameJoin {"gameID":' + gameID + '}'
 
 
 def ready() -> str:
-    print("FROM INSIDE READY WEBSOCKET")
     """ After hello() upon joining game table """
     return 'ready {}'
 
+def gameUnattend():
+    return 'gameUnattend {}'
 
 """ ACTIONS INGAME
 clue: { // Not present if the type is 1 or 2

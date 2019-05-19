@@ -52,12 +52,10 @@ class GameStateWrapper:
         # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         self.last_moves = list()
         self.agents_turn = False
-        self.game_ended = True
 
     def init_players(self, notify_msg: str):
         """ Sets self.players to a list of the players currently ingame and creates empty hands """
         self.reset()
-        self.game_ended = False
         player_dict = ast.literal_eval(notify_msg.split('init ')[1].replace('false', 'False').replace('list',
                                                                                                       'List').replace('true', 'True'))
         self.players = player_dict['names']
@@ -102,18 +100,12 @@ class GameStateWrapper:
         # the new card has no clues on it when drawn
         self.clues[d['who']].append({'color': None, 'rank': None})
 
-
     def discard(self, d):
         """
         Synchronizes references between handcards and clues.
         Need to reference by card_number, as we cannot access the card by rank and suit, if we discard own card,
         because its values are not known to us at the time of discarding
         """
-        print('BEFORE')
-        print('--------------------------------')
-        print(self.hand_list)
-        print(self.card_numbers)
-        print(self.clues)
         pid = d['which']['index']
         # Remove card number reference
         idx_card = self.card_numbers[pid].index(d['which']['order'])
@@ -123,15 +115,11 @@ class GameStateWrapper:
         del self.hand_list[pid][idx_card]
 
         # Remove card from clues
-        del self.clues[pid][idx_card]
+        self.clues[pid][idx_card] = {'color': None, 'rank': None}
 
         # Update discard pile
         self.discard_pile.append(self.card(d['which']['suit'], d['which']['rank']))
-        print('AFTER')
-        print('--------------------------------')
-        print(self.hand_list)
-        print(self.card_numbers)
-        print(self.clues)
+
         return
 
     def update_state(self, notify_msg):
@@ -144,11 +132,16 @@ class GameStateWrapper:
         d = ast.literal_eval(notify_msg.split('notify ')[1].replace('false', 'False').replace('list',
                                                                                               'List').replace(
             'true', 'True'))
-        print(d['type'])
+        if d['type'] in ['clue','discard', 'play']:
+            print(d['type'])
+            print(notify_msg)
 
         # DISCARD
         if d['type'] == 'discard':
             self.discard(d)
+            # only recover info token when not discarding through failed play
+            if 'failed' in d and d['failed'] is True:
+                self.information_tokens += 1
 
         # DRAW - if player with pid draws a card, it is prepended to hand_list[pid]
         if d['type'] == 'draw':
@@ -168,7 +161,6 @@ class GameStateWrapper:
             self.update_clues(d)
             self.information_tokens -= 1  # validity has previously been checked by the server so were good with that
 
-
         # Set current player flag
         if d['type'] == 'turn':
             if d['who'] == self.players.index(self.agent_name):
@@ -178,7 +170,7 @@ class GameStateWrapper:
 
         # On end of game, reset state
         if d['type'] == 'turn' and d['who'] == -1:
-            self.game_ended = True
+            pass
 
         # Add to history
         # self.append_to_last_moves()
@@ -192,9 +184,10 @@ class GameStateWrapper:
         for c in touched_cards:
             idx_c = self.card_numbers[target].index(c)
             if clue['type'] == 0:
-                self.clues[target][idx_c]['rank'] = clue['value']
+                # self.clues[target][idx_c]['rank'] = clue['value']
+                self.clues[target][idx_c] = self.card(self.clues[target][idx_c]['color'], clue['value'])
             else:
-                self.clues[target][idx_c]['color'] = clue['value']
+                self.clues[target][idx_c] = self.card(clue['value'], self.clues[target][idx_c]['rank'])
         return
 
     def play(self, card):
@@ -293,9 +286,12 @@ class GameStateWrapper:
         for hand in self.clues:
             h = list()
             for c in hand:
-                h.append(self.card(c['color'], c['rank']))
+                # h.append(self.card(c['color'], c['rank']))
+                h.append(c)
             card_knowledge.append(h)
         # return [self.card(c['color'], c['rank']) for hand in self.clues for c in hand]
+        # sort, s.t. agents cards are at index 0
+        card_knowledge.insert(0, card_knowledge.pop(card_knowledge.index(card_knowledge[self.players.index(self.agent_name)])))
         return card_knowledge
 
     @staticmethod

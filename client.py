@@ -41,6 +41,7 @@ class Client:
         # Tell the Client, where in the process of joining/playing we are
         self.gottaJoinGame = False
         self.gameHasStarted = False
+        self.game_ended = False
 
         # Will always be set to the game created last (on the server side ofc)
         self.gameID = None
@@ -56,21 +57,16 @@ class Client:
 
     def on_message(self, ws, message):
         """ Forwards messages to game state wrapper and sets flags for self.run() """
-        print("message = ", message)
-        # TODO: write parse_msg() method and just dijkstra on CONSTs here
         # JOIN GAME
         if message.strip().startswith('table') and not self.gameHasStarted:  # notification opened game
-            print("We are printing from inside table message")
             self._set_auto_join_game(message)
 
         # START GAME
         if message.strip().startswith('gameStart'):
-            print("We are printing from inside gameStart message")
             self.ws.send(cmd.hello())  # ACK GAME START
 
         # INIT GAME
         if message.strip().startswith('init'):
-            print("We are printing from inside init message")
             self.ws.send(cmd.ready())  # ACK GAME INIT
             self.game.init_players(message)  # set list of players
             self.gameHasStarted = True
@@ -82,6 +78,10 @@ class Client:
         # UPDATE GAME STATE
         if message.startswith('notify '):
             self.game.update_state(message)
+
+        # END GAME
+        if message.startswith('gameOver'):
+            self.game_ended = True
 
     def _set_auto_join_game(self, message):
         """ Set joingame-flags for self.run(), s.t. it joins created games whenever possible"""
@@ -142,17 +142,25 @@ class Client:
                     self.ws.send(cmd.gameJoin(gameID=self.gameID))
                     self.gottaJoinGame = False
 
-                if self.gameHasStarted:
-                    # ON AGENTS TURN [we set the corresponding flag in self.on_message()] #todo
+                # PLAY GAME
+                if self.gameHasStarted:  # set in self.on_message() on servers init message
 
-                    # Compute ACTION
+                    # ON AGENTS TURN
                     if self.game.agents_turn:
+                        # wait a second, to feel more human :D
                         time.sleep(1)
+                        # Get observation
                         obs = self.game.get_agent_observation()
+                        # Compute action
                         a = self.agent.act(obs)
                         # Send to server
                         self.ws.send(self.game.parse_action_to_msg(a))
 
+                    # leave replay lobby when game has ended
+                    if self.game_ended:
+                        self.ws.send(cmd.gameUnattend())
+                        self.game_ended = False
+                        self.gameHasStarted = False
 
                 time.sleep(1)
 
