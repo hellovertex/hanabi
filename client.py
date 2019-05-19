@@ -8,9 +8,11 @@ import threading
 import time
 import re
 from game_state_wrapper import GameStateWrapper
+from agents.simple_agent import SimpleAgent
+
 
 class Client:
-    def __init__(self, url, cookie, username):
+    def __init__(self, url, cookie, username, agent_config):
         """ Client wrapped around the agents, so they can play on Zamiels server
          https://github.com/Zamiell/hanabi-live. They compute actions offline
          and send back the corresponding json-encoded action on their turn."""
@@ -39,17 +41,19 @@ class Client:
         # Tell the Client, where in the process of joining/playing we are
         self.gottaJoinGame = False
         self.gameHasStarted = False
-        self.gameInitPhase = False
 
         # Will always be set to the game created last (on the server side ofc)
         self.gameID = None
 
         # Stores observations for each agent
-        self.game = GameStateWrapper()
+        self.game = GameStateWrapper(agent_config['players'])
 
         # Hanabi playing agent
-        self.agent = AgentWrapper()  # Once we have em, we can directly initialize our implemented and other agents here
+        self.agent = SimpleAgent(agent_config)
         self.agent_name = username
+
+        # configuration required for agent initialization
+        self.config = agent_config
 
     def on_message(self, ws, message):
         """ Forwards messages to game state wrapper and sets flags for self.run() """
@@ -67,13 +71,13 @@ class Client:
         if message.strip().startswith('init'):
             self.ws.send(cmd.ready())  # ACK GAME INIT
             self.game.init_players(message)  # set list of players
-
+            self.gameHasStarted = True
         # CARDS DEALT
         if message.startswith('notifyList '):
             self.game.deal_cards(message)
 
         # UPDATE GAME STATE
-        if message.startswith('notify {'):
+        if message.startswith('notify '):
             self.game.update_state(message)
 
     def _set_auto_join_game(self, message):
@@ -135,20 +139,18 @@ class Client:
                     self.ws.send(cmd.gameJoin(gameID=self.gameID))
                     self.gottaJoinGame = False
 
-                # ON AGENTS TURN [we set the corresponding flag in self.on_message()] #todo
-                agent_id = self.game.players.index(agent_name)
-                # Compute ACTION
-                if self.game.players.index(agent_name) == self.game.cur_player:
-                    obs = self.gameState.get_observation(agent_id)
-                    a = agent.act(obs)
-                    # Send to server
-                    self.ws.send(self.game.parse_action_to_msg(a))
-                time.sleep(0.1)
+                if self.gameHasStarted:
+                    # ON AGENTS TURN [we set the corresponding flag in self.on_message()] #todo
+                    agent_id = self.game.players.index(self.agent_name)
+                    # Compute ACTION
+                    if self.game.players.index(self.agent_name) == self.game.cur_player:
 
+                        obs = self.game.get_observation(agent_id)
+                        a = self.agent.act(obs)
+                        # Send to server
+                        self.ws.send(self.game.parse_action_to_msg(a))
 
-class AgentWrapper:
-    # can probably be removed as we instantiate given agentclasses directly (i.e. in the client itself)
-    pass
+                time.sleep(1)
 
 
 class ProgressThread(threading.Thread):
@@ -255,6 +257,7 @@ if __name__ == "__main__":
     # Connect the agent to websocket url
     url = 'ws://' + addr + '/ws'
     username = "big_python"  # todo: get this from the loop that we have to do from argvs
-    app = Client(url, cookie, username)
+    config = {'players': 2}
+    app = Client(url, cookie, username, config)
     app.run()
 
