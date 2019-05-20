@@ -169,9 +169,9 @@ class GameStateWrapper:
             else:
                 self.agents_turn = False
 
-        # On end of game, reset state
+        # On end of game, do something later if necessary (resetting happens on init so no need here)
         if d['type'] == 'turn' and d['who'] == -1:
-            self.reset()
+            pass
 
         # Add to history
         self.append_to_last_moves(d)
