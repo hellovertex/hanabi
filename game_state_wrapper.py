@@ -171,7 +171,7 @@ class GameStateWrapper:
 
         # On end of game, reset state
         if d['type'] == 'turn' and d['who'] == -1:
-            pass
+            self.reset()
 
         # Add to history
         self.append_to_last_moves(d)
