@@ -195,6 +195,9 @@ class GameStateWrapper:
         # on success, update fireworks
         if self.fireworks[card['color']] == card['rank']:
             self.fireworks[card['color']] += 1
+            # completing a firework restores one info token
+            if card['rank'] == 4:
+                self.information_tokens += 1
         # on fail, remove a life token
         else:
             self.life_tokens -= 1
@@ -537,7 +540,17 @@ class GameStateWrapper:
 
 class HanabiHistoryItemMock:
     """ Just a mock, see mock method section for details """
+
     def __init__(self, move, player, scored, information_token, color, rank, card_info_revealed, card_info_newly_revealed, deal_to_player):
+        """A move that has been made within a game, along with the side-effects.
+
+          For example, a play move simply selects a card index between 0-5, but after
+          making the move, there is an associated color and rank for the selected card,
+          a possibility that the card was successfully added to the fireworks, and an
+          information token added if the firework stack was completed.
+
+          Python wrapper of C++ HanabiHistoryItem class.
+        """
         self._move = move
         self._player = player
         self._scored = scored
@@ -555,30 +568,54 @@ class HanabiHistoryItemMock:
         return self._player
 
     def scored(self):
+        """Play move succeeded in placing card on fireworks."""
         return self._scored
 
     def information_token(self):
+        """Play/Discard move increased the number of information tokens."""
         return self._information_token
 
     def color(self):
+        """Color index of card that was Played/Discarded."""
         return self._color
 
     def rank(self):
+        """Rank index of card that was Played/Discarded."""
         return self._rank
 
     def card_info_revealed(self):
+        """Returns information about whether color/rank was revealed.
+
+        Indices where card i color/rank matches the reveal move. E.g.,
+        for Reveal player 1 color red when player 1 has R1 W1 R2 R4 __ the
+        result would be [0, 2, 3].
+        """
         return self._card_info_revealed
 
     def card_info_newly_revealed(self):
+        """Returns information about whether color/rank was newly revealed.
+
+        Indices where card i color/rank was not previously known. E.g.,
+        for Reveal player 1 color red when player 1 has R1 W1 R2 R4 __ the
+        result might be [2, 3].  Cards 2 and 3 were revealed to be red,
+        but card 0 was previously known to be red, so nothing new was
+        revealed. Card 4 is missing, so nothing was revealed about it.
+        """
         return self._card_info_newly_revealed
 
     def deal_to_player(self):
+        """player that card was dealt to for Deal moves."""
         return self._deal_to_player
 
 
 class HanabiMoveMock:
     """ Just a mock, see mock method section for details """
+
     def __init__(self, type, card_index, target_offset, color, rank, discard_move, play_move, reveal_color_move, reveal_rank_move):
+        """Description of an agent move or chance event.
+
+          Python wrapper of C++ HanabiMove class.
+        """
         self._type = type
         self._card_index = card_index
         self._target_offset = target_offset
@@ -590,18 +627,31 @@ class HanabiMoveMock:
         self._reveal_rank_move = reveal_rank_move
 
     def type(self):
+        """
+            Move types, consistent with hanabi_lib/hanabi_move.h.
+            INVALID = 0
+            PLAY = 1
+            DISCARD = 2
+            REVEAL_COLOR = 3
+            REVEAL_RANK = 4
+            DEAL = 5
+        """
         return self._type
 
     def card_index(self):
+        """Returns 0-based card index for PLAY and DISCARD moves."""
         return self._card_index
 
     def target_offset(self):
+        """Returns target player offset for REVEAL_XYZ moves."""
         return self._target_offset
 
     def color(self):
+        """Returns 0-based color index for REVEAL_COLOR and DEAL moves."""
         return self._color
 
     def rank(self):
+        """Returns 0-based rank index for REVEAL_RANK and DEAL moves."""
         return self._rank
 
     def get_discard_move(self):
@@ -611,9 +661,11 @@ class HanabiMoveMock:
         return self._play_move
 
     def get_reveal_color_move(self):
+        """current player is 0, next player clockwise is target_offset 1, etc."""
         return self._reveal_color_move
 
     def get_reveal_rank_move(self):
+        """current player is 0, next player clockwise is target_offset 1, etc."""
         return self._reveal_rank_move
 
     def to_dict(self):

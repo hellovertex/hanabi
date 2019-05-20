@@ -302,3 +302,5 @@ if __name__ == "__main__":
     c2_thread = threading.Thread(target=c2.run)
     c2_thread.start()
 
+    # TODO s: implement argparser, create config and generate usernames, implement threaded clients
+
