@@ -251,10 +251,10 @@ def get_addrs():
     """ We will use this in private networks, to avoid localhost-related bugs for now.
     However, we have to get the localhost-settings running at some point."""
     # addr = get_local_ip()  # TODO
-    #addr = "localhost"
-    #referer = "http://localhost/"
-    addr = '192.168.178.26'
-    referer = "http://192.168.178.26/"
+    addr = "localhost"
+    referer = "http://localhost/"
+    #addr = '192.168.178.26'
+    #referer = "http://192.168.178.26/"
     return addr, referer
 
 

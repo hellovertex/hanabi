@@ -1,5 +1,5 @@
 import ast
-from typing import Optional
+from typing import Optional, List, Set
 import copy
 
 
@@ -15,6 +15,7 @@ class GameStateWrapper:
         self.players = None  # list of names of players currently ingame
         self.agent_name = agent_name  # used to identify absolute position on table
         self.num_players = num_players  # number of players ingame
+        self.cards_per_hand = 4 if num_players > 3 else 5  # deal 5 cards when playing with 2 or 3 ppl
         self.deck_size = None  # number of remaining cards in the deck
         self.max_life_tokens = 3
         self.max_info_tokens = 8
@@ -203,7 +204,7 @@ class GameStateWrapper:
     def append_to_last_moves(self, dict_action):
         pass
 
-    def get_sorted_hand_list(self):
+    def get_sorted_hand_list(self) -> List:
         """ Agent expects list of observations, always starting with his own cards. So we sort it here. """
         # moves self.cur_player hand to the front
         hand_list = copy.deepcopy(self.hand_list)
@@ -220,7 +221,7 @@ class GameStateWrapper:
             'num_players': self.num_players,
             'deck_size': self.deck_size,
             'fireworks': self.fireworks,
-            'legal_moves': None,  # not gon compute these here, as our agents compute their moves anyway
+            'legal_moves': self.get_legal_moves(),
             'observed_hands': self.get_sorted_hand_list(),  # moves own hand to front
             'discard_pile': self.discard_pile,
             'card_knowledge': self.get_card_knowledge(),
@@ -301,8 +302,70 @@ class GameStateWrapper:
         card_knowledge.insert(0, card_knowledge.pop(card_knowledge.index(card_knowledge[self.players.index(self.agent_name)])))
         return card_knowledge
 
+    def get_legal_moves(self):
+        # order is 1. discard 2. play 3. reveal_color reveal rank and RYGWB for color
+        legal_moves = []
+
+        # discard if possible
+        if self.information_tokens < self.max_info_tokens:
+            for i in range(self.cards_per_hand):
+                legal_moves.append({'action_type': 'DISCARD', 'card_index': i})
+        # play
+        for i in range(self.cards_per_hand):
+            legal_moves.append({'action_type': 'PLAY', 'card_index': i})
+
+        # clue if info token available
+        if self.information_tokens > 0:
+            hand_list = self.get_sorted_hand_list()
+
+            # append colors
+            for i in range(1, self.num_players):
+
+                colors = set()
+                for card in hand_list[i]:
+                    print(card, type(card))
+                    colors.add(card['color'])
+
+                colors = self._sort_colors(colors)
+                for c in colors:
+                    legal_moves.append({'action_type': 'REVEAL_COLOR', 'target_offset': i, 'color': c})
+
+            # append ranks
+            for i in range(1, self.num_players):
+                ranks = set()
+                for card in hand_list[i]:
+                    ranks.add(card['rank'])
+                for r in ranks:
+                    legal_moves.append({'action_type': 'REVEAL_Rank', 'target_offset': i, 'rank': r})
+
+        return legal_moves
+
+    def _sort_colors(self, colors: Set) -> List:
+        """ Sorts list, s.t. colors are in order RYGWB """
+        result = list()
+        for i in range(len(colors)):
+            if 'R' in colors:
+                colors.remove('R')
+                result.append('R')
+            if 'Y' in colors:
+                colors.remove('Y')
+                result.append('Y')
+            if 'G' in colors:
+                colors.remove('G')
+                result.append('G')
+            if 'W' in colors:
+                colors.remove('W')
+                result.append('W')
+            if 'B' in colors:
+                colors.remove('B')
+                result.append('B')
+
+        return result
+
+
     @staticmethod
     def parse_rank(rank):
+        """ Returns rank as expected by the server """
         if int(rank) > -1:
             rank += 1
         return str(rank)
