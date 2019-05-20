@@ -3,7 +3,6 @@ from typing import Optional, List, Set
 import copy
 
 
-
 class GameStateWrapper:
 
     def __init__(self, num_players, agent_name):
@@ -175,7 +174,7 @@ class GameStateWrapper:
             pass
 
         # Add to history
-        # self.append_to_last_moves()
+        self.append_to_last_moves(d)
 
         return
 
@@ -202,7 +201,43 @@ class GameStateWrapper:
         return
 
     def append_to_last_moves(self, dict_action):
-        pass
+        """ looks like
+        ############   DRAW   ##############
+        notify {"type":"draw","who":1,"rank":-1,"suit":-1,"order":11}
+        ############   CLUE   ##############
+        notify {"type":"clue","clue":{"type":0,"value":3},"giver":0,"list":[5,8,9],"target":1,"turn":0}
+        ############   PLAY   ##############
+        notify {"type":"play","which":{"index":1,"suit":1,"rank":1,"order":11}}
+        ############   DISCARD   ##############
+        notify {"type":"discard","failed":false,"which":{"index":1,"suit":0,"rank":4,"order":7}}
+        """
+        # set attributes for HanabiHistoryItem Mock object
+        # we do this here, as the HistoryItemMock shall not have access to this classes attributes
+        # but these are necessary to compute the information below. Its not the cleanest approach but readable at least
+
+        move = self._get_pyhanabi_move_mock(dict_action)
+        player = None
+        scored = None
+        information_token = None
+        color = None
+        rank = None
+        card_info_revealed = None
+        card_info_newly_revealed = None
+        deal_to_player = None
+
+        history_item_mock = HanabiHistoryItemMock(
+            move=move,
+            player=player,
+            scored=scored,
+            information_token=information_token,
+            color=color,
+            rank=rank,
+            card_info_revealed=card_info_revealed,
+            card_info_newly_revealed=card_info_newly_revealed,
+            deal_to_player=deal_to_player
+        )
+        self.last_moves.append(history_item_mock)
+        return
 
     def get_sorted_hand_list(self) -> List:
         """ Agent expects list of observations, always starting with his own cards. So we sort it here. """
@@ -340,7 +375,8 @@ class GameStateWrapper:
 
         return legal_moves
 
-    def _sort_colors(self, colors: Set) -> List:
+    @staticmethod
+    def _sort_colors(colors: Set) -> List:
         """ Sorts list, s.t. colors are in order RYGWB """
         result = list()
         for i in range(len(colors)):
@@ -361,7 +397,6 @@ class GameStateWrapper:
                 result.append('B')
 
         return result
-
 
     @staticmethod
     def parse_rank(rank):
@@ -434,3 +469,154 @@ class GameStateWrapper:
         self.discard_pile = list()
         self.last_moves = list()
         return
+
+    """ 
+    # ------------------------------------------------- # ''
+    # ------------------ MOCK METHODS ----------------  # ''
+    # ------------------------------------------------- # ''    
+    """
+
+    def _get_pyhanabi_move_mock(self, dict_action):
+        type = self._get_move_type(dict_action)
+        card_index = None
+        target_offset = None
+        color = None
+        rank = None
+        discard_move = None
+        play_move = None
+        reveal_color_move = None
+        reveal_rank_move = None
+
+        move = HanabiMoveMock(
+            type=type,
+            card_index=card_index,
+            target_offset=target_offset,
+            color=color,
+            rank=rank,
+            discard_move=discard_move,
+            play_move=play_move,
+            reveal_color_move=reveal_color_move,
+            reveal_rank_move=reveal_rank_move
+        )
+        return move
+
+    @staticmethod
+    def _get_move_type(move):
+        """
+            Return Move types, consistent with hanabi_lib/hanabi_move.h.
+            INVALID = 0
+            PLAY = 1
+            DISCARD = 2
+            REVEAL_COLOR = 3
+            REVEAL_RANK = 4
+            DEAL = 5
+        """
+        if move['type'] == 'play':
+            return 1
+        elif move['type'] == 'discard':
+            return 2
+        elif move['type'] == 'clue':
+            if move['clue']['type'] == 0:  # rank clue
+                return 4
+            else:
+                return 3
+        elif move['type'] == 'draw':
+            return 5
+
+        return
+
+
+""" 
+    # ------------------------------------------------- # ''
+    # ------------------ MOCK Classes ----------------  # ''
+    # ------------------------------------------------- # ''    
+"""
+
+""" These are used to wrap the low level interface implemented in pyhanabi.py """
+
+
+class HanabiHistoryItemMock:
+    """ Just a mock, see mock method section for details """
+    def __init__(self, move, player, scored, information_token, color, rank, card_info_revealed, card_info_newly_revealed, deal_to_player):
+        self._move = move
+        self._player = player
+        self._scored = scored
+        self._information_token = information_token
+        self._color = color
+        self._rank = rank
+        self._card_info_revealed = card_info_revealed
+        self._card_info_newly_revealed = card_info_newly_revealed
+        self._deal_to_player = deal_to_player
+
+    def move(self):
+        return self._move
+
+    def player(self):
+        return self._player
+
+    def scored(self):
+        return self._scored
+
+    def information_token(self):
+        return self._information_token
+
+    def color(self):
+        return self._color
+
+    def rank(self):
+        return self._rank
+
+    def card_info_revealed(self):
+        return self._card_info_revealed
+
+    def card_info_newly_revealed(self):
+        return self._card_info_newly_revealed
+
+    def deal_to_player(self):
+        return self._deal_to_player
+
+
+class HanabiMoveMock:
+    """ Just a mock, see mock method section for details """
+    def __init__(self, type, card_index, target_offset, color, rank, discard_move, play_move, reveal_color_move, reveal_rank_move):
+        self._type = type
+        self._card_index = card_index
+        self._target_offset = target_offset
+        self._color = color
+        self._rank = rank
+        self._discard_move = discard_move
+        self._play_move = play_move
+        self._reveal_color_move = reveal_color_move
+        self._reveal_rank_move = reveal_rank_move
+
+    def type(self):
+        return self._type
+
+    def card_index(self):
+        return self._card_index
+
+    def target_offset(self):
+        return self._target_offset
+
+    def color(self):
+        return self._color
+
+    def rank(self):
+        return self._rank
+
+    def get_discard_move(self):
+        return self._discard_move
+
+    def get_play_move(self):
+        return self._play_move
+
+    def get_reveal_color_move(self):
+        return self._reveal_color_move
+
+    def get_reveal_rank_move(self):
+        return self._reveal_rank_move
+
+    def to_dict(self):
+        pass
+
+
