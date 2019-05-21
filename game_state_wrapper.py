@@ -744,6 +744,11 @@ class HanabiHistoryItemMock:
         """player that card was dealt to for Deal moves."""
         raise NotImplementedError
 
+    def __str__(self):
+        return self._move.to_dict()
+
+    def __repr__(self):
+        return self.__str__()
 
 class HanabiMoveMock:
     """ Just a mock, see mock method section for details """
