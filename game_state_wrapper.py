@@ -387,7 +387,7 @@ class GameStateWrapper:
 
                 colors = set()
                 for card in hand_list[i]:
-                    print(card, type(card))
+                    # print(card, type(card))
                     colors.add(card['color'])
 
                 colors = self._sort_colors(colors)
