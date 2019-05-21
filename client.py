@@ -62,6 +62,7 @@ class Client:
     def on_message(self, ws, message):
         """ Forwards messages to game state wrapper and sets flags for self.run() """
         # JOIN GAME
+        # print(message)
         if message.strip().startswith('table') and not self.gameHasStarted:  # notification opened game
             self._set_auto_join_game(message)
 
@@ -81,6 +82,7 @@ class Client:
 
         # UPDATE GAME STATE
         if message.startswith('notify '):
+
             self.game.update_state(message)
 
         # END GAME
