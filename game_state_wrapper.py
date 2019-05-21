@@ -1,4 +1,5 @@
 import ast
+import enum
 from typing import Optional, List, Set
 import copy
 
@@ -269,7 +270,7 @@ class GameStateWrapper:
 
     def get_agent_observation(self):
         """ Returns state as perceived by the calling agent """
-        # todo: if self.use_pyhanabi_mocks is set, we have to wrap an object and make the keys callables. RECURSIVELY!
+
         observation = {
             'current_player': self.players.index(self.agent_name),
             'current_player_offset': 0,
@@ -287,10 +288,8 @@ class GameStateWrapper:
             # rl_env.HanabiEnvobservation._extract_from_dict method, but we need a history so we add this here.
             # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         }
-        if self.use_pyhanabi_mocks:
-            return
-        else:
-            return observation
+
+        return observation
 
     def card(self, suit: int, rank: int):
         """ Returns card format desired by agent. Rank values of None and -1 will be passed through."""
@@ -429,10 +428,13 @@ class GameStateWrapper:
         return result
 
     @staticmethod
-    def parse_rank(rank):
-        """ Returns rank as expected by the server """
+    def parse_rank(rank, target='server'):
+        """ Returns rank as expected by the target """
         if int(rank) > -1:
-            rank += 1
+            if target == 'server':
+                rank += 1
+            elif target == 'agent':
+                rank -= 1
         return str(rank)
 
     def parse_action_to_msg(self, action: dict) -> str:
@@ -523,11 +525,12 @@ class GameStateWrapper:
         card_index = self._get_move_card_index(dict_action)
         target_offset = self._get_move_target_offset(dict_action)
         color = self._get_move_color(dict_action)
-        rank = None
+        rank = self._get_move_rank(dict_action)
         discard_move = None
         play_move = None
         reveal_color_move = None
         reveal_rank_move = None
+        move_dict = self._get_move_dict(dict_action)
 
         move = HanabiMoveMock(
             type=type,
@@ -538,7 +541,8 @@ class GameStateWrapper:
             discard_move=discard_move,
             play_move=play_move,
             reveal_color_move=reveal_color_move,
-            reveal_rank_move=reveal_rank_move
+            reveal_rank_move=reveal_rank_move,
+            move_dict=move_dict
         )
         return move
 
@@ -554,18 +558,18 @@ class GameStateWrapper:
             DEAL = 5
         """
         if move['type'] == 'play':
-            return 1
+            return HanabiMoveType.PLAY
         elif move['type'] == 'discard' and move['failed'] is False:  # when failed is True, discard comes from play
-            return 2
+            return HanabiMoveType.DISCARD
         elif move['type'] == 'clue':
             if move['clue']['type'] == 0:  # rank clue
-                return 4
+                return HanabiMoveType.REVEAL_RANK
             elif move['clue']['type'] == 1:  # color clue
-                return 3
+                return HanabiMoveType.REVEAL_COLOR
         elif move['type'] == 'draw':
-            return 5
+            return HanabiMoveType.DEAL
 
-        return
+        return HanabiMoveType.INVALID
 
     def _get_move_card_index(self, move):
         """Returns 0-based card index for PLAY and DISCARD moves."""
@@ -605,10 +609,63 @@ class GameStateWrapper:
         return color
 
     def _get_move_rank(self, move):
-        """Returns 0-based rank index for REVEAL_RANK and DEAL moves."""
-        pass
+        """Returns 0-based rank index for REVEAL_RANK and DEAL moves. We have to subtract 1 as the server uses
+        1-indexed ranks """
+        rank = None
+        # for REVEAL_RANK moves
+        if move['type'] == 'clue':
+            rankclue = not bool(move['clue']['type'])  # 0 means rank clue, 1 means color clue
+            if rankclue:
+                rank = int(self.parse_rank(move['clue']['value'], target='agent'))
+        # for DEAL moves
+        if move['type'] == 'draw':
+            rank = self.parse_rank(move['rank'], target='agent')
+        return rank
 
+    def _get_move_dict(self, move):
+        """ Returns representation according looking like
+        {'action_type': 'PLAY', 'card_index': 0}
+        {'action_type': 'DEAL', 'color': None, 'rank': -1}
+        {'action_type': 'DISCARD', 'card_index': 0}
+        {'action_type': 'REVEAL_COLOR', 'target_offset': 1, 'color': 'B'}
+        """
+        """ move sent from server looks like
+        ############   DRAW   ##############
+        {"type":"draw","who":1,"rank":-1,"suit":-1,"order":11}
+        ############   CLUE   ##############
+        {"type":"clue","clue":{"type":0,"value":3},"giver":0,"list":[5,8,9],"target":1,"turn":0}
+        ############   PLAY   ##############
+        {"type":"play","which":{"index":1,"suit":1,"rank":1,"order":11}}
+        ############   DISCARD   ##############
+        {"type":"discard","failed":false,"which":{"index":1,"suit":0,"rank":4,"order":7}}
+        """
+        action_dict = dict()
 
+        if move['type'] == 'draw':
+            color = self.convert_suit(move['suit'])
+            rank = self.parse_rank(move['rank'], target='agent')
+            action_dict = {'action_type': 'DEAL', 'color': color, 'rank': rank}
+        if move['type'] == 'clue':
+            target_offset = self.next_player(offset=move['target'], target='agent')
+            if move['clue']['type'] == 0:  # rank clue
+                rank = self.parse_rank(move['clue']['value'], target='agent')
+                action_dict = {'action_type': 'DEAL', 'target_offset': target_offset, 'rank': rank}
+            elif move['clue']['type'] == 1:  # color clue
+                color = self.convert_suit(move['clue']['value'])
+                action_dict = {'action_type': 'DEAL', 'target_offset': target_offset, 'rank': color}
+        if move['type'] == 'play':
+            idx_card = self.card_numbers[move['which']['index']].index(move['which']['order'])
+            action_dict = {'action_type': 'PLAY', 'card_index': idx_card}
+
+        if move['type'] == 'discard':
+            if move['failed'] is False:  # ignore discard from failed plays
+                # get index of discarded hand from absolute card number
+                idx_card = self.card_numbers[move['which']['index']].index(move['which']['order'])
+                # get index of discarding player from agent view
+                # pid = self.next_player(offset=move['which']['index'], target='agent')
+                action_dict = {'action_type': 'DISCARD', 'card_index': idx_card}
+
+        return action_dict
 """ 
     # ------------------------------------------------- # ''
     # ------------------ MOCK Classes ----------------  # ''
@@ -620,7 +677,7 @@ class GameStateWrapper:
 
 class HanabiHistoryItemMock:
     """ Just a mock, see mock method section for details """
-
+    # We only need move, we could implement the rest on demand
     def __init__(self, move, player, scored, information_token, color, rank, card_info_revealed, card_info_newly_revealed, deal_to_player):
         """A move that has been made within a game, along with the side-effects.
 
@@ -645,23 +702,23 @@ class HanabiHistoryItemMock:
         return self._move
 
     def player(self):
-        return self._player
+        raise NotImplementedError
 
     def scored(self):
         """Play move succeeded in placing card on fireworks."""
-        return self._scored
+        raise NotImplementedError
 
     def information_token(self):
         """Play/Discard move increased the number of information tokens."""
-        return self._information_token
+        raise NotImplementedError
 
     def color(self):
         """Color index of card that was Played/Discarded."""
-        return self._color
+        raise NotImplementedError
 
     def rank(self):
         """Rank index of card that was Played/Discarded."""
-        return self._rank
+        raise NotImplementedError
 
     def card_info_revealed(self):
         """Returns information about whether color/rank was revealed.
@@ -670,7 +727,7 @@ class HanabiHistoryItemMock:
         for Reveal player 1 color red when player 1 has R1 W1 R2 R4 __ the
         result would be [0, 2, 3].
         """
-        return self._card_info_revealed
+        raise NotImplementedError
 
     def card_info_newly_revealed(self):
         """Returns information about whether color/rank was newly revealed.
@@ -681,17 +738,18 @@ class HanabiHistoryItemMock:
         but card 0 was previously known to be red, so nothing new was
         revealed. Card 4 is missing, so nothing was revealed about it.
         """
-        return self._card_info_newly_revealed
+        raise NotImplementedError
 
     def deal_to_player(self):
         """player that card was dealt to for Deal moves."""
-        return self._deal_to_player
+        raise NotImplementedError
 
 
 class HanabiMoveMock:
     """ Just a mock, see mock method section for details """
 
-    def __init__(self, type, card_index, target_offset, color, rank, discard_move, play_move, reveal_color_move, reveal_rank_move):
+    def __init__(self, type, card_index, target_offset, color, rank, discard_move, play_move, reveal_color_move,
+                 reveal_rank_move, move_dict):
         """Description of an agent move or chance event.
 
           Python wrapper of C++ HanabiMove class.
@@ -705,6 +763,7 @@ class HanabiMoveMock:
         self._play_move = play_move
         self._reveal_color_move = reveal_color_move
         self._reveal_rank_move = reveal_rank_move
+        self._move_dict = move_dict
 
     def type(self):
         """
@@ -734,145 +793,29 @@ class HanabiMoveMock:
         """Returns 0-based rank index for REVEAL_RANK and DEAL moves."""
         return self._rank
 
-    def get_discard_move(self):
-        return self._discard_move
+    def get_discard_move(self, card_index):
+        raise NotImplementedError
 
-    def get_play_move(self):
-        return self._play_move
+    def get_play_move(self, card_index):
+        raise NotImplementedError
 
-    def get_reveal_color_move(self):
+    def get_reveal_color_move(self, target_offset, color):
         """current player is 0, next player clockwise is target_offset 1, etc."""
-        return self._reveal_color_move
+        raise NotImplementedError
 
-    def get_reveal_rank_move(self):
+    def get_reveal_rank_move(self, target_offset, rank):
         """current player is 0, next player clockwise is target_offset 1, etc."""
-        return self._reveal_rank_move
+        raise NotImplementedError
 
     def to_dict(self):
-        pass
+        return self._move_dict
 
 
-class HanabiObservationMock:
-    """ Just a mock, see mock method section for details """
-    def __init__(self, obs_dict):
-        """
-        observation = {
-            'current_player': self.players.index(self.agent_name),
-            'current_player_offset': 0,
-            'life_tokens': self.life_tokens,
-            'information_tokens': self.information_tokens,
-            'num_players': self.num_players,
-            'deck_size': self.deck_size,
-            'fireworks': self.fireworks,
-            'legal_moves': self.get_legal_moves(),
-            'observed_hands': self.get_sorted_hand_list(),  # moves own hand to front
-            'discard_pile': self.discard_pile,
-            'card_knowledge': self.get_card_knowledge(),
-            'vectorized': None,  # Currently not needed, we can implement it later on demand
-            'last_moves': self.last_moves  # actually not contained in the returned dict of the
-            # rl_env.HanabiEnvobservation._extract_from_dict method, but we need a history so we add this here.
-            # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
-        }"""
-        self.cur_player_offset = obs_dict['current_player_offset']
-        self.num_players = obs_dict['num_players']
-        self.observed_hands = obs_dict['observed_hands']
-        self.card_knowledge = obs_dict['card_knowledge']
-        self.discard_pile = obs_dict['discard_pile']
-        self.fireworks = obs_dict['fireworks']
-        self.deck_size = obs_dict['deck_size']
-        self.last_moves = obs_dict['last_moves']
-        self.information_tokens = obs_dict['information_tokens']
-        self.life_tokens = obs_dict['life_tokens']
-        self.legal_moves = obs_dict['legal_moves']
-
-    def cur_player_offset(self):
-        """Returns the player index of the acting player, relative to observer."""
-        return
-
-    def num_players(self):
-        """Returns the number of players in the game."""
-        return
-
-    def observed_hands(self):
-        """Returns a list of all hands, with cards ordered oldest to newest.
-
-         The observing player's cards are always invalid.
-        """
-        return
-
-    def card_knowledge(self):
-        """Returns a per-player list of hinted card knowledge.
-
-        Each player's entry is a per-card list of HanabiCardKnowledge objects.
-        Each HanabiCardKnowledge for a card gives the knowledge about the cards
-        accumulated over all past reveal actions.
-        """
-        return
-
-    def discard_pile(self):
-        """Returns a list of all discarded cards, in order they were discarded."""
-        return
-
-    def fireworks(self):
-        """Returns a list of fireworks levels by value, ordered by color."""
-        return
-
-    def deck_size(self):
-        """Returns number of cards left in the deck."""
-        return
-
-    def last_moves(self):
-        """Returns moves made since observing player last acted.
-
-        Each entry in list is a HanabiHistoryItem, ordered from most recent
-        move to oldest.  Oldest move is the last action made by observing
-        player. Skips initial chance moves to deal hands.
-        """
-        return
-
-    def information_tokens(self):
-        """Returns the number of information tokens remaining."""
-        return
-
-    def life_tokens(self):
-        """Returns the number of information tokens remaining."""
-        return
-
-    def legal_moves(self):
-        """Returns list of legal moves for observing player.
-
-        List is empty if cur_player() != 0 (observer is not currently acting).
-        """
-        return
-
-
-class HanabiCard():
-    """Hanabi card, with a color and a rank.
-
-    Python implementation of C++ HanabiCard class.
-    """
-
-    def __init__(self, color, rank):
-        """A simple HanabiCard object.
-
-        Args:
-          color: an integer, starting at 0. Colors are in this order RYGWB.
-          rank: an integer, starting at 0 (representing a 1 card). In the standard
-              game, the largest value is 4 (representing a 5 card).
-        """
-        self._color = color
-        self._rank = rank
-
-    def color(self):
-        return self._color
-
-    def rank(self):
-        return self._rank
-
-    def to_dict(self):
-        """Serialize to dict.
-
-        Returns:
-          d: dict, containing color and rank of card.
-        """
-        return {"color": self._color, "rank": self._rank}
+class HanabiMoveType(enum.IntEnum):
+    """Move types, consistent with hanabi_lib/hanabi_move.h."""
+    INVALID = 0
+    PLAY = 1
+    DISCARD = 2
+    REVEAL_COLOR = 3
+    REVEAL_RANK = 4
+    DEAL = 5
