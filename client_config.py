@@ -4,7 +4,13 @@ path_simple_agent = Path(__file__ + 'agents' + 'simple_agent')
 path_rainbow_agent = Path(__file__ + 'agents' + 'rainbow_agent')
 
 """ agent_classes provides the possible args for the clients agent instantiation. 
-The keys will be read inside the client via sys.argv[] """
+The keys of agent_classes provide the possible values for what you can call the client.py with. For instance
+ 
+ python client.py -n 0 -a simple simple rainbow 
+ 
+ will start a hanabigame with 0 human players and 3 AI agents, 
+ 2 of them are simple agents and one is a rainbow agent"""
+
 agent_classes = {
     'simple': {'filepath': path_simple_agent, 'class': 'SimpleAgent'},
     'rainbow': {'filepath': path_rainbow_agent, 'class': 'RainbowAgent'},
