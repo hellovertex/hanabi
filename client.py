@@ -17,10 +17,12 @@ from itertools import count
 import argparse
 
 
-browsers = [
+BROWSERS = [
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) snap Chromium/74.0.3729.131 Chrome/74.0.3729.131 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36'
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/603.3.8 (KHTML, like Gecko)',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36'
 ]
 
 
@@ -55,17 +57,15 @@ class Client:
         # Hanabi playing agent
         self.agent = SimpleAgent(agent_config)
 
-        # Store incoming server messages here, to get observations etc.
-        self.msg_buf = list()  # maybe replace this with a game_state object
-
         # throttle to avoid race conditions
         self.throttle = 0.05  # 50 ms
 
-        # Stores observations for each agent
+        # Agents username as seen in the server lobby
         self.username = game_config['username']
+        # Stores observations for agent
         self.game = GameStateWrapper(agent_config['players'], self.username)
 
-        # Will always be set to the game created last (on the server side ofc)
+        # Will be set when server sends notification that a game has been created (auto-join always joins last game)
         self.gameID = None
 
         # Tell the Client, where in the process of joining/playing we are
@@ -78,14 +78,19 @@ class Client:
 
         # current number of players in the lobby, used when our agent hosts lobby and wants to know when to start game
         self._num_players_in_lobby = -1
-        self.reset_interrupted_games = self.config['ff']
+
+        # the agents will play num_episodes and then idle
+        """ Note that you can watch all the replays from the server menu 'watch specific replay'. 
+        The ID is logged in chat"""
+        self.num_episodes = self.config['num_episodes']
+        self.episodes_played = 0
 
     def on_message(self, ws, message):
         """ Forwards messages to game state wrapper and sets flags for self.run() """
         # JOIN GAME
         # todo: print(message) if --verbose
         if message.strip().startswith('table') and not self.gameHasStarted:  # notification opened game
-            self._set_auto_join_game(message)
+            self._update_latest_game_id(message)
 
         # HOSTED TABLE
         if message.startswith('game {') and self.id == 0:  # always first agent to host a table
@@ -113,7 +118,7 @@ class Client:
         if message.startswith('gameOver'):
             self.game_ended = True
 
-    def _set_auto_join_game(self, message):
+    def _update_latest_game_id(self, message):
         """ Set joingame-flags for self.run(), s.t. it joins created games whenever possible"""
         # To play another game after one is finished
         oldGameID = None
@@ -128,7 +133,7 @@ class Client:
         tmp = message.split('id":')[1]
         self.gameID = str(re.search(r'\d+', tmp).group())
 
-        # Join the latest/next game
+        # Update the latest/next game
         if oldGameID is not None and self.gameID > oldGameID:
             self.gottaJoinGame = True
 
@@ -155,9 +160,9 @@ class Client:
 
     def run(self, gameID=None):
             """ Basically the main workhorse.
-            This implements the event-loop where we process incoming and outgoing messages """
+            This implements the event-loop where we play Hanabi """
 
-            # Client automatically sets gameID to the last opened game [so best only open one at a time]
+            # Client automatically sets gameID to the last opened game [see self.on_message()]
             if gameID is None:
                 gameID = self.gameID
 
@@ -167,55 +172,54 @@ class Client:
                 time.sleep(1)
                 conn_timeout -= 1
 
-            # Loop to play the best game in the world :)
+            # While client is listening
             while self.ws.sock.connected:
-                if self.reset_interrupted_games:
-                    self.ws.send(cmd.gameUnattend())
-                    self.reset_interrupted_games = False
+                # Loop to play the best game in the world :) as long as specified
+                while self.episodes_played < self.num_episodes:
 
-                # EITHER HOST (when 0 human players), always first client instance hosts game
-                if self.config['num_human_players'] == 0 and (self.id == 0):
-                    # open a lobby
-                    if not self.gameHasStarted:
-                        self.ws.send(cmd.gameCreate(self.config))
-                        print("GAME CREATED")
-                        self.gameHasStarted = True  # This is a little trick, by which we avoid rejoining our lobby
-                        # nothing will happen in the run() method,
-                        # as all others involved flags are still set to False
+                    # EITHER HOST A TABLE (when 0 human players), always first client instance hosts game
+                    if self.config['num_human_players'] == 0 and (self.id == 0):
+                        # open a lobby
+                        if not self.gameHasStarted:
+                            self.ws.send(cmd.gameCreate(self.config))
+                            self.gameHasStarted = True  # This is a little trick, by which we avoid rejoining own lobby
+                            # nothing will happen in the run() method,
+                            # as all others involved flags are still set to False
 
-                    # when all players have joined, start the game
-                    if self._num_players_in_lobby == self.config['num_total_players']:
-                        self.ws.send(cmd.gameStart())
+                        # when all players have joined, start the game
+                        if self._num_players_in_lobby == self.config['num_total_players']:
+                            self.ws.send(cmd.gameStart())
+
+                        time.sleep(1)
+
+                    # OR JOIN GAME
+                    elif self.gottaJoinGame and self.gameID:
+                        time.sleep(self.throttle)
+                        self.ws.send(cmd.gameJoin(gameID=self.gameID))
+                        self.gottaJoinGame = False
+
+                    # PLAY GAME
+                    if self.gameHasStarted:  # set in self.on_message() on servers init message
+
+                        # ON AGENTS TURN
+                        if self.game.agents_turn:
+                            # wait a second, to feel more human :D
+                            time.sleep(1)
+                            # Get observation
+                            obs = self.game.get_agent_observation()
+                            # Compute action
+                            a = self.agent.act(obs)
+                            # Send to server
+                            self.ws.send(self.game.parse_action_to_msg(a))
+
+                        # leave replay lobby when game has ended
+                        if self.game_ended:
+                            self.ws.send(cmd.gameUnattend())
+                            self.game_ended = False
+                            self.gameHasStarted = False
+                            self.episodes_played += 1
 
                     time.sleep(1)
-
-                # OR JOIN GAME
-                elif self.gottaJoinGame and self.gameID:
-                    time.sleep(self.throttle)
-                    self.ws.send(cmd.gameJoin(gameID=self.gameID))
-                    self.gottaJoinGame = False
-
-                # PLAY GAME
-                if self.gameHasStarted:  # set in self.on_message() on servers init message
-
-                    # ON AGENTS TURN
-                    if self.game.agents_turn:
-                        # wait a second, to feel more human :D
-                        time.sleep(1)
-                        # Get observation
-                        obs = self.game.get_agent_observation()
-                        # Compute action
-                        a = self.agent.act(obs)
-                        # Send to server
-                        self.ws.send(self.game.parse_action_to_msg(a))
-
-                    # leave replay lobby when game has ended
-                    if self.game_ended:
-                        self.ws.send(cmd.gameUnattend())
-                        self.game_ended = False
-                        self.gameHasStarted = False
-
-                time.sleep(1)
 
 
 class ProgressThread(threading.Thread):
@@ -243,7 +247,7 @@ def login(url, referer, username,
     # set up header
     # set useragent to chrome, s.t. we dont have to deal with the additional firefox warning
     ses.headers[
-        'User-Agent'] = browsers[num_client]  # to avoid caching errors we immitate different browsers
+        'User-Agent'] = BROWSERS[num_client]  # to avoid caching errors we immitate different BROWSERS
     ses.headers['Accept'] = '*/*'
     ses.headers['Accept-Encoding'] = 'gzip, deflate'
     ses.headers['Accept-Language'] = 'en-US,en;q=0.5'
@@ -300,22 +304,17 @@ def get_addrs(args):
     """ We will use this in private networks, to avoid localhost-related bugs for now.
     However, we have to get the localhost-settings running at some point."""
 
-    addr = None
-    referer = ''
-
     # to play on Zamiels server or private subnets
     if args.remote_address is not None:
-        # todo check if addr is valid
         addr = str(args.remote_address)
-        referer = 'http://'+addr+'/'
-
-    # to play on localhost
     else:
         addr = "localhost"
-        referer = "http://localhost/"
-        #addr = '192.168.178.26'
-        #referer = "http://192.168.178.26/"
-    return addr, referer
+
+    # todo check if addr is valid
+    referer = 'http://' + addr + '/'
+    addr_ws = 'http://' + addr + '/ws'
+
+    return addr, referer, addr_ws
 
 
 def get_agent_name_from_cls(agent_class: str, id: int):
@@ -352,7 +351,7 @@ def commands_valid(args):
     """ This function returns True, iff the user specified input does not break the rules of the game"""
     # assert legal number of total players
     assert 1 < args.num_humans + len(args.agent_classes) < 6
-
+    # ... whatever else will come to my mind
     return True
 
 
@@ -369,51 +368,39 @@ if __name__ == "__main__":
 
     # If agents play without human player, one of them will have to open a game lobby
     # make it passworded by default, as this will not require changes when playing remotely
-    agent_config = {'players': args.num_humans + 2}
     game_configs = get_game_configs_from_args(args)
+    # todo simple agent_config sufficient for now, others can be added to config later
+    agent_config = {'players': args.num_humans + len(args.agent_classes)}
 
     # Returns subnet ipv4 in private network and localhost otherwise
-    addr, referer = get_addrs(args)
+    addr, referer, addr_ws = get_addrs(args)
 
-    # Login to Zamiels server (session-based)
-    session, cookie = login(url='http://' + addr, username=game_configs['agent00']['username'], referer=referer)
-    upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookie=cookie)
+    clients = []
+    process = []
 
-    # Connect the agent to websocket url
-    url = 'ws://' + addr + '/ws'
+    # Run each client in a seperate thread
+    for i in range(len(args.agent_classes)):
+        # get game config for current agent
+        game_config = game_configs['agent'+'0'+str(i)]
+        username = game_config['username']
 
+        # Login to Zamiels server (session-based)
+        session, cookie = login(url='http://' + addr, referer=referer, username=username, num_client=i)
 
-    # process = []
-    # for i in range(len(agentclasses)):
-    #     print(agentclasses[i], type(agentclasses[i]))
-    #     username = agentclasses[i]+'0'+str(i)
-    #     session, cookie = login(url='http://' + addr, referer=referer, username=username, num_client=i)
-    #     upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookie=cookie)
-    #
-    #     # Create one thread per agent
-    #     c = Client(url, cookie, username, config)
-    #     client_thread = threading.Thread(target=c.run)
-    #     client_thread.start()
-    #     process.append(client_thread)
-    #
-    # for thread in process:
-    #     thread.join()
+        # Connect the agent to websocket url
+        upgrade_to_websocket(url=addr_ws, session=session, cookie=cookie)
 
-    c1 = Client(url, cookie, game_configs['agent00'], agent_config)
-    c1_thread = threading.Thread(target=c1.run)
+        # Start client (agent + websocket + rl_env game wrapper)
+        c = Client('ws://' + addr + '/ws', cookie, game_config, agent_config)
+        clients.append(c)
 
-    c1_thread.start()
+        # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
+        client_thread = threading.Thread(target=c.run)
+        process.append(client_thread)
 
-    session, cookie = login(url='http://' + addr, referer=referer, username=game_configs['agent01']['username'],
-                            num_client=1)
-    upgrade_to_websocket(url='http://' + addr + '/ws', session=session, cookie=cookie)
+    for thread in process:
+        thread.start()
 
-    c2 = Client(url, cookie, game_configs['agent01'], agent_config)
-    c2_thread = threading.Thread(target=c2.run)
-    c2_thread.start()
-
-    # TODO s: implement argparser, create config and generate usernames, implement threaded clients
-    # TODO s: restarting -n -a -r  -l -p - w- v- g -e
-    # if n==0 then agent creates game
-    # 1. agent creating lobby
+    # # TODO s: write help docs, implement move_interval and verbose and game_type and tablename and pw
+    # restarting -n -a -r  -l -p - w- v- g -e
 
