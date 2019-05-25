@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 import typing
 from typing import Dict
+import json
+import ast
 
 def hello() -> str:
     """ Upon joining game table """
@@ -16,9 +18,49 @@ def ready() -> str:
     """ After hello() upon joining game table """
     return 'ready {}'
 
+
 def gameUnattend():
     return 'gameUnattend {}'
 
+
+def _get_table_params(config: Dict) -> Dict:
+    """ This method is called when no human player is playing and an AI agent hosts a lobby.
+    In order to open a game lobby he needs to send a json encoded lobby config, for which we get the params here."""
+
+    # if they decide to change the lobby parameters on the server code some day, we have a problem when we want
+    # to let our agents play remotely on Zamiels server, lol. But lets assume that this is very unlikely to happen.
+    game_config = dict()
+    game_config['name'] = config['table_name']
+    game_config['variant'] = config['variant']
+    game_config['timed'] = 'false'
+    game_config['baseTime'] = 120
+    game_config['timePerTurn'] = 20
+    game_config['speedrun'] = 'false'
+    game_config['deckPlays'] = 'false'
+    game_config['emptyClues'] = str(config['empty_clues']).lower()  # parse bool flag to str
+    game_config['characterAssignments'] = 'false'
+    game_config['correspondence'] = 'false'
+    game_config['password'] = config['table_pw']
+    game_config['alertWaiters'] = 'false'
+
+    return game_config
+
+
+def gameCreate(config: Dict):
+    lobby_config = _get_table_params(config)
+    return 'gameCreate ' + json.dumps(lobby_config).replace('"false"', 'false').replace(''"true"'', 'true')
+
+
+def gameStart():
+    return 'gameStart {}'
+
+
+def dict_from_response(response: str, msg_type: str=None) -> Dict:
+    assert msg_type is not None
+    d = ast.literal_eval(
+        response.split(msg_type.strip()+' ')[1].replace('false', 'False').replace('list', 'List').replace('true', 'True')
+    )
+    return d
 """ ACTIONS INGAME
 clue: { // Not present if the type is 1 or 2
 			type: 0, // 0 is a rank clue, 1 is a color clue
