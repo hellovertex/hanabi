@@ -16,6 +16,7 @@ agent_classes = {
     'rainbow': {'filepath': path_rainbow_agent, 'class': 'RainbowAgent'},
     # You can add your own agents here, simply follow this structure:
     # 'sys argument': {'filepath': path_sexy_agent, 'class': 'MySexyAgent'},
+    # just make sure they match the imports in client.py and if not, simply add a corresponding import statement there
 }
 """ If you have terminated the client while a game was running, the default behaviour will make the agents return to 
 the game when the client is restarted. However, this is not always desired for instance when the number of players 

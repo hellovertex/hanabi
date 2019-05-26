@@ -55,7 +55,7 @@ class Client:
         self.id = next(self._ids)
 
         # Hanabi playing agent
-        self.agent = SimpleAgent(agent_config)
+        self.agent = eval(conf.agent_classes[game_config['agent_class']]['class'])(agent_config)
 
         # throttle to avoid race conditions
         self.throttle = 0.05  # 50 ms
