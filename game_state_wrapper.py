@@ -6,24 +6,25 @@ import copy
 
 class GameStateWrapper:
 
-    def __init__(self, num_players, agent_name):
+    def __init__(self, game_config):
         """
         # ################################################ #
         # -------------------- CONFIG -------------------- #
         # ################################################ #
         """
+        self.agent_name = game_config['username']  # used to identify absolute position on table
+        self.num_players = game_config['num_total_players']  # number of players ingame
+        self.max_life_tokens = game_config['life_tokens']
+        self.max_info_tokens = game_config['info_tokens']
+        self.deck_size = game_config['deck_size']
+        self.life_tokens = self.max_life_tokens
+        self.information_tokens = self.max_info_tokens
+
         self.players = None  # list of names of players currently ingame
-        self.agent_name = agent_name  # used to identify absolute position on table
         self.player_position = None  # agents absolute position at table
         self.agents_turn = False  # flag that is True whenever its our turn
-        self.num_players = num_players  # number of players ingame
-        self.cards_per_hand = 4 if num_players > 3 else 5  # deal 5 cards when playing with 2 or 3 ppl
-        self.deck_size = None  # number of remaining cards in the deck
-        self.max_life_tokens = 3
-        self.max_info_tokens = 8
-        self.life_tokens = 3  # todo get from config
-        self.information_tokens = 8  # todo get from config
-        self.deck_size = 50  # todo get from config
+        self.cards_per_hand = 4 if self.num_players > 3 else 5  # deal 5 cards when playing with 2 or 3 ppl
+
 
         """
         # ################################################ #

@@ -19,4 +19,6 @@ agent_classes = {
 }
 """ If you have terminated the client while a game was running, the default behaviour will make the agents return to 
 the game when the client is restarted. However, this is not always desired for instance when the number of players 
-change etc, so you can run the client with the --resetted flag to start a new game """
+change etc, so you can run the client with -e 1 which will make them finish this particular game and then idle so you 
+can restart with another parametrization. Unfortunately that is the only way to handle 'hanging' games (to finish them 
+first) """

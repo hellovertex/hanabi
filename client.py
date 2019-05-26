@@ -61,9 +61,10 @@ class Client:
         self.throttle = 0.05  # 50 ms
 
         # Agents username as seen in the server lobby
+        assert 'username' in game_config
         self.username = game_config['username']
         # Stores observations for agent
-        self.game = GameStateWrapper(agent_config['players'], self.username)
+        self.game = GameStateWrapper(game_config)
 
         # Will be set when server sends notification that a game has been created (auto-join always joins last game)
         self.gameID = None
@@ -203,8 +204,8 @@ class Client:
 
                         # ON AGENTS TURN
                         if self.game.agents_turn:
-                            # wait a second, to feel more human :D
-                            time.sleep(1)
+                            # wait to feel more human :D
+                            time.sleep(self.config['wait_move'])
                             # Get observation
                             obs = self.game.get_agent_observation()
                             # Compute action
@@ -337,11 +338,14 @@ def get_game_configs_from_args(cmd_args) -> Dict:
         'num_total_players': cmd_args.num_humans + num_agents,
         'num_human_players': cmd_args.num_humans,
         'empty_clues': False,
-        'table_name': 'default',
-        'table_pw': '',
-        'variant': 'Three Suits',
+        'table_name': cmd_args.table_name,
+        'table_pw': cmd_args.table_pw,
+        'variant': cmd_args.game_variant,
         'num_episodes': cmd_args.num_episodes,
-        'ff': cmd_args.ff
+        'life_tokens': 3,  # todo get from game variant
+        'info_tokens': 8,  # todo get from game variant
+        'deck_size': 50,  # todo get from game variant
+        'wait_move': cmd_args.wait_move
     }
 
     return configs
@@ -355,21 +359,88 @@ def commands_valid(args):
     return True
 
 
-if __name__ == "__main__":
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument('-n', '--num_humans', default=1)
-    argparser.add_argument('-e', '--num_episodes', default=1)
-    argparser.add_argument('-a', '--agent_classes', nargs='+', type=str, default=['simple', 'simple'])
-    argparser.add_argument('-r', '--remote_address', default='192.168.178.26')
-    argparser.add_argument('--ff', action='store_false')
+def init_args(argparser):
+    argparser.add_argument(
+        '-n',
+        '--num_humans',
+        help='Number of human players expected at the table. Default is n=1. If n=0, the client will enter AGENTS_ONLY '
+             'mode, where agents create a table for themselves and play a number of games specified with -e flag. For'
+             'instance by calling "client.py -n 0 -e 1 -a simple simple", 2 simple agents will create a lobby and '
+             'play for 1 round and then idle. You can watch the replay by using the "watch specific replay" option '
+             'from the server with the ID of the game (that is being sent to lobby chat after game is finished).',
+        default=1
+    )
+    argparser.add_argument(
+        '-e',
+        '--num_episodes',
+        help='Number of games that will be played until agents idle. Default is e=1. -e flag will only be parsed when '
+             '-n flag is set to 0, i.e. in AGENTS_ONLY mode',
+        default=1
+    )
+    argparser.add_argument(
+        '-a',
+        '--agent_classes',
+        help='Expects agent-class keywords as specified in client_config.py. Example: \n client.py -a simple rainbow '
+             'simple \n will run a game with 2 SimpleAgent instances and 1 RainbowAgent instance. Default is simple '
+             'simple, i.e. running with 2 SimpleAgent instances',
+        nargs='+',
+        type=str,
+        default=['simple', 'simple'])
+    # argparser.add_argument('-r', '--remote_address', default=None)
+    argparser.add_argument(
+        '-r',
+        '--remote_address',
+        help='Set this to an ipv4 address, when playing on a remote server or on a private subnet (with multiple '
+             'humans). For example -r 192.168.178.26 when you want to connect your friends machines in a private '
+             'subnet to the machine running the server at 192.168.178.26 or -r hanabi.live when you want to play on '
+             'the official server. Unfortunately, it currently does not work with eduroam.',
+        default='192.168.178.26'
+    )
+    argparser.add_argument(
+        '-w',
+        '--wait_move',
+        help='Setting -w 2 will make each agent wait for 2 seconds before acting. Default is w=1. Is used to make the '
+             'game feel more natural.',
+        default=1)
+    argparser.add_argument(
+        '-v',
+        '--verbose',
+        help='Enabling --verbose, will enable verbose mode and print the whole game state instead of just the actions.',
+        action='store_true')
+    argparser.add_argument(
+        '-t',
+        '--table_name',
+        help='When running the client in AGENTS_ONLY mode, i.e. when setting -n to 0, you can pass a table name with '
+             'this flag. Default is "AI_room". Usually there is no need to do this though.',
+        default='AI_room')
+    argparser.add_argument(
+        '-p',
+        '--table_pw',
+        help='Sets table password for AGENTS_ONLY mode, i.e. when -n is set to 0. Default password is set to '
+             '"big_python", so usually you should not worry about providing -p value.',
+        default='')
+    argparser.add_argument(
+        '-g',
+        '--game_variant',
+        help='Example: "Three Suits" or "No Variant". Needed for servers table creation, so make sure to '
+             'not make typos here. Sets a  game_variant for the agent opening a lobby in AGENTS_ONLY mode, '
+             'i.e. when -n is set to 0.',
+        default='No Variant')
 
     args = argparser.parse_args()
+
     assert commands_valid(args)
+
+    return args
+
+
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser()
+    args = init_args(argparser)
 
     # If agents play without human player, one of them will have to open a game lobby
     # make it passworded by default, as this will not require changes when playing remotely
     game_configs = get_game_configs_from_args(args)
-    # todo simple agent_config sufficient for now, others can be added to config later
     agent_config = {'players': args.num_humans + len(args.agent_classes)}
 
     # Returns subnet ipv4 in private network and localhost otherwise
@@ -401,6 +472,7 @@ if __name__ == "__main__":
     for thread in process:
         thread.start()
 
-    # # TODO s: write help docs, implement move_interval and verbose and game_type and tablename and pw
-    # restarting -n -a -r  -l -p - w- v- g -e
+    # todo send gameJoin(gameID, password) when self.config['table_pw] is not '' for when -r is specified
+    # todo make formatting for --verbose mode and write wiki entry for client
+    # self.config['table_pw'] shall not be '' if -r is specified
 
