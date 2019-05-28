@@ -270,7 +270,8 @@ class GameStateWrapper:
         # moves self.cur_player hand to the front
         hand_list = copy.deepcopy(self.hand_list)
         hand_list.insert(0, hand_list.pop(hand_list.index(hand_list[self.player_position])))
-        return hand_list
+
+        return [list(reversed(hand)) for hand in hand_list]  # server PREpends drawn cards, agent APpends drawn cards, hence reverse each hand
 
     def get_agent_observation(self):
         """ Returns state as perceived by the calling agent """
@@ -363,6 +364,7 @@ class GameStateWrapper:
             for c in hand:
                 # h.append(self.card(c['color'], c['rank']))
                 h.append(c)
+            h = list(reversed(h))  # server PREpends drawn cards, agent APpends drawn cards, hence reverse each hand
             card_knowledge.append(h)
         # return [self.card(c['color'], c['rank']) for hand in self.clues for c in hand]
         # sort, s.t. agents cards are at index 0
