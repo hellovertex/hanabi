@@ -329,7 +329,7 @@ class ObservationVectorizer(object):
                 else:
                     card_rank_revealed = False
 
-                last_player_card_knowledge = card_knowledge_list[1]
+                last_player_card_knowledge = card_knowledge_list[-1]
 
                 for color in range(self.num_colors):
 
