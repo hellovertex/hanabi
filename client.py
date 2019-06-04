@@ -360,16 +360,17 @@ def get_game_config_from_args(cmd_args) -> Dict:
 
 def get_client_config_from_args(cmd_args, game_config, agent: int) -> Dict:
     client_config = {
-        'agent_class': cmd_args.agent_classes[i],
-        'username': get_agent_name_from_cls(cmd_args.agent_classes[i], i),
+        'agent_class': cmd_args.agent_classes[agent],
+        'username': get_agent_name_from_cls(cmd_args.agent_classes[agent], agent),
         'num_human_players': cmd_args.num_humans,
+        'num_total_players': cmd_args.num_humans + len(cmd_args.agent_classes),
         'empty_clues': False,
         'table_name': cmd_args.table_name,
         'table_pw': cmd_args.table_pw,
         'variant': cmd_args.game_variant,
         'num_episodes': cmd_args.num_episodes,
         'life_tokens': game_config['max_life_tokens'],
-        'info_tokens': game_config['max_info_tokens'],
+        'info_tokens': game_config['max_information_tokens'],
         'deck_size': 50,  # todo get from game variant
         'wait_move': cmd_args.wait_move
     }
@@ -446,7 +447,7 @@ def init_args(argparser):
              'humans). For example -r 192.168.178.26 when you want to connect your friends machines in a private '
              'subnet to the machine running the server at 192.168.178.26 or -r hanabi.live when you want to play on '
              'the official server. Unfortunately, it currently does not work with eduroam.',
-        default='localhost'
+        default='192.168.178.26'
     )
     argparser.add_argument(
         '-w',
@@ -507,6 +508,7 @@ if __name__ == "__main__":
         config = configs['agent'+'0'+str(i)]
         username = config['client_config']['username']
         agent_config = config['agent_config']
+        client_config = config['client_config']
 
         # Login to Zamiels server (session-based)
         session, cookie = login(url='http://' + addr, referer=referer, username=username, num_client=i)
@@ -515,7 +517,7 @@ if __name__ == "__main__":
         upgrade_to_websocket(url=addr_ws, session=session, cookie=cookie)
 
         # Start client (agent + websocket + rl_env game wrapper)
-        c = Client('ws://' + addr + '/ws', cookie, config, agent_config)
+        c = Client('ws://' + addr + '/ws', cookie, client_config, agent_config)
         clients.append(c)
 
         # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
