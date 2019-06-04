@@ -75,13 +75,13 @@ class ObservationVectorizer(object):
         '''
         self.env = env
         self.obs = None
-        self.num_players = self.env.game.num_players()
-        self.num_colors = self.env.game.num_colors()
-        self.num_ranks = self.env.game.num_ranks()
-        self.hand_size = self.env.game.hand_size()
-        self.max_info_tokens = self.env.game.max_information_tokens()
-        self.max_life_tokens = self.env.game.max_life_tokens()
-        self.max_moves = self.env.game.max_moves()
+        self.num_players = self.env.num_players()
+        self.num_colors = self.env.num_colors()
+        self.num_ranks = self.env.num_ranks()
+        self.hand_size = self.env.hand_size()
+        self.max_info_tokens = self.env.max_information_tokens()
+        self.max_life_tokens = self.env.max_life_tokens()
+        self.max_moves = self.env.max_moves()
         self.bits_per_card = self.num_colors * self.num_ranks
         self.max_deck_size = 0
         # start of the vectorized observation
@@ -89,7 +89,7 @@ class ObservationVectorizer(object):
 
         for color in range(self.num_colors):
             for rank in range(self.num_ranks):
-                self.max_deck_size += self.env.game.num_cards(color, rank)
+                self.max_deck_size += self.env.num_cards(color, rank)
         """ Bit lengths """
         # Compute total state length
         self.hands_bit_length = (self.num_players - 1) * self.hand_size * self.bits_per_card + self.num_players
@@ -201,7 +201,7 @@ class ObservationVectorizer(object):
                 num_discarded = counts[c * self.num_ranks + r]
                 for i in range(int(num_discarded)):
                     self.obs_vec[self.offset + i] = 1
-                self.offset += self.env.game.num_cards(c, r)
+                self.offset += self.env.num_cards(c, r)
 
         assert self.offset - (self.hands_bit_length + self.board_bit_length + self.discard_pile_bit_length) == 0
         return True
@@ -364,3 +364,59 @@ class ObservationVectorizer(object):
                     self.card_knowledge_bit_length) == 0
 
         return True
+
+
+class LegalMovesVectorizer(object):
+    '''
+    // Uid mapping.  h=hand_size, p=num_players, c=colors, r=ranks
+    // 0, h-1: discard
+    // h, 2h-1: play
+    // 2h, 2h+(p-1)c-1: color hint
+    // 2h+(p-1)c, 2h+(p-1)c+(p-1)r-1: rank hint
+    '''
+    def __init__(self, env):
+        self.env = env
+        self.num_players = self.env.num_players()
+        self.num_ranks = self.env.num_ranks()
+        self.num_colors = self.env.num_colors()
+        self.hand_size = self.env.hand_size()
+        self.max_reveal_color_moves = (self.num_players - 1) * self.num_colors
+        self.num_moves = self.env.num_moves()
+
+    def get_legal_moves_as_int(self, legal_moves):
+        legal_moves_as_int = [-np.Inf for _ in range(self.num_moves)]
+        tmp_legal_moves_as_int = [self.get_move_uid(move) for move in legal_moves]
+
+        for move in tmp_legal_moves_as_int:
+            legal_moves_as_int[move] = 0.0
+
+        return [self.get_move_uid(move) for move in legal_moves]
+
+    def get_legal_moves_as_int_formated(self,legal_moves_as_int):
+
+        new_legal_moves = np.full(self.num_moves, -float('inf'))
+
+        if legal_moves_as_int:
+            new_legal_moves[legal_moves_as_int] = 0
+        return new_legal_moves
+
+    def get_move_uid(self, move):
+        if move["action_type"] == "DISCARD":
+            card_index = move["card_index"]
+            return card_index
+
+        elif move["action_type"] == "PLAY":
+            card_index = move["card_index"]
+            return self.hand_size + card_index
+
+        elif move["action_type"] == "REVEAL_COLOR":
+            target_offset = move["target_offset"]
+            color = utils.color_char_to_idx(move["color"])
+            return self.hand_size + self.hand_size + (target_offset-1) * self.num_colors + color
+
+        elif move["action_type"] == "REVEAL_RANK":
+            rank = move["rank"]
+            target_offset = move["target_offset"]
+            return self.hand_size + self.hand_size + self.max_reveal_color_moves + (target_offset-1) * self.num_ranks + rank
+        else:
+            return -1

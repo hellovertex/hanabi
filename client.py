@@ -374,7 +374,11 @@ def get_client_config_from_args(cmd_args, game_config, agent: int) -> Dict:
         'life_tokens': game_config['max_life_tokens'],
         'info_tokens': game_config['max_information_tokens'],
         'deck_size': deck_size,
-        'wait_move': cmd_args.wait_move
+        'wait_move': cmd_args.wait_move,
+        'colors': game_config['colors'],
+        'ranks': game_config['ranks'],
+        'hand_size': utils.get_hand_size(players),
+        'max_moves': utils.get_num_actions(game_config)
     }
     return client_config
 

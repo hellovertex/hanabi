@@ -56,6 +56,11 @@ class GameStateWrapper:
         # rl_env.HanabiEnvobservation._extract_from_dict method, but we need a history so we add this here.
         # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         self.last_moves = list()
+        self.variant = game_config['variant']
+        self.num_colors = game_config['colors']
+        self.num_ranks = game_config['ranks']
+        self.hand_size = game_config['hand_size']
+        self.max_moves = game_config['max_moves']
 
         """
         # ################################################ #
@@ -67,6 +72,20 @@ class GameStateWrapper:
         Instead, it uses the low level pyhanabi objects and its callables, so we have to create mock objects here. 
         """
         self.use_pyhanabi_mocks = False
+
+        self.env = self.create_env_mock(
+            num_players=self.num_players,
+            num_colors=self.num_colors,
+            num_ranks=self.num_ranks,
+            hand_size=self.hand_size,
+            max_info_tokens=self.max_info_tokens,
+            max_life_tokens=self.max_life_tokens,
+            max_moves=self.max_moves,
+            variant=self.variant
+        )
+
+        self.vectorizer = vectorizer.ObservationVectorizer(self.env)
+        self.legal_moves_vectorizer = vectorizer.LegalMovesVectorizer(self.env)
 
     def init_players(self, notify_msg: str):
         """ Sets self.players to a list of the players currently ingame and creates empty hands """
@@ -282,6 +301,37 @@ class GameStateWrapper:
 
         return [hand for hand in hand_list]
 
+    @staticmethod
+    def create_env_mock(num_players, num_colors, num_ranks, hand_size, max_info_tokens, max_life_tokens, max_moves, variant):
+        num_players = num_players
+        num_colors = num_colors
+        num_ranks = num_ranks
+        hand_size = hand_size
+        max_info_tokens = max_info_tokens
+        max_life_tokens = max_life_tokens
+        max_moves = max_moves
+        variant = variant
+
+        return envMock(
+            num_players=num_players,
+            num_colors=num_colors,
+            num_ranks=num_ranks,
+            hand_size=hand_size,
+            max_info_tokens=max_info_tokens,
+            max_life_tokens=max_life_tokens,
+            max_moves=max_moves,
+            variant=variant
+        )
+
+    def get_vectorized(self, observation):
+        """ calls vectorizer.ObservationVectorizer with envMock to get the vectorized observation """
+        return self.vectorizer.vectorize_observation(observation)
+
+    def get_legal_moves_as_int(self, legal_moves):
+        """ Parses legal moves, such that it is an input vector for our neural nets """
+        legal_moves_as_int = self.legal_moves_vectorizer.get_legal_moves_as_int(legal_moves)
+        return self.legal_moves_vectorizer.get_legal_moves_as_int_formated(legal_moves_as_int)
+
     def get_agent_observation(self):
         """ Returns state as perceived by the calling agent """
 
@@ -297,11 +347,12 @@ class GameStateWrapper:
             'observed_hands': self.get_sorted_hand_list(),  # moves own hand to front
             'discard_pile': self.discard_pile,
             'card_knowledge': self.get_card_knowledge(),
-            'vectorized': None,  # Currently not needed, we can implement it later on demand
             'last_moves': self.last_moves  # actually not contained in the returned dict of the
             # rl_env.HanabiEnvobservation._extract_from_dict method, but we need a history so we add this here.
             # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         }
+        observation['vectorized'] = self.get_vectorized(observation)
+        observation['legal_moves_as_int'] = self.get_legal_moves_as_int(observation['legal_moves'])
 
         return observation
 
@@ -745,15 +796,15 @@ class HanabiHistoryItemMock:
         return self._move
 
     def player(self):
-        raise NotImplementedError
+        return self._player
 
     def scored(self):
         """Play move succeeded in placing card on fireworks."""
-        raise NotImplementedError
+        return self._scored
 
     def information_token(self):
         """Play/Discard move increased the number of information tokens."""
-        raise NotImplementedError
+        return self._information_token
 
     def color(self):
         """Color index of card that was Played/Discarded."""
@@ -868,3 +919,27 @@ class HanabiMoveType(enum.IntEnum):
     REVEAL_COLOR = 3
     REVEAL_RANK = 4
     DEAL = 5
+
+
+class envMock:
+    def __init__(self, num_players, num_colors, num_ranks, hand_size, max_info_tokens, max_life_tokens, max_moves, variant):
+        self.num_players = num_players
+        self.num_colors = num_colors
+        self.num_ranks = num_ranks
+        self.hand_size = hand_size
+        self.max_info_tokens = max_info_tokens
+        self.max_life_tokens = max_life_tokens
+        self.max_moves = max_moves
+        self.variant = variant
+
+    def num_cards(self, color, rank, variant):
+        """ Input: Color string in "RYGWB" and rank in [0,4]
+        Output: How often deck contains card with given color and rank, i.e. 1-cards will be return 3"""
+        if rank == 0:
+            return 3
+        elif rank < 4:
+            return 2
+        elif rank == 4:
+            return 1
+        else:
+            return 0
