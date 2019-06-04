@@ -86,13 +86,13 @@ class ObservationVectorizer(object):
         '''
         self.env = env
         self.obs = None
-        self.num_players = self.env.num_players()
-        self.num_colors = self.env.num_colors()
-        self.num_ranks = self.env.num_ranks()
-        self.hand_size = self.env.hand_size()
-        self.max_info_tokens = self.env.max_information_tokens()
-        self.max_life_tokens = self.env.max_life_tokens()
-        self.max_moves = self.env.max_moves()
+        self.num_players = self.env.num_players
+        self.num_colors = self.env.num_colors
+        self.num_ranks = self.env.num_ranks
+        self.hand_size = self.env.hand_size
+        self.max_info_tokens = self.env.max_information_tokens
+        self.max_life_tokens = self.env.max_life_tokens
+        self.max_moves = self.env.max_moves
         self.bits_per_card = self.num_colors * self.num_ranks
         self.max_deck_size = 0
         # start of the vectorized observation
@@ -397,10 +397,10 @@ class LegalMovesVectorizer(object):
     '''
     def __init__(self, env):
         self.env = env
-        self.num_players = self.env.num_players()
-        self.num_ranks = self.env.num_ranks()
-        self.num_colors = self.env.num_colors()
-        self.hand_size = self.env.hand_size()
+        self.num_players = self.env.num_players
+        self.num_ranks = self.env.num_ranks
+        self.num_colors = self.env.num_colors
+        self.hand_size = self.env.hand_size
         self.max_reveal_color_moves = (self.num_players - 1) * self.num_colors
         self.num_moves = self.env.num_moves()
 
