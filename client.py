@@ -3,7 +3,8 @@
 import commandsWebSocket as cmd
 from game_state_wrapper import GameStateWrapper
 from agents.simple_agent import SimpleAgent
-import client_config as conf
+import config as conf
+import utils
 
 """ PYTHON IMPORTS """
 from typing import Dict
@@ -31,7 +32,7 @@ class Client:
     # and makes them iterable
     _ids = count(0)
 
-    def __init__(self, url: str, cookie: str, game_config: Dict, agent_config: Dict):
+    def __init__(self, url: str, cookie: str, client_config: Dict, agent_config: Dict):
         """ Client wrapped around the agents, so they can play on Zamiels server
          https://github.com/Zamiell/hanabi-live. They compute actions offline
          and send back the corresponding json-encoded action on their turn."""
@@ -55,16 +56,16 @@ class Client:
         self.id = next(self._ids)
 
         # Hanabi playing agent
-        self.agent = eval(conf.agent_classes[game_config['agent_class']]['class'])(agent_config)
+        self.agent = eval(conf.AGENT_CLASSES[client_config['agent_class']]['class'])(agent_config)
 
         # throttle to avoid race conditions
         self.throttle = 0.05  # 50 ms
 
         # Agents username as seen in the server lobby
-        assert 'username' in game_config
-        self.username = game_config['username']
+        assert 'username' in client_config
+        self.username = client_config['username']
         # Stores observations for agent
-        self.game = GameStateWrapper(game_config)
+        self.game = GameStateWrapper(client_config)
 
         # Will be set when server sends notification that a game has been created (auto-join always joins last game)
         self.gameID = None
@@ -75,7 +76,7 @@ class Client:
         self.game_ended = False
 
         # configuration needed for hosting a lobby
-        self.config = game_config
+        self.config = client_config
 
         # current number of players in the lobby, used when our agent hosts lobby and wants to know when to start game
         self._num_players_in_lobby = -1
@@ -320,33 +321,84 @@ def get_addrs(args):
 
 def get_agent_name_from_cls(agent_class: str, id: int):
     """ Input: agentclass as specified in the client_config.py """
-    assert agent_class in conf.agent_classes
-    assert 'class' in conf.agent_classes[agent_class]
+    assert agent_class in conf.AGENT_CLASSES
+    assert 'class' in conf.AGENT_CLASSES[agent_class]
 
-    return conf.agent_classes[agent_class]['class'] + '0' + str(id)
+    return conf.AGENT_CLASSES[agent_class]['class'] + '0' + str(id)
 
 
-def get_game_configs_from_args(cmd_args) -> Dict:
-    """ Returns a dictionary of configurations for each agent playing """
-    # loop each agent to get the config (depending on agents class etc)
-    configs = dict()
-    num_agents = len(cmd_args.agent_classes)
-    for i in range(num_agents):
-        configs['agent'+'0'+str(i)] = {
+def parse_variant(game_variant: str, players: int) -> Dict:
+    """ Takes game variant string as required by UI server and returns game_config Dict as required by pyhanabi"""
+    if game_variant == 'No Variant':
+        game_config = {
+            """ Game config as required by pyhanabi.HanabiGame. """
+            'colors': 5,  # Number of colors in [1,5]
+            'ranks': 5,  # Number of ranks in [1,5]
+            'players': players,  # Number of total players in [2,5]
+            'max_information_tokens': 8,  # >= 0
+            'max_life_tokens': 3,  # >= 1
+            'observation_type': 1,  # 0: Minimal observation, 1: First-order common knowledge obs,
+            'seed': -1,  # -1 to use system random device to get seed
+            'random_start_player': True  # If true, start with random player, not 0
+        }
+    else:
+        raise NotImplementedError
+
+    return game_config
+
+
+def get_game_config_from_args(cmd_args) -> Dict:
+
+    # total number of players ingame
+    players = cmd_args.num_humans + len(cmd_args.agent_classes)
+
+    # pyhanabi-like game_config
+    game_config = parse_variant(cmd_args.game_variant, players)
+
+    return game_config
+
+
+def get_client_config_from_args(cmd_args, game_config, agent: int) -> Dict:
+    client_config = {
         'agent_class': cmd_args.agent_classes[i],
         'username': get_agent_name_from_cls(cmd_args.agent_classes[i], i),
-        'num_total_players': cmd_args.num_humans + num_agents,
         'num_human_players': cmd_args.num_humans,
         'empty_clues': False,
         'table_name': cmd_args.table_name,
         'table_pw': cmd_args.table_pw,
         'variant': cmd_args.game_variant,
         'num_episodes': cmd_args.num_episodes,
-        'life_tokens': 3,  # todo get from game variant
-        'info_tokens': 8,  # todo get from game variant
+        'life_tokens': game_config['max_life_tokens'],
+        'info_tokens': game_config['max_info_tokens'],
         'deck_size': 50,  # todo get from game variant
         'wait_move': cmd_args.wait_move
     }
+    return client_config
+
+
+def get_configs_from_args(cmd_args) -> Dict:
+    """ Returns a dictionary of configurations for each agent playing. Each configuration consits of a client_confi
+    and an agent_config as required by the corresponding agent class """
+    # loop each agent to get the config (depending on agents class etc)
+    configs = dict()
+
+    # Compute pyhanabi game_config common for all agents
+    num_agents = len(cmd_args.agent_classes)
+    game_config = get_game_config_from_args(cmd_args)
+
+    # Each agent needs config for his client instance and his agent instance
+    for i in range(num_agents):
+
+        # Config for client instance, e.g. username etc
+        client_config = get_client_config_from_args(cmd_args, game_config, i)
+
+        # Config for agent instance, e.g. num_actions for rainbow agent
+        conf = utils.get_agent_config(game_config, cmd_args.agent_classes[i])
+
+        # concatenate with game_config
+        agent_config = dict(conf, **game_config)
+
+        configs['agent'+'0'+str(i)] = {'agent_config': agent_config, 'client_config': client_config}
 
     return configs
 
@@ -394,7 +446,7 @@ def init_args(argparser):
              'humans). For example -r 192.168.178.26 when you want to connect your friends machines in a private '
              'subnet to the machine running the server at 192.168.178.26 or -r hanabi.live when you want to play on '
              'the official server. Unfortunately, it currently does not work with eduroam.',
-        default='192.168.178.26'
+        default='localhost'
     )
     argparser.add_argument(
         '-w',
@@ -440,8 +492,7 @@ if __name__ == "__main__":
 
     # If agents play without human player, one of them will have to open a game lobby
     # make it passworded by default, as this will not require changes when playing remotely
-    game_configs = get_game_configs_from_args(args)
-    agent_config = {'players': args.num_humans + len(args.agent_classes)}
+    configs = get_configs_from_args(args)
 
     # Returns subnet ipv4 in private network and localhost otherwise
     addr, referer, addr_ws = get_addrs(args)
@@ -451,9 +502,11 @@ if __name__ == "__main__":
 
     # Run each client in a seperate thread
     for i in range(len(args.agent_classes)):
+
         # get game config for current agent
-        game_config = game_configs['agent'+'0'+str(i)]
-        username = game_config['username']
+        config = configs['agent'+'0'+str(i)]
+        username = config['client_config']['username']
+        agent_config = config['agent_config']
 
         # Login to Zamiels server (session-based)
         session, cookie = login(url='http://' + addr, referer=referer, username=username, num_client=i)
@@ -462,7 +515,7 @@ if __name__ == "__main__":
         upgrade_to_websocket(url=addr_ws, session=session, cookie=cookie)
 
         # Start client (agent + websocket + rl_env game wrapper)
-        c = Client('ws://' + addr + '/ws', cookie, game_config, agent_config)
+        c = Client('ws://' + addr + '/ws', cookie, config, agent_config)
         clients.append(c)
 
         # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
