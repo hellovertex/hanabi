@@ -2,7 +2,7 @@ import ast
 import enum
 from typing import Optional, List, Set, Dict
 import copy
-
+import vectorizer
 
 class GameStateWrapper:
 
@@ -153,6 +153,8 @@ class GameStateWrapper:
             'true', 'True'))
 
         tmp_deepcopy = copy.deepcopy(self.card_numbers)  # safe these for pyhanabi mock objects (i.e. last_moves)
+        scored = False
+        information_token = False
 
         # DISCARD
         if d['type'] == 'discard':
@@ -160,6 +162,8 @@ class GameStateWrapper:
             # only recover info token when not discarding through failed play
             if 'failed' in d and d['failed'] is False:
                 self.information_tokens += 1
+                # will be used in HanabiHistoryItemMock
+                information_token = True
 
         # DRAW - if player with pid draws a card, it is prepended to hand_list[pid]
         if d['type'] == 'draw':
@@ -172,7 +176,7 @@ class GameStateWrapper:
 
             # update fireworks and life tokens eventually
             c = self.card(d['which']['suit'], d['which']['rank'])
-            self.play(c)
+            scored, information_token = self.play(c)[0]
 
         # CLUE - change players card_knowledge and remove an info-token
         if d['type'] == 'clue':
@@ -190,7 +194,7 @@ class GameStateWrapper:
         if d['type'] in ['play', 'draw', 'clue', 'discard']:
             # print(d['type'])
             # print(notify_msg)
-            self.append_to_last_moves(d, tmp_deepcopy)
+            self.append_to_last_moves(d, tmp_deepcopy, scored, information_token)
 
         # On end of game, do something later if necessary (resetting happens on init so no need here)
         if d['type'] == 'turn' and d['who'] == -1:
@@ -212,18 +216,23 @@ class GameStateWrapper:
         return
 
     def play(self, card):
+        scored = False
+        information_token = False
         # on success, update fireworks
         if self.fireworks[card['color']] == card['rank']:
             self.fireworks[card['color']] += 1
             # completing a firework restores one info token
             if card['rank'] == 4:
                 self.information_tokens += 1
+                information_token = True
+            # will be used in HanabiHistoryItemMock
+            scored = True
         # on fail, remove a life token
         else:
             self.life_tokens -= 1
-        return
+        return scored, information_token
 
-    def append_to_last_moves(self, dict_action, deepcopy_card_nums):
+    def append_to_last_moves(self, dict_action, deepcopy_card_nums, scored, information_token):
         """
         Mocks HanabiHistoryItems as gotten from pyhanabi. As these objects provide callables, we have to create these
         here.
@@ -242,9 +251,9 @@ class GameStateWrapper:
         # but these are necessary to compute the information below.
 
         move = self.get_pyhanabi_move_mock(dict_action, deepcopy_card_nums)
-        player = None
-        scored = None
-        information_token = None
+        player = self.player_position  # absolute player position
+        scored = scored  # boolean, True if firework increased
+        information_token = information_token  # boolean, True if info_token gained on discard or play
         color = None
         rank = None
         card_info_revealed = None
