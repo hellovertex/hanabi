@@ -97,10 +97,11 @@ class ObservationVectorizer(object):
         self.max_deck_size = 0
         # start of the vectorized observation
         self.offset = None
+        self.variant = self.env.variant
 
         for color in range(self.num_colors):
             for rank in range(self.num_ranks):
-                self.max_deck_size += self.env.num_cards(color, rank)
+                self.max_deck_size += self.env.num_cards(color, rank, self.variant)
         """ Bit lengths """
         # Compute total state length
         self.hands_bit_length = (self.num_players - 1) * self.hand_size * self.bits_per_card + self.num_players
@@ -214,7 +215,7 @@ class ObservationVectorizer(object):
                 num_discarded = counts[c * self.num_ranks + r]
                 for i in range(int(num_discarded)):
                     self.obs_vec[self.offset + i] = 1
-                self.offset += self.env.num_cards(c, r)
+                self.offset += self.env.num_cards(c, r, self.variant)
 
         assert self.offset - (self.hands_bit_length + self.board_bit_length + self.discard_pile_bit_length) == 0
         return True
@@ -402,7 +403,8 @@ class LegalMovesVectorizer(object):
         self.num_colors = self.env.num_colors
         self.hand_size = self.env.hand_size
         self.max_reveal_color_moves = (self.num_players - 1) * self.num_colors
-        self.num_moves = self.env.num_moves()
+        self.num_moves = self.env.max_moves
+        self.num_cards = self.env.num_cards()
 
     def get_legal_moves_as_int(self, legal_moves):
         legal_moves_as_int = [-np.Inf for _ in range(self.num_moves)]

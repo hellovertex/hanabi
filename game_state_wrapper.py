@@ -163,7 +163,7 @@ class GameStateWrapper:
         """
         Updates Game State after server sends an action-notification.
         Notify message can contain 'turn', 'draw', 'play', 'clue', 'discard' as "type"-values
-        Computes last_moves
+        Computes last_moves including recursive
         """
 
         'Create dictionary from server message that contains actions'
@@ -174,6 +174,8 @@ class GameStateWrapper:
         tmp_deepcopy = copy.deepcopy(self.card_numbers)  # safe these for pyhanabi mock objects (i.e. last_moves)
         scored = False
         information_token = False
+        deal_to_player = -1
+        card_info_revealed = list()
 
         # DISCARD
         if d['type'] == 'discard':
@@ -187,7 +189,7 @@ class GameStateWrapper:
         # DRAW - if player with pid draws a card, it is prepended to hand_list[pid]
         if d['type'] == 'draw':
             self.draw_card(d)
-
+            deal_to_player = d['pid']
         # PLAY - remove played card from players hand and update fireworks/life tokens
         if d['type'] == 'play':
             # remove card
@@ -199,7 +201,7 @@ class GameStateWrapper:
 
         # CLUE - change players card_knowledge and remove an info-token
         if d['type'] == 'clue':
-            self.update_clues(d)
+            card_info_revealed = self.update_clues(d)
             self.information_tokens -= 1  # validity has previously been checked by the server so were good with that
 
         # Set current player flag
@@ -213,7 +215,7 @@ class GameStateWrapper:
         if d['type'] in ['play', 'draw', 'clue', 'discard']:
             # print(d['type'])
             # print(notify_msg)
-            self.append_to_last_moves(d, tmp_deepcopy, scored, information_token)
+            self.append_to_last_moves(d, tmp_deepcopy, scored, information_token, deal_to_player, card_info_revealed)
 
         # On end of game, do something later if necessary (resetting happens on init so no need here)
         if d['type'] == 'turn' and d['who'] == -1:
@@ -222,17 +224,19 @@ class GameStateWrapper:
         return
 
     def update_clues(self, dict_clue):
+        card_info_revealed = list()
         clue = dict_clue['clue']
         target = dict_clue['target']
         touched_cards = dict_clue['List']
         for c in touched_cards:
             idx_c = self.card_numbers[target].index(c)
+            card_info_revealed.append(idx_c)
             if clue['type'] == 0:
                 # self.clues[target][idx_c]['rank'] = clue['value']
                 self.clues[target][idx_c] = self.card(self.clues[target][idx_c]['color'], clue['value'])
             else:
                 self.clues[target][idx_c] = self.card(clue['value'], self.clues[target][idx_c]['rank'])
-        return
+        return card_info_revealed
 
     def play(self, card):
         scored = False
@@ -251,7 +255,7 @@ class GameStateWrapper:
             self.life_tokens -= 1
         return scored, information_token
 
-    def append_to_last_moves(self, dict_action, deepcopy_card_nums, scored, information_token):
+    def append_to_last_moves(self, dict_action, deepcopy_card_nums, scored, information_token, deal_to_player, card_info_revealed):
         """
         Mocks HanabiHistoryItems as gotten from pyhanabi. As these objects provide callables, we have to create these
         here.
@@ -275,9 +279,9 @@ class GameStateWrapper:
         information_token = information_token  # boolean, True if info_token gained on discard or play
         color = None
         rank = None
-        card_info_revealed = None
+        card_info_revealed = card_info_revealed
         card_info_newly_revealed = None
-        deal_to_player = None
+        deal_to_player = deal_to_player
 
         history_item_mock = HanabiHistoryItemMock(
             move=move,
@@ -821,7 +825,7 @@ class HanabiHistoryItemMock:
         for Reveal player 1 color red when player 1 has R1 W1 R2 R4 __ the
         result would be [0, 2, 3].
         """
-        raise NotImplementedError
+        return None
 
     def card_info_newly_revealed(self):
         """Returns information about whether color/rank was newly revealed.
@@ -922,12 +926,12 @@ class HanabiMoveType(enum.IntEnum):
 
 
 class envMock:
-    def __init__(self, num_players, num_colors, num_ranks, hand_size, max_info_tokens, max_life_tokens, max_moves, variant):
+    def __init__(self, num_players, num_colors, num_ranks, hand_size, max_info_tokens, max_life_tokens, max_moves, variant, num_moves):
         self.num_players = num_players
         self.num_colors = num_colors
         self.num_ranks = num_ranks
         self.hand_size = hand_size
-        self.max_info_tokens = max_info_tokens
+        self.max_information_tokens = max_info_tokens
         self.max_life_tokens = max_life_tokens
         self.max_moves = max_moves
         self.variant = variant

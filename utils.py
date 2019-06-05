@@ -13,8 +13,8 @@ def get_agent_config(game_config: Dict, agent: str):
     if agent == 'rainbow':
         return {
             'observation_size': get_observation_size(game_config),
-            'num_actions': get_num_actions(game_config),  # todo
-            'num_players': game_config['players']  # todo
+            'num_actions': get_num_actions(game_config),
+            'num_players': game_config['players']
         }
     elif agent == 'simple':
         return {
@@ -45,7 +45,7 @@ def get_observation_size(game_config):
     )
 
     vec = vectorizer.ObservationVectorizer(env)
-    legal_moves_vectorizer = vectorizer.LegalMovesVectorizer(env)
+    # legal_moves_vectorizer = vectorizer.LegalMovesVectorizer(env)
     return vec.total_state_length
 
 def get_hand_size(players: int) -> int:

@@ -330,8 +330,8 @@ def get_agent_name_from_cls(agent_class: str, id: int):
 def parse_variant(game_variant: str, players: int) -> Dict:
     """ Takes game variant string as required by UI server and returns game_config Dict as required by pyhanabi"""
     if game_variant == 'No Variant':
+        """ Game config as required by pyhanabi.HanabiGame. """
         game_config = {
-            """ Game config as required by pyhanabi.HanabiGame. """
             'colors': 5,  # Number of colors in [1,5]
             'ranks': 5,  # Number of ranks in [1,5]
             'players': players,  # Number of total players in [2,5]
