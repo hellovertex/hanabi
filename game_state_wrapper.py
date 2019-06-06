@@ -67,9 +67,9 @@ class GameStateWrapper:
         # -------------- USE PYHANABI MOCKS -------------- #
         # ################################################ #
         """
-        """ 
-        If the following flag is set, the calling agent DOES NOT IMPLEMENT the rl_env.Agent Interface. 
-        Instead, it uses the low level pyhanabi objects and its callables, so we have to create mock objects here. 
+        """
+        If the following flag is set, the calling agent DOES NOT IMPLEMENT the rl_env.Agent Interface.
+        Instead, it uses the low level pyhanabi objects and its callables, so we have to create mock objects here.
         """
         self.use_pyhanabi_mocks = False
 
@@ -280,6 +280,7 @@ class GameStateWrapper:
         color = None
         rank = None
         card_info_revealed = card_info_revealed
+        print(f"CARD INFO REVEALED {card_info_revealed}")
         card_info_newly_revealed = None
         deal_to_player = deal_to_player
 
@@ -334,7 +335,7 @@ class GameStateWrapper:
     def get_legal_moves_as_int(self, legal_moves):
         """ Parses legal moves, such that it is an input vector for our neural nets """
         legal_moves_as_int = self.legal_moves_vectorizer.get_legal_moves_as_int(legal_moves)
-        return self.legal_moves_vectorizer.get_legal_moves_as_int_formated(legal_moves_as_int)
+        return legal_moves_as_int, self.legal_moves_vectorizer.get_legal_moves_as_int_formated(legal_moves_as_int)
 
     def get_agent_observation(self):
         """ Returns state as perceived by the calling agent """
@@ -356,7 +357,12 @@ class GameStateWrapper:
             # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         }
         observation['vectorized'] = self.get_vectorized(observation)
-        observation['legal_moves_as_int'] = self.get_legal_moves_as_int(observation['legal_moves'])
+        legal_moves_as_int, legal_moves_as_int_formated = self.get_legal_moves_as_int(observation['legal_moves'])
+        observation["legal_moves_as_int"] = legal_moves_as_int
+        observation["legal_moves_as_int_formated"] = legal_moves_as_int_formated
+
+        print(f"Legal moves as int {legal_moves_as_int}")
+        print(f"Legal moves as int formatted {legal_moves_as_int_formated}")
 
         return observation
 
@@ -469,7 +475,7 @@ class GameStateWrapper:
                 for card in hand_list[i]:
                     ranks.add(card['rank'])
                 for r in ranks:
-                    legal_moves.append({'action_type': 'REVEAL_Rank', 'target_offset': i, 'rank': r})
+                    legal_moves.append({'action_type': 'REVEAL_RANK', 'target_offset': i, 'rank': r})
 
         return legal_moves
 
@@ -513,8 +519,8 @@ class GameStateWrapper:
         # print('PLAYER TO ACT IS ACCORDING TO GAME:')
         # print('---------')
         # print(self.players.index(self.agent_name))
-        # print('---------')
-        # print(action)
+        print('---------')
+        print(action)
         # return value
         a = ''
 
@@ -533,9 +539,9 @@ class GameStateWrapper:
             type = '0'  # 0 for type 'CLUE'
             target_offset = action['target_offset']
             # compute absolute player position from target_offset
-            target = self.next_player(offset=target_offset)
+            target = str(self.next_player(offset=target_offset))
             cluetype = '0'  # 0 for RANK clue
-            cluevalue = self.parse_rank(action['rank'])
+            cluevalue = str(self.parse_rank(action['rank']))
 
             a = 'action {"type":' + type + ',"target":' + target + ',"clue":{"type":' + cluetype + ',"value":' + cluevalue + '}}'
 
@@ -573,10 +579,10 @@ class GameStateWrapper:
         self.agents_turn = False
         return
 
-    """ 
+    """
     # ------------------------------------------------- # ''
     # ------------------ MOCK METHODS ----------------  # ''
-    # ------------------------------------------------- # ''    
+    # ------------------------------------------------- # ''
     """
     @staticmethod
     def get_target_offset(giver, target):
@@ -626,7 +632,6 @@ class GameStateWrapper:
     @staticmethod
     def get_move_type(move):
         """{'type': 'play', 'which': {'index': 1, 'suit': 1, 'rank': 1, 'order': 9}}
-
             Return Move types, consistent with hanabi_lib/hanabi_move.h.
             INVALID = 0
             PLAY = 1
@@ -762,10 +767,10 @@ class GameStateWrapper:
 
 
 
-""" 
+"""
     # ------------------------------------------------- # ''
     # ------------------ MOCK Classes ----------------  # ''
-    # ------------------------------------------------- # ''    
+    # ------------------------------------------------- # ''
 """
 
 """ These are used to wrap the low level interface implemented in pyhanabi.py """
@@ -778,12 +783,10 @@ class HanabiHistoryItemMock:
     def __init__(self, move, player, scored, information_token, color, rank, card_info_revealed,
                  card_info_newly_revealed, deal_to_player):
         """A move that has been made within a game, along with the side-effects.
-
           For example, a play move simply selects a card index between 0-5, but after
           making the move, there is an associated color and rank for the selected card,
           a possibility that the card was successfully added to the fireworks, and an
           information token added if the firework stack was completed.
-
           Python wrapper of C++ HanabiHistoryItem class.
         """
         self._move = move
@@ -820,16 +823,14 @@ class HanabiHistoryItemMock:
 
     def card_info_revealed(self):
         """Returns information about whether color/rank was revealed.
-
         Indices where card i color/rank matches the reveal move. E.g.,
         for Reveal player 1 color red when player 1 has R1 W1 R2 R4 __ the
         result would be [0, 2, 3].
         """
-        return None
+        return self._card_info_revealed
 
     def card_info_newly_revealed(self):
         """Returns information about whether color/rank was newly revealed.
-
         Indices where card i color/rank was not previously known. E.g.,
         for Reveal player 1 color red when player 1 has R1 W1 R2 R4 __ the
         result might be [2, 3].  Cards 2 and 3 were revealed to be red,
@@ -843,7 +844,7 @@ class HanabiHistoryItemMock:
         raise NotImplementedError
 
     def __str__(self):
-        return str(self._move.to_dict())
+        return str(self._move.to_dict()) + f"card_info_revealed{self._card_info_revealed}"
 
     def __repr__(self):
         return self.__str__()
@@ -855,7 +856,6 @@ class HanabiMoveMock:
     def __init__(self, move_type, card_index, target_offset, color, rank, discard_move, play_move, reveal_color_move,
                  reveal_rank_move, move_dict):
         """Description of an agent move or chance event.
-
           Python wrapper of C++ HanabiMove class.
         """
         self._type = move_type
@@ -926,7 +926,7 @@ class HanabiMoveType(enum.IntEnum):
 
 
 class envMock:
-    def __init__(self, num_players, num_colors, num_ranks, hand_size, max_info_tokens, max_life_tokens, max_moves, variant, num_moves):
+    def __init__(self, num_players, num_colors, num_ranks, hand_size, max_info_tokens, max_life_tokens, max_moves, variant):
         self.num_players = num_players
         self.num_colors = num_colors
         self.num_ranks = num_ranks

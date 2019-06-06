@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Random Agent."""
+"""Simple Agent."""
 
 from rl_env import Agent
 
@@ -38,15 +38,9 @@ class SimpleAgent(Agent):
     # Check if there are any pending hints and play the card corresponding to
     # the hint.
     for card_index, hint in enumerate(observation['card_knowledge'][0]):
-      print(observation.keys())
-      # print(observation['card_knowledge'][1])
       if hint['color'] is not None or hint['rank'] is not None:
-        #print(observation['card_knowledge'][0])
-        print("LEGAL MOVES ARE: ")
-        print(type(observation), type(observation['legal_moves']), observation['legal_moves'])
         return {'action_type': 'PLAY', 'card_index': card_index}
 
-    # print(observation['card_knowledge'][0])
     # Check if it's possible to hint a card to your colleagues.
     fireworks = observation['fireworks']
     if observation['information_tokens'] > 0:

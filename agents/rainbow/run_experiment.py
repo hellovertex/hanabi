@@ -27,15 +27,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import time, os, sys
+rel_path = os.path.join(os.environ['PYTHONPATH'],'agents/rainbow')
+sys.path.append(rel_path)
 
 from third_party.dopamine import checkpointer
 from third_party.dopamine import iteration_statistics
 import dqn_agent
+import rainbow_agent
 import gin.tf
 import rl_env
 import numpy as np
-import rainbow_agent
 import tensorflow as tf
 
 LENIENT_SCORE = False
@@ -129,7 +131,7 @@ def create_environment(game_type='Hanabi-Full', num_players=2):
 
 
 @gin.configurable
-def create_obs_stacker(environment, history_size=4):
+def create_obs_stacker(history_size, vectorized_observation_shape, players):
   """Creates an observation stacker.
 
   Args:
@@ -141,12 +143,12 @@ def create_obs_stacker(environment, history_size=4):
   """
 
   return ObservationStacker(history_size,
-                            environment.vectorized_observation_shape()[0],
-                            environment.players)
+                            vectorized_observation_shape,
+                            players)
 
 
 @gin.configurable
-def create_agent(environment, obs_stacker, agent_type='DQN'):
+def create_agent(observation_size, num_actions, num_players, agent_type='DQN'):
   """Creates the Hanabi agent.
 
   Args:
@@ -161,14 +163,14 @@ def create_agent(environment, obs_stacker, agent_type='DQN'):
     ValueError: if an unknown agent type is requested.
   """
   if agent_type == 'DQN':
-    return dqn_agent.DQNAgent(observation_size=obs_stacker.observation_size(),
-                              num_actions=environment.num_moves(),
-                              num_players=environment.players)
+    return dqn_agent.DQNAgent(observation_size=observation_size,
+    num_actions=num_actions,
+    num_players=num_players)
   elif agent_type == 'Rainbow':
     return rainbow_agent.RainbowAgent(
-        observation_size=obs_stacker.observation_size(),
-        num_actions=environment.num_moves(),
-        num_players=environment.players)
+        observation_size=observation_size,
+        num_actions=num_actions,
+        num_players=num_players)
   else:
     raise ValueError('Expected valid agent_type, got {}'.format(agent_type))
 

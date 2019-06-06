@@ -26,9 +26,11 @@ from __future__ import print_function
 
 import collections
 import math
-import os
-import random
+import os,sys
+rel_path = os.path.join(os.environ['PYTHONPATH'],'agents/rainbow')
+sys.path.append(rel_path)
 
+import random
 import gin.tf
 import numpy as np
 import replay_memory
@@ -517,6 +519,7 @@ class DQNAgent(object):
       # replay.load() will throw a GOSError if it does not find all the
       # necessary files, in which case we should abort the process.
       self._replay.load(checkpoint_dir, iteration_number)
+      print("Load successful")
     except tf.errors.NotFoundError:
       return False
     for key in self.__dict__:

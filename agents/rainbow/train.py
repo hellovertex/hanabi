@@ -56,7 +56,6 @@ flags.DEFINE_string('logging_dir', '',
 flags.DEFINE_string('logging_file_prefix', 'log',
                     'Prefix to use for the log files.')
 
-
 def launch_experiment():
   """Launches the experiment.
 
@@ -78,8 +77,18 @@ def launch_experiment():
   experiment_logger = logger.Logger('{}/logs'.format(FLAGS.base_dir))
 
   environment = run_experiment.create_environment()
-  obs_stacker = run_experiment.create_obs_stacker(environment)
-  agent = run_experiment.create_agent(environment, obs_stacker)
+
+  observation_type = environment.game.observation_type()
+  num_players = environment.game.num_players()
+  num_colors = environment.game.num_colors()
+
+  print("\n============================")
+  print("TRAINNING MODE: {}, num_player: {}, num_colors: {}".format(observation_type,num_players,num_colors))
+  print("============================\n")
+
+  obs_stacker = run_experiment.create_obs_stacker()
+
+  agent = run_experiment.create_agent(obs_stacker.observation_size(),environment.game.max_moves(),environment.game.num_players())
 
   checkpoint_dir = '{}/checkpoints'.format(FLAGS.base_dir)
   start_iteration, experiment_checkpointer = (

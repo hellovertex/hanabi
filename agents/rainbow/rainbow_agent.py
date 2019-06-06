@@ -24,7 +24,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
+import functools, os, sys
+
+rel_path = os.path.join(os.environ['PYTHONPATH'],'agents/rainbow')
+sys.path.append(rel_path)
 
 import dqn_agent
 import gin.tf
