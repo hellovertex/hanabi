@@ -30,17 +30,25 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
   def _reset(self):
     """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
     # i.e. ['step_type', 'reward', 'discount', 'observation']
-    observation, reward, done, info = self._env.reset()
-    step_type = StepType.FIRST
-
+    observations = self._env.reset()
+    observation = observations['current_player']
+    # reward is 0 on reset
+    reward = 0
     # oberservation is currently a dict, extract the 'vectorized' object
     obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
 
-    return TimeStep(step_type, reward, discount, obs_vec)
+    return TimeStep(StepType.FIRST, reward, discount, obs_vec)
 
   def _step(self, action):
     """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
-    return self._env.step(action)
+    observation, reward, done, info = self._env.reset()
+    obs_vec = np.array(observation['current_player']['vectorized'], dtype=dtype_vectorized)
+    if done:
+        step_type = StepType.LAST
+    else:
+        step_type = StepType.MID
+
+    return TimeStep(step_type, reward, discount, obs_vec)
 
   def observation_spec(self):
     """Must return a tf_agents.specs.array_spec.BoundedArraySpec obj"""
