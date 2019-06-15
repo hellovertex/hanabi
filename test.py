@@ -27,45 +27,45 @@ from tf_agents.specs import array_spec
 
 
 def get_tf_env(environment):
-  """Ensures output is a tf_environment, wrapping py_environments if needed."""
-  if environment is None:
-    raise ValueError('`environment` cannot be None')
-  if isinstance(environment, py_environment.PyEnvironment):
-    tf_env = tf_py_environment.TFPyEnvironment(environment)
-  elif isinstance(environment, tf_environment.TFEnvironment):
-    tf_env = environment
-  else:
-    raise ValueError(
-        '`environment` %s must be an instance of '
-        '`tf_environment.TFEnvironment` or `py_environment.PyEnvironment`.' %
-        environment)
-  return tf_env
+    """Ensures output is a tf_environment, wrapping py_environments if needed."""
+    if environment is None:
+        raise ValueError('`environment` cannot be None')
+    if isinstance(environment, py_environment.PyEnvironment):
+        tf_env = tf_py_environment.TFPyEnvironment(environment)
+    elif isinstance(environment, tf_environment.TFEnvironment):
+        tf_env = environment
+    else:
+        raise ValueError(
+            '`environment` %s must be an instance of '
+            '`tf_environment.TFEnvironment` or `py_environment.PyEnvironment`.' %
+            environment)
+    return tf_env
 
 
 def validate_py_environment(environment, episodes=5):
-  """Validates the environment follows the defined specs."""
-  time_step_spec = environment.time_step_spec()
-  action_spec = environment.action_spec()
+    """Validates the environment follows the defined specs."""
+    time_step_spec = environment.time_step_spec()
+    action_spec = environment.action_spec()
 
-  random_policy = random_py_policy.RandomPyPolicy(
-      time_step_spec=time_step_spec, action_spec=action_spec)
+    random_policy = random_py_policy.RandomPyPolicy(
+        time_step_spec=time_step_spec, action_spec=action_spec)
 
-  episode_count = 0
-  time_step = environment.reset()
+    episode_count = 0
+    time_step = environment.reset()
 
-  while episode_count < episodes:
-    if not array_spec.check_arrays_nest(time_step, time_step_spec):
-      raise ValueError(
-          'Given `time_step`: %r does not match expected `time_step_spec`: %r' %
-          (time_step, time_step_spec))
+    while episode_count < episodes:
+        if not array_spec.check_arrays_nest(time_step, time_step_spec):
+            raise ValueError(
+                'Given `time_step`: %r does not match expected `time_step_spec`: %r' %
+                (time_step, time_step_spec))
 
-    action = random_policy.action(time_step).action
-    obss = environment._make_observation_all_players()
-    legal_moves_as_int = obss['player_observations'][obss['current_player']]['legal_moves_as_int']
+        action = random_policy.action(time_step).action
+        obss = environment._make_observation_all_players()
+        legal_moves_as_int = obss['player_observations'][obss['current_player']]['legal_moves_as_int']
 
-    if action in legal_moves_as_int:
-      time_step = environment.step(action)
+        if action in legal_moves_as_int:
+            time_step = environment.step(action)
 
-      if time_step.is_last():
-        episode_count += 1
-        time_step = environment.reset()
+        if time_step.is_last():
+            episode_count += 1
+            time_step = environment.reset()
