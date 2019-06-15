@@ -1,9 +1,9 @@
 from tf_agents.environments.wrappers import PyEnvironmentBaseWrapper
 from tf_agents.trajectories.time_step import TimeStep, StepType
-from tf_agents.specs.array_spec import BoundedArraySpec
+from tf_agents.specs.array_spec import BoundedArraySpec, ArraySpec
 
 import numpy as np
-discount = .999  # todo get from somewhere else, probably gin?
+discount = np.asarray(.999, dtype=np.float32)  # todo get from somewhere else, probably gin?
 dtype_vectorized = 'uint8'
 
 
@@ -31,18 +31,25 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
     """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
     # i.e. ['step_type', 'reward', 'discount', 'observation']
     observations = self._env.reset()
-    observation = observations['current_player']
+    observation = observations['player_observations'][0]
+    print(observation)
     # reward is 0 on reset
-    reward = 0
+    reward = np.asarray(0, dtype=np.float32)
     # oberservation is currently a dict, extract the 'vectorized' object
     obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
-
+    print(obs_vec.shape)
     return TimeStep(StepType.FIRST, reward, discount, obs_vec)
 
   def _step(self, action):
     """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
-    observation, reward, done, info = self._env.reset()
-    obs_vec = np.array(observation['current_player']['vectorized'], dtype=dtype_vectorized)
+    if isinstance(action, np.ndarray):
+      print(action.shape)
+      action = int(action)
+    observations, reward, done, info = self._env.step(action)
+    reward = np.asarray(reward, dtype=np.float32)
+
+    observation = observations['player_observations'][0]
+    obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
     if done:
         step_type = StepType.LAST
     else:
@@ -57,7 +64,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
     dtype = dtype_vectorized
     minimum = 0
     maximum = 1
-    return BoundedArraySpec(shape, dtype, minimum, maximum)
+    return BoundedArraySpec(shape, dtype, minimum, maximum, name='observation')
 
   def action_spec(self):
     """Must return a tf_agents.specs.array_spec.BoundedArraySpec obj"""
@@ -67,11 +74,4 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
     minimum = 0
     maximum = self._env.num_moves()
 
-    return BoundedArraySpec(shape, dtype, minimum, maximum)
-
-  def render(self, mode='rgb_array'):
-    return self._env.render(mode)
-
-  def wrapped_env(self):
-    # not needed as of now
-    return self._env
+    return BoundedArraySpec(shape, dtype, minimum, maximum, name='action')
