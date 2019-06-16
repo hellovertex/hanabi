@@ -8,6 +8,7 @@ from tf_agents.utils import common
 from tf_agents.replay_buffers import replay_buffer
 from tf_agents.networks import actor_distribution_network
 from tf_agents.agents.reinforce import reinforce_agent
+from tf_agents.environments import tf_py_environment
 from pyhanabi_env_wrapper import PyhanabiEnvWrapper
 from tf_agents.networks.q_network import QNetwork
 from tf_agents.agents.dqn.dqn_agent import DqnAgent, element_wise_squared_loss
@@ -42,16 +43,20 @@ num_players = 5
 
 # load and wrap environment, to use it with TF-Agent library
 pyhanabi_env = rl_env.make(environment_name=variant, num_players=num_players)
-env = PyhanabiEnvWrapper(pyhanabi_env)
-# test.validate_py_environment(env)
+py_env = PyhanabiEnvWrapper(pyhanabi_env)
+# test.validate_py_environment(py_env)
+env = tf_py_environment.TFPyEnvironment(py_env)
+
 
 """ DQN AGENT """
 # init feedforward net
+
 q_net = QNetwork(
     env.observation_spec(),
     env.action_spec(),
     fc_layer_params=fc_layer_params)
-flat_action_spec = tf.nest.flatten(env.action_spec())
+# flat_action_spec = tf.nest.flatten(env.action_spec())
+
 # init optimizer
 optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
 train_step_counter = tf.compat.v2.Variable(0)
@@ -61,7 +66,7 @@ train_step_counter = tf.compat.v2.Variable(0)
 #print(flat_action_spec[0])
 #print(flat_action_spec[0].shape)
 #print(flat_action_spec[0].shape.ndims)
-"""tf_agent = DqnAgent(
+tf_agent = DqnAgent(
     time_step_spec=env.time_step_spec(),
     action_spec=env.action_spec(),
     q_network=q_net,
@@ -72,18 +77,19 @@ train_step_counter = tf.compat.v2.Variable(0)
 tf_agent.initialize()
 
 # init q policy
-eval_policy = LegalMovesSampler(tf_agent.policy, env)
+eval_policy = LegalMovesSampler(tf_agent.collect_policy, py_env)
 
 # run simple test
 utils.compute_avg_return(env, eval_policy, num_eval_episodes)
+
+
+""" REINFORCE AGENT """
+#actor_net = actor_distribution_network.ActorDistributionNetwork(
+#    env.observation_spec(),
+#    env.action_spec(),
+#    fc_layer_params
+#)
 """
-
-actor_net = actor_distribution_network.ActorDistributionNetwork(
-    env.observation_spec(),
-    env.action_spec(),
-    fc_layer_params
-)
-
 tf_agent = reinforce_agent.ReinforceAgent(
     time_step_spec=env.time_step_spec(),
     action_spec=env.action_spec(),
@@ -142,3 +148,4 @@ for _ in range(num_iterations):
     avg_return = utils.compute_avg_return(env, tf_agent.policy, num_eval_episodes)
     print('step = {0}: Average Return = {1}'.format(step, avg_return))
     returns.append(avg_return)
+"""

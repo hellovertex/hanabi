@@ -9,7 +9,7 @@ dtype_vectorized = 'uint8'
 
 class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
-  """Pyhanabi wrapper"""
+  """Pyhanabi wrapper derived from PyEnvironmentBaseWrapper(py_environment.PyEnvironment) """
 
   def __init__(self, env):
     super(PyEnvironmentBaseWrapper, self).__init__()
@@ -35,13 +35,14 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
     # reward is 0 on reset
     reward = np.asarray(0, dtype=np.float32)
+
     # oberservation is currently a dict, extract the 'vectorized' object
     obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
 
     return TimeStep(StepType.FIRST, reward, discount, obs_vec)
 
   def _step(self, action):
-    """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
+    """Must return a tf_agents.trajectories.time_step.TimeStep namedTuple obj"""
     if isinstance(action, np.ndarray):
       action = int(action)
     observations, reward, done, info = self._env.step(action)
@@ -73,9 +74,9 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
   def action_spec(self):
     """Must return a tf_agents.specs.array_spec.BoundedArraySpec obj"""
-    # inside self._env.step, action is converted to an int in range [0, self._env.num_moves()]
+    # inside self._env.step, action is converted to an int in, range [0, self._env.num_moves()]
     shape = ()
-    dtype = 'int64'
+    dtype = np.int64
     minimum = 0
     maximum = self._env.num_moves() - 1
     return BoundedArraySpec(shape, dtype, minimum, maximum, name='action')

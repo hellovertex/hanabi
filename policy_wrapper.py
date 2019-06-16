@@ -11,6 +11,7 @@ class LegalMovesSampler(py_policy.Base):
             policy_state_spec=policy.policy_state_spec,
             info_spec=policy.info_spec
         )
+
         self._policy = policy
         self._env = env
 
@@ -24,10 +25,11 @@ class LegalMovesSampler(py_policy.Base):
         move_is_illegal = True
 
         a = None
-
+        print(legal_moves_as_int)
         while move_is_illegal:
             a = self._policy.action(time_step)
-            if a in legal_moves_as_int:
+            print(a.action.numpy()[0])
+            if a.action.numpy()[0] in legal_moves_as_int:
                 move_is_illegal = False
 
         return a

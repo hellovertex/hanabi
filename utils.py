@@ -116,8 +116,8 @@ class envMock:
 # @test {"skip": true}
 def compute_avg_return(environment, policy, num_episodes=10):
     total_return = 0.0
-    for _ in range(num_episodes):
-
+    for i in range(num_episodes):
+        print(f"Episode {i} running...")
         time_step = environment.reset()
         episode_return = 0.0
 
