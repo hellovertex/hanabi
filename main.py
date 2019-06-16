@@ -44,6 +44,7 @@ num_players = 5
 # load and wrap environment, to use it with TF-Agent library
 pyhanabi_env = rl_env.make(environment_name=variant, num_players=num_players)
 py_env = PyhanabiEnvWrapper(pyhanabi_env)
+# check specs after wrapping env
 # test.validate_py_environment(py_env)
 env = tf_py_environment.TFPyEnvironment(py_env)
 
@@ -62,10 +63,6 @@ optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
 train_step_counter = tf.compat.v2.Variable(0)
 
 # init dqn agent
-#print("ACTION SPEC", flat_action_spec)
-#print(flat_action_spec[0])
-#print(flat_action_spec[0].shape)
-#print(flat_action_spec[0].shape.ndims)
 tf_agent = DqnAgent(
     time_step_spec=env.time_step_spec(),
     action_spec=env.action_spec(),
@@ -80,16 +77,16 @@ tf_agent.initialize()
 eval_policy = LegalMovesSampler(tf_agent.collect_policy, py_env)
 
 # run simple test
-utils.compute_avg_return(env, eval_policy, num_eval_episodes)
+# utils.compute_avg_return(env, eval_policy, num_eval_episodes)
 
 
 """ REINFORCE AGENT """
-#actor_net = actor_distribution_network.ActorDistributionNetwork(
-#    env.observation_spec(),
-#    env.action_spec(),
-#    fc_layer_params
-#)
-"""
+actor_net = actor_distribution_network.ActorDistributionNetwork(
+    env.observation_spec(),
+    env.action_spec(),
+    fc_layer_params
+)
+
 tf_agent = reinforce_agent.ReinforceAgent(
     time_step_spec=env.time_step_spec(),
     action_spec=env.action_spec(),
@@ -99,7 +96,7 @@ tf_agent = reinforce_agent.ReinforceAgent(
     train_step_counter=train_step_counter
 )
 eval_policy = LegalMovesSampler(tf_agent.policy, env)
-
+"""
 
 def collect_episode(environment, policy, num_episodes):
 

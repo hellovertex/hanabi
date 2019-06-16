@@ -348,8 +348,8 @@ class HanabiEnv(Environment):
             # Convert int action into a Hanabi move.
             action = self.game.get_move(action)
         else:
-            raise ValueError("Expected action as dict or int, got: {}".format(
-                action))
+            raise ValueError("Expected action as dict or int, got: {}, dtype={}".format(
+                action, type(action)))
 
         last_score = self.state.score()
         # Apply the action to the state.
@@ -362,9 +362,13 @@ class HanabiEnv(Environment):
         done = self.state.is_terminal()
         # Reward is score differential. May be large and negative at game end.
         reward = self.state.score() - last_score
+        # reward = self._custom_reward()
         info = {}
 
         return (observation, reward, done, info)
+
+    def _custom_reward(self):
+        pass
 
     def _make_observation_all_players(self):
         """Make observation for all players.

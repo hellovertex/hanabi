@@ -351,7 +351,7 @@ def parse_variant(game_variant: str, players: int) -> Dict:
 def get_game_config_from_args(cmd_args) -> Dict:
 
     # total number of players ingame
-    players = cmd_args.num_humans + len(cmd_args.agent_classes)
+    players = int(cmd_args.num_humans) + len(cmd_args.agent_classes)
 
     # pyhanabi-like game_config
     game_config = parse_variant(cmd_args.game_variant, players)
@@ -416,6 +416,8 @@ def commands_valid(args):
     """ This function returns True, iff the user specified input does not break the rules of the game"""
     # assert legal number of total players
     assert 1 < args.num_humans + len(args.agent_classes) < 6
+    # assert table name only contains characters, as otherwise the server will complain
+    assert args.table_name.isalpha()
     # ... whatever else will come to my mind
     return True
 
@@ -429,6 +431,7 @@ def init_args(argparser):
              'instance by calling "client.py -n 0 -e 1 -a simple simple", 2 simple agents will create a lobby and '
              'play for 1 round and then idle. You can watch the replay by using the "watch specific replay" option '
              'from the server with the ID of the game (that is being sent to lobby chat after game is finished).',
+        type=int,
         default=1
     )
     argparser.add_argument(
@@ -473,7 +476,7 @@ def init_args(argparser):
         '--table_name',
         help='When running the client in AGENTS_ONLY mode, i.e. when setting -n to 0, you can pass a table name with '
              'this flag. Default is "AI_room". Usually there is no need to do this though.',
-        default='AI_room')
+        default='AIroom')
     argparser.add_argument(
         '-p',
         '--table_pw',
