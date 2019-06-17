@@ -128,4 +128,5 @@ def compute_avg_return(environment, policy, num_episodes=10):
         total_return += episode_return
 
     avg_return = total_return / num_episodes
+    print("AVG RETURN", avg_return)
     return avg_return
