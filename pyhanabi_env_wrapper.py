@@ -46,6 +46,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
     if isinstance(action, np.ndarray):
       action = int(action)
     observations, reward, done, info = self._env.step(action)
+
     reward = np.asarray(reward, dtype=np.float32)
 
     observation = observations['player_observations'][0]
@@ -54,8 +55,14 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
       step_type = StepType.LAST
     else:
       step_type = StepType.MID
-    print("------------------")
-    print("STEP SUCCESS")
+    #print("------------------")
+    #print("STEP SUCCESS")
+
+    """ ALTHOUGH IT EXPLICITLY SAYS WE SHOULD NOT CALL THE RESET FUNCTION OURSELVES """
+    # i do it, because else we run into an assertion error from the environment, telling us we went below 0 life tokens
+    if done:
+      self._env.reset()
+
     return TimeStep(step_type, reward, discount, obs_vec)
 
   def observation_spec(self):
