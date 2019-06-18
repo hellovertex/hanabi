@@ -26,6 +26,7 @@ class LegalMovesSampler(py_policy.Base):
 
         a = None
         print(legal_moves_as_int)
+        print(self._policy)
         while move_is_illegal:
             a = self._policy.action(time_step)
             print(a.action.numpy()[0])

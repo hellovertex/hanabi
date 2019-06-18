@@ -341,6 +341,8 @@ class HanabiEnv(Environment):
         Raises:
           AssertionError: When an illegal action is provided.
         """
+        # print("ACTION INSIDE RL ENV", action)
+        # print("SELF", self)
         if isinstance(action, dict):
             # Convert dict action HanabiMove
             action = self._build_move(action)
@@ -368,6 +370,8 @@ class HanabiEnv(Environment):
         return (observation, reward, done, info)
 
     def _custom_reward(self):
+        # punish losing a life token very very hard
+        # reward playing a hinted card and giving a hint that has a card played
         pass
 
     def _make_observation_all_players(self):

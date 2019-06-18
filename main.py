@@ -12,11 +12,11 @@ import matplotlib.pyplot as plt
 import PIL.Image
 
 import tensorflow as tf
-
+import policy_wrapper
 tf.compat.v1.enable_v2_behavior()
 
 from tf_agents.agents.ddpg import critic_network
-from tf_agents.agents.sac import sac_agent
+import sac_agent_custom
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.environments import suite_pybullet
 from tf_agents.environments import tf_py_environment
@@ -24,6 +24,7 @@ from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
 from tf_agents.networks import actor_distribution_network
 from tf_agents.networks import normal_projection_network
+from tf_agents.policies import epsilon_greedy_policy
 from tf_agents.policies import greedy_policy
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
@@ -37,7 +38,8 @@ from tf_agents.utils import common
 env_name = 'MinitaurBulletEnv-v0'  # @param
 num_iterations = 1000000  # @param
 
-initial_collect_steps = 10000  # @param
+# initial_collect_steps = 10000  # @param
+initial_collect_steps = 100  # @param
 collect_steps_per_iteration = 1  # @param
 replay_buffer_capacity = 1000000  # @param
 
@@ -73,14 +75,18 @@ variant = "Hanabi-Full"
 num_players = 5
 
 # load and wrap environment, to use it with TF-Agent library
-pyhanabi_env = rl_env.make(environment_name=variant, num_players=num_players)
-py_env = PyhanabiEnvWrapper(pyhanabi_env)
+pyhanabi_env_train = rl_env.make(environment_name=variant, num_players=num_players)
+pyhanabi_env_eval = rl_env.make(environment_name=variant, num_players=num_players)
+py_env_train = PyhanabiEnvWrapper(pyhanabi_env_train)
+py_env_eval = PyhanabiEnvWrapper(pyhanabi_env_eval)
 # check specs after wrapping env
 # test.validate_py_environment(py_env)
-train_env = tf_py_environment.TFPyEnvironment(py_env)
+train_env = tf_py_environment.TFPyEnvironment(py_env_train)
+eval_env = tf_py_environment.TFPyEnvironment(py_env_eval)
 # TFPyEnvironment -> BatchedPyEnvironment -> PyEnvironmentBaseWrapper -> pyhanabi_env
 py_env = train_env._env.envs[0].wrapped_env()
-eval_env = train_env
+py_env_eval = eval_env._env.envs[0].wrapped_env()
+
 observation_spec = train_env.observation_spec()
 action_spec = train_env.action_spec()
 
@@ -101,7 +107,7 @@ def normal_projection_net(action_spec, init_means_output_factor=0.1):
         mean_transform=None,
         state_dependent_std=True,
         init_means_output_factor=init_means_output_factor,
-        std_transform=sac_agent.std_clip_transform,
+        std_transform=sac_agent_custom.std_clip_transform,
         scale_distribution=True)
 
 
@@ -112,7 +118,7 @@ actor_net = actor_distribution_network_custom.ActorDistributionNetwork(
     observation_spec,
     action_spec,
     fc_layer_params=actor_fc_layer_params,
-    continuous_projection_net=normal_projection_net,
+    # continuous_projection_net=normal_projection_net,
     environment=py_env
 )
 # ------------------------------------------------------------------------------- #
@@ -124,7 +130,7 @@ actor_net = actor_distribution_network_custom.ActorDistributionNetwork(
 # with which the agent is then called
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
-tf_agent = sac_agent.SacAgent(
+tf_agent = sac_agent_custom.SacAgent(
     train_env.time_step_spec(),
     action_spec,
     actor_network=actor_net,
@@ -147,12 +153,15 @@ tf_agent.initialize()
 # ------------------------------------------------------------------------------- #
 """ POLICIES """
 # ------------------------------------------------------------------------------- #
+# just make the eval policy epsilon greedy because we dont care for the evaluation before training
 
+# agent policy sampling happens in training environment, therefore we cannot call compute_avg_return
+# just like that, because it executes the policy on the eval_environment which has different legal_actions
 eval_policy = greedy_policy.GreedyPolicy(tf_agent.policy)
 collect_policy = tf_agent.collect_policy
 
-
 # utils.compute_avg_return(train_env, eval_policy, num_eval_episodes)
+
 
 def compute_avg_return(environment, policy, num_episodes=5):
     total_return = 0.0
@@ -164,10 +173,15 @@ def compute_avg_return(environment, policy, num_episodes=5):
         while not time_step.is_last():
             action_step = policy.action(time_step)
             time_step = environment.step(action_step.action)
-            episode_return += time_step.reward
+
+            if time_step.is_last():
+                episode_return = time_step.reward
+            # episode_return += time_step.reward
+
         total_return += episode_return
 
     avg_return = total_return / num_episodes
+    environment.reset()
     return avg_return.numpy()[0]
 
 
@@ -176,6 +190,7 @@ def compute_avg_return(environment, policy, num_episodes=5):
 # ------------------------------------------------------------------------------- #
 """ REPLAY BUFFER """
 # ------------------------------------------------------------------------------- #
+
 # for most agents, the collect_data_spec is a trajectory named tuple containing the
 # observation, action, reward, etc.
 replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
@@ -194,7 +209,6 @@ initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
     num_steps=initial_collect_steps
 )
 initial_collect_driver.run()
-
 # In order to save space, we only store the current observation in each row of the
 # replay buffer. But since the SAC Agent needs both the current and next observation
 # to cocmpute the loss, we always sample two adjacent rows for each item in the bath
@@ -219,17 +233,21 @@ collect_driver = dynamic_step_driver.DynamicStepDriver(
     num_steps=collect_steps_per_iteration)
 
 # (Optional) Optimize by wrapping some of the code in a graph using TF function.
-tf_agent.train = common.function(tf_agent.train)
-collect_driver.run = common.function(collect_driver.run)
+# tf_agent.train = common.function(tf_agent.train)
+# collect_driver.run = common.function(collect_driver.run)
 
 # Reset the train step
 tf_agent.train_step_counter.assign(0)
 
 # Evaluate the agent's policy once before training.
-avg_return = compute_avg_return(eval_env, eval_policy, num_eval_episodes)
-returns = [avg_return]
+#avg_return = compute_avg_return(eval_env, eval_policy, num_eval_episodes)
+#returns = [avg_return]
+#print(returns)
+returns = list()
 
-for _ in range(num_iterations):
+
+# for _ in range(num_iterations):
+for _ in range(10):
 
     print("FOO")
 
@@ -247,13 +265,21 @@ for _ in range(num_iterations):
     if step % log_interval == 0:
         print('step = {0}: loss = {1}'.format(step, train_loss.loss))
 
-    if step % eval_interval == 0:
-        avg_return = compute_avg_return(eval_env, eval_policy, num_eval_episodes)
+
+    # if step % eval_interval == 0:
+    if step % 1 == 0:
+        avg_return = compute_avg_return(train_env, eval_policy, num_eval_episodes)
         print('step = {0}: Average Return = {1}'.format(step, avg_return))
         returns.append(avg_return)
 
-steps = range(0, num_iterations + 1, eval_interval)
+
+# steps = range(0, num_iterations + 1, eval_interval)
+steps = range(0, 10)
 plt.plot(steps, returns)
 plt.ylabel('Average Return')
 plt.xlabel('Step')
 plt.ylim()
+plt.show()
+# Problem: You cannot apply eval_policy on eval_env as eval_policy sits on train_env basically
+# SOlution: eval_policy network must be a copy of policy but with another environment
+# Means: actor network must be copied and fed with eval_env

@@ -49,8 +49,6 @@ class CategoricalProjectionNetwork(network.DistributionNetwork):
             weights.
           name: A string representing name of the network.
         """
-        print("sample spec logits environment")
-        print(sample_spec, logits_init_output_factor, environment)
         unique_num_actions = np.unique(sample_spec.maximum - sample_spec.minimum +
                                        1)
         if len(unique_num_actions) > 1 or np.any(unique_num_actions <= 0):
@@ -105,8 +103,6 @@ class CategoricalProjectionNetwork(network.DistributionNetwork):
     def _legal_moves_as_int(self):
         # get array of integer values representing indices of legal_moves
         obss = self._env._make_observation_all_players()
-        print("CURRENTPLAYR INSIDE AGENT")
-        print(obss['current_player'])
         return obss['player_observations'][obss['current_player']]['legal_moves_as_int']
 
     def clip_invalid_logits(self, logits):
@@ -117,7 +113,7 @@ class CategoricalProjectionNetwork(network.DistributionNetwork):
         mask = np.zeros(logits.shape)
         # assuming logits.shape is (1, num_moves) which is the case for hanabi:
         mask[:, legal_moves_as_int] = 1  # stores kronecker delta for validity of actions
-        # convert clipped to tensorflow
+        # convert mask to tensorflow
         mask = tf.convert_to_tensor(mask, dtype='bool')
 
         # set logits to -inf if their corresponding move is illegal
