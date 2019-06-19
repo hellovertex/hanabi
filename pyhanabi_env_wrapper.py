@@ -41,7 +41,8 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
         # i.e. ['step_type', 'reward', 'discount', 'observation']
         observations = self._env.reset()
-        observation = observations['player_observations'][0]
+        cur_player = observations['current_player']
+        observation = observations['player_observations'][cur_player]
 
         # reward is 0 on reset
         reward = np.asarray(0, dtype=np.float32)
@@ -50,8 +51,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
-        # (48, ) int64
-        print(mask_valid_actions.shape, mask_valid_actions.dtype)
+
         return TimeStep(StepType.FIRST, reward, discount, obs)
 
     def _step(self, action):
@@ -59,7 +59,8 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         if isinstance(action, np.ndarray):
             action = int(action)
         observations, reward, done, info = self._env.step(action)
-        observation = observations['player_observations'][0]
+        cur_player = observations['current_player']
+        observation = observations['player_observations'][cur_player]
 
         reward = np.asarray(reward, dtype=np.float32)
 
@@ -80,14 +81,18 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
         # i.e. ('_shape', '_dtype', '_name', '_minimum', '_maximum')
 
-        state_spec = ArraySpec(
+        state_spec = BoundedArraySpec(
             shape=self._env.vectorized_observation_shape(),
             dtype=dtype_vectorized,
+            minimum=0,
+            maximum=1,
             name='state'
         )
-        mask_spec = ArraySpec(
+        mask_spec = BoundedArraySpec(
             shape=(self._env.num_moves(), ),
             dtype=int,
+            minimum=0,
+            maximum=1,
             name='mask'
         )
 

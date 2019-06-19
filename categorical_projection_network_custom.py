@@ -105,17 +105,9 @@ class CategoricalProjectionNetwork(network.DistributionNetwork):
         obss = self._env._make_observation_all_players()
         return obss['player_observations'][obss['current_player']]['legal_moves_as_int']
 
-    def clip_invalid_logits(self, logits):
-        # get array of integer values representing indices of legal moves
-        legal_moves_as_int = np.array(self._legal_moves_as_int())
+    def clip_invalid_logits(self, logits, mask):
 
-        # create boolean mask for legal_moves
-        mask = np.zeros(logits.shape)
-        # assuming logits.shape is (1, num_moves) which is the case for hanabi:
-        mask[:, legal_moves_as_int] = 1  # stores kronecker delta for validity of actions
-        # convert mask to tensorflow
-        mask = tf.convert_to_tensor(mask, dtype='bool')
-
+        mask = tf.dtypes.cast(tf.convert_to_tensor(mask), bool)
         # set logits to -inf if their corresponding move is illegal
         neginfs = tf.convert_to_tensor(np.full(logits.shape, np.NINF), dtype='float')
         return tf.where(
@@ -124,7 +116,7 @@ class CategoricalProjectionNetwork(network.DistributionNetwork):
             y=neginfs
         )
 
-    def call(self, inputs, outer_rank):
+    def call(self, inputs, outer_rank, mask):
         # outer_rank is needed because the projection is not done on the raw
         # observations so getting the outer rank is hard as there is no spec to
         # compare to.
@@ -136,6 +128,6 @@ class CategoricalProjectionNetwork(network.DistributionNetwork):
         logits = tf.reshape(logits, [-1] + self._output_shape.as_list())
         logits = batch_squash.unflatten(logits)
 
-        valid_logits = self.clip_invalid_logits(logits)
+        valid_logits = self.clip_invalid_logits(logits, mask)
 
         return self.output_spec.build_distribution(logits=valid_logits)
