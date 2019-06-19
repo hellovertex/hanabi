@@ -16,8 +16,8 @@ import policy_wrapper
 tf.compat.v1.enable_v2_behavior()
 
 from tf_agents.agents.ddpg import critic_network
-import sac_agent_custom
 from tf_agents.drivers import dynamic_step_driver
+from tf_agents.agents.sac import sac_agent
 from tf_agents.environments import suite_pybullet
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
@@ -39,7 +39,7 @@ env_name = 'MinitaurBulletEnv-v0'  # @param
 num_iterations = 1000000  # @param
 
 # initial_collect_steps = 10000  # @param
-initial_collect_steps = 100  # @param
+initial_collect_steps = 10000  # @param
 collect_steps_per_iteration = 1  # @param
 replay_buffer_capacity = 1000000  # @param
 
@@ -67,9 +67,11 @@ eval_interval = 10000  # @param
 # ------------------------------------------------------------------------------- #
 
 import rl_env
+import dynamic_step_driver_custom
 import utils
 from pyhanabi_env_wrapper import PyhanabiEnvWrapper
-
+import critic_network_custom
+import test
 # game config
 variant = "Hanabi-Full"
 num_players = 5
@@ -79,22 +81,20 @@ pyhanabi_env_train = rl_env.make(environment_name=variant, num_players=num_playe
 pyhanabi_env_eval = rl_env.make(environment_name=variant, num_players=num_players)
 py_env_train = PyhanabiEnvWrapper(pyhanabi_env_train)
 py_env_eval = PyhanabiEnvWrapper(pyhanabi_env_eval)
-# check specs after wrapping env
-# test.validate_py_environment(py_env)
 train_env = tf_py_environment.TFPyEnvironment(py_env_train)
 eval_env = tf_py_environment.TFPyEnvironment(py_env_eval)
-# TFPyEnvironment -> BatchedPyEnvironment -> PyEnvironmentBaseWrapper -> pyhanabi_env
-py_env = train_env._env.envs[0].wrapped_env()
-py_env_eval = eval_env._env.envs[0].wrapped_env()
-
+# check specs after wrapping env
+# test.validate_py_environment(py_env_train)
 observation_spec = train_env.observation_spec()
 action_spec = train_env.action_spec()
+
+""" observation_spec = {'state': ArraySpec, 'mask': ArraySpec} """
 
 # ------------------------------------------------------------------------------- #
 """ NETWORKS (ACTOR AND CRITIC)"""
 # ------------------------------------------------------------------------------- #
 
-critic_net = critic_network.CriticNetwork(
+critic_net = critic_network_custom.CriticNetwork(
     (observation_spec, action_spec),
     observation_fc_layer_params=None,
     action_fc_layer_params=None,
@@ -107,7 +107,7 @@ def normal_projection_net(action_spec, init_means_output_factor=0.1):
         mean_transform=None,
         state_dependent_std=True,
         init_means_output_factor=init_means_output_factor,
-        std_transform=sac_agent_custom.std_clip_transform,
+        std_transform=sac_agent.std_clip_transform,
         scale_distribution=True)
 
 
@@ -119,7 +119,6 @@ actor_net = actor_distribution_network_custom.ActorDistributionNetwork(
     action_spec,
     fc_layer_params=actor_fc_layer_params,
     # continuous_projection_net=normal_projection_net,
-    environment=py_env
 )
 # ------------------------------------------------------------------------------- #
 """ SAC-AGENT INIT """
@@ -130,7 +129,7 @@ actor_net = actor_distribution_network_custom.ActorDistributionNetwork(
 # with which the agent is then called
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
-tf_agent = sac_agent_custom.SacAgent(
+tf_agent = sac_agent.SacAgent(
     train_env.time_step_spec(),
     action_spec,
     actor_network=actor_net,
@@ -202,13 +201,15 @@ replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
 """ DATA COLLECTION """
 # ------------------------------------------------------------------------------- #
 # collects n steps or episodes on an environment using a specific policy
-initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
+initial_collect_driver = dynamic_step_driver_custom.DynamicStepDriver(
     env=train_env,
     policy=collect_policy,
     observers=[replay_buffer.add_batch],
     num_steps=initial_collect_steps
 )
+
 initial_collect_driver.run()
+
 # In order to save space, we only store the current observation in each row of the
 # replay buffer. But since the SAC Agent needs both the current and next observation
 # to cocmpute the loss, we always sample two adjacent rows for each item in the bath
@@ -226,7 +227,7 @@ iterator = iter(dataset)
 """ TRAINING the SAC-AGENT """
 # ------------------------------------------------------------------------------- #
 
-collect_driver = dynamic_step_driver.DynamicStepDriver(
+collect_driver = dynamic_step_driver_custom.DynamicStepDriver(
     train_env,
     collect_policy,
     observers=[replay_buffer.add_batch],
@@ -280,6 +281,5 @@ plt.ylabel('Average Return')
 plt.xlabel('Step')
 plt.ylim()
 plt.show()
-# Problem: You cannot apply eval_policy on eval_env as eval_policy sits on train_env basically
-# SOlution: eval_policy network must be a copy of policy but with another environment
-# Means: actor network must be copied and fed with eval_env
+
+
