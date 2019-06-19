@@ -295,7 +295,9 @@ class GameStateWrapper:
             card_info_newly_revealed=card_info_newly_revealed,
             deal_to_player=deal_to_player
         )
-        self.last_moves.append(history_item_mock)
+        #this caused all the trouble
+        # self.last_moves.append(history_item_mock)
+        self.last_moves.insert(0, history_item_mock)
         return
 
     def get_sorted_hand_list(self) -> List:
@@ -360,7 +362,7 @@ class GameStateWrapper:
         legal_moves_as_int, legal_moves_as_int_formated = self.get_legal_moves_as_int(observation['legal_moves'])
         observation["legal_moves_as_int"] = legal_moves_as_int
         observation["legal_moves_as_int_formated"] = legal_moves_as_int_formated
-
+        print(observation['last_moves'])
         print(f"Legal moves as int {legal_moves_as_int}")
         print(f"Legal moves as int formatted {legal_moves_as_int_formated}")
 
@@ -519,8 +521,8 @@ class GameStateWrapper:
         # print('PLAYER TO ACT IS ACCORDING TO GAME:')
         # print('---------')
         # print(self.players.index(self.agent_name))
-        print('---------')
-        print(action)
+        # print('---------')
+        # print(action)
         # return value
         a = ''
 
@@ -584,12 +586,16 @@ class GameStateWrapper:
     # ------------------ MOCK METHODS ----------------  # ''
     # ------------------------------------------------- # ''
     """
-    @staticmethod
-    def get_target_offset(giver, target):
-        if target <= giver:
-            return target + 1  # returns indices relative to self
-        else:
+
+    def get_target_offset(self, giver, target):
+
+        if target is None or target==-1:
             return target
+        else:
+            # accounts for 1-indexed absolute player positions
+            return target - giver + int(target < giver)*self.num_players
+
+
 
     def get_pyhanabi_move_mock(self, dict_action, deepcopy_card_nums):
         """ dict_action looks like
