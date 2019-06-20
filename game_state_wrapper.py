@@ -362,7 +362,9 @@ class GameStateWrapper:
         legal_moves_as_int, legal_moves_as_int_formated = self.get_legal_moves_as_int(observation['legal_moves'])
         observation["legal_moves_as_int"] = legal_moves_as_int
         observation["legal_moves_as_int_formated"] = legal_moves_as_int_formated
-        print(observation['last_moves'])
+        if len(observation["last_moves"]) > 1:
+            print("LAST MOVE AS RETURNED BY GAME STATE WRAPPER")
+            print(observation['last_moves'][0])
         print(f"Legal moves as int {legal_moves_as_int}")
         print(f"Legal moves as int formatted {legal_moves_as_int_formated}")
 
@@ -408,6 +410,38 @@ class GameStateWrapper:
         if suit == 3: return 'R'
         if suit == 4: return 'W'
         return None
+
+    @staticmethod
+    def convert_suit_legal_moves(suit, move_type):
+
+        """
+        Returns format desired by agent
+        // 0 is blue
+        // 1 is green
+        // 2 is yellow
+        // 3 is red
+        // 4 is purple
+        returns None if suit is None or -1
+        """
+        if move_type == 'REVEAL':
+            if suit == -1: return None
+            if suit == 0: return 'B'
+            if suit == 1: return 'G'
+            if suit == 2: return 'Y'
+            if suit == 3: return 'R'
+            if suit == 4: return 'W'
+            else:
+                return None
+
+        if move_type == "PLAY" or "DISCARD" or "DEAL":
+            if suit == -1: return suit
+            elif suit == 0: return 4  # 'B'
+            elif suit == 1: return 2  # 'G'
+            elif suit == 2: return 1  # 'Y'
+            elif suit == 3: return 0  # 'R'
+            elif suit == 4: return 3  # 'W'
+            return -1
+
 
     @staticmethod
     def convert_color(color: str) -> Optional[int]:
@@ -552,6 +586,7 @@ class GameStateWrapper:
             type = '1'
             card_index = action['card_index']
             # target is referenced by absolute card number, gotta convert from given index
+
             target = str(self.card_numbers[self.players.index(self.agent_name)][card_index])
 
             a = 'action {"type":' + type + ',"target":' + target + '}'
@@ -695,14 +730,24 @@ class GameStateWrapper:
             if colorclue:
                 suit = move['clue']['value']
                 # map number to color
-                color = self.convert_suit(suit)
+                color = self.convert_suit_legal_moves(suit, move_type="REVEAL")
+                print("ENTERED CLUE STATEMTNET")
+                print(f"COLOR: {color}")
                 # color may be None here, depending on whether we got dealt a card
                 # todo have to check how the item behaves in that case (it represents this case as XX)
         # for DEAL moves
-        if move['type'] == 'draw':
-            color = self.convert_suit(move['suit'])
+        # elif move['type'] == 'draw':
+        #    color = self.convert_suit_legal_moves(move['suit'])
+        else:
+            print("ENTERED PLAY STATEMENT")
+            card_index = move['card_index']
+            card_num = move['target']
+            suit = self.hand_list[self.players.index(self.agent_name)][card_index]['color']
+            # convert suit to int
 
+            color = self.convert_suit_legal_moves(suit, move_type="PLAY")
         return color
+
 
     def get_move_rank(self, move):
         """Returns 0-based rank index for REVEAL_RANK and DEAL moves. We have to subtract 1 as the server uses
@@ -850,10 +895,33 @@ class HanabiHistoryItemMock:
         raise NotImplementedError
 
     def __str__(self):
-        return str(self._move.to_dict()) + f"card_info_revealed{self._card_info_revealed}"
 
-    def __repr__(self):
-        return self.__str__()
+        # return str(self._move.to_dict()) + f"card_info_revealed{self._card_info_revealed}"
+        obj_arr = [
+        self._move._type,
+        self._move._card_index,
+        self._move._target_offset,
+        self._move._color,
+        self._move._rank,
+        self._move._discard_move,
+        self._move._play_move,
+        self._move._reveal_color_move,
+        self._move._reveal_rank_move
+        ]
+        str_arr = [
+        "self._move._type",
+        "self._move._card_index",
+        "self._move._target_offset",
+        "self._move._color",
+        "self._move._rank",
+        "self._move._discard_move",
+        "self._move._play_move",
+        "self._move._reveal_color_move",
+        "self._move._reveal_rank_move"
+        ]
+        return str(list(zip(str_arr, obj_arr)))
+    # def __repr__(self):
+    #     return self.__str__(list(zip(str_arr, obj_arr)))
 
 
 class HanabiMoveMock:
