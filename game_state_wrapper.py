@@ -699,7 +699,7 @@ class GameStateWrapper:
 
     def get_move_card_index(self, move, deepcopy_card_nums):
         """Returns 0-based card index for PLAY and DISCARD moves."""
-        card_index = None
+        card_index = -1
         if move['type'] == 'play' or move['type'] == 'discard':
             # abs_card_num ranges from 0 to |decksize|
             abs_card_num = move['which']['order']
