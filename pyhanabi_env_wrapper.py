@@ -55,6 +55,8 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         return TimeStep(StepType.FIRST, reward, discount, obs)
 
     def _step(self, action):
+        if self._env.state.is_terminal():
+            return self._reset()
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTuple obj"""
         if isinstance(action, np.ndarray):
             action = int(action)

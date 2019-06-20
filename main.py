@@ -35,11 +35,12 @@ from tf_agents.utils import common
 """ HYPERPARAMS """
 # ------------------------------------------------------------------------------- #
 
-env_name = 'MinitaurBulletEnv-v0'  # @param
-num_iterations = 1000000  # @param
+
+# num_iterations = 1000000  # @param
+num_iterations = 10  # @param
 
 # initial_collect_steps = 10000  # @param
-initial_collect_steps = 10000  # @param
+initial_collect_steps = 10  # @param
 collect_steps_per_iteration = 1  # @param
 replay_buffer_capacity = 1000000  # @param
 
@@ -201,7 +202,7 @@ replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
 """ DATA COLLECTION """
 # ------------------------------------------------------------------------------- #
 # collects n steps or episodes on an environment using a specific policy
-initial_collect_driver = dynamic_step_driver_custom.DynamicStepDriver(
+initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
     env=train_env,
     policy=collect_policy,
     observers=[replay_buffer.add_batch],
@@ -234,45 +235,35 @@ collect_driver = dynamic_step_driver_custom.DynamicStepDriver(
     num_steps=collect_steps_per_iteration)
 
 # (Optional) Optimize by wrapping some of the code in a graph using TF function.
-# tf_agent.train = common.function(tf_agent.train)
-# collect_driver.run = common.function(collect_driver.run)
+tf_agent.train = common.function(tf_agent.train)
+collect_driver.run = common.function(collect_driver.run)
 
 # Reset the train step
 tf_agent.train_step_counter.assign(0)
 
 # Evaluate the agent's policy once before training.
-#avg_return = compute_avg_return(eval_env, eval_policy, num_eval_episodes)
-#returns = [avg_return]
-#print(returns)
-returns = list()
+avg_return = compute_avg_return(eval_env, eval_policy, num_eval_episodes)
+returns = [avg_return]
 
+for _ in range(num_iterations):
 
-# for _ in range(num_iterations):
-for _ in range(10):
+  # Collect a few steps using collect_policy and save to the replay buffer.
+  for _ in range(collect_steps_per_iteration):
+    collect_driver.run()
 
-    print("FOO")
+  # Sample a batch of data from the buffer and update the agent's network.
+  experience, unused_info = next(iterator)
+  train_loss = tf_agent.train(experience)
 
-    # Collect a few steps using collect_policy and save to the replay buffer.
-    for _ in range(collect_steps_per_iteration):
-        collect_driver.run()
-    print("BAR")
+  step = tf_agent.train_step_counter.numpy()
 
-    # Sample a batch of data from the buffer and update the agent's network.
-    experience, unused_info = next(iterator)
-    train_loss = tf_agent.train(experience)
+  if step % log_interval == 0:
+    print('step = {0}: loss = {1}'.format(step, train_loss.loss))
 
-    step = tf_agent.train_step_counter.numpy()
-
-    if step % log_interval == 0:
-        print('step = {0}: loss = {1}'.format(step, train_loss.loss))
-
-
-    # if step % eval_interval == 0:
-    if step % 1 == 0:
-        avg_return = compute_avg_return(train_env, eval_policy, num_eval_episodes)
-        print('step = {0}: Average Return = {1}'.format(step, avg_return))
-        returns.append(avg_return)
-
+  if step % eval_interval == 0:
+    avg_return = compute_avg_return(eval_env, eval_policy, num_eval_episodes)
+    print('step = {0}: Average Return = {1}'.format(step, avg_return))
+    returns.append(avg_return)
 
 # steps = range(0, num_iterations + 1, eval_interval)
 steps = range(0, 10)
