@@ -11,4 +11,4 @@ hanabi_lib/libhanabi.a
 libpyhanabi.so
 *.pyc
 __pycache__/*
-agents/*
+agents/rainbow_10kit/*
