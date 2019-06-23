@@ -4,31 +4,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
-import imageio
-import IPython
-import matplotlib
 import matplotlib.pyplot as plt
-import PIL.Image
 
 import tensorflow as tf
-import policy_wrapper
+
 tf.compat.v1.enable_v2_behavior()
 
-from tf_agents.agents.ddpg import critic_network
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.agents.sac import sac_agent
-from tf_agents.environments import suite_pybullet
 from tf_agents.environments import tf_py_environment
-from tf_agents.eval import metric_utils
-from tf_agents.metrics import tf_metrics
-from tf_agents.networks import actor_distribution_network
 from tf_agents.networks import normal_projection_network
-from tf_agents.policies import epsilon_greedy_policy
 from tf_agents.policies import greedy_policy
-from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
-from tf_agents.trajectories import trajectory
 from tf_agents.utils import common
 
 # ------------------------------------------------------------------------------- #
@@ -68,11 +55,9 @@ eval_interval = 10000  # @param
 # ------------------------------------------------------------------------------- #
 
 import rl_env
-import dynamic_step_driver_custom
-import utils
-from pyhanabi_env_wrapper import PyhanabiEnvWrapper
-import critic_network_custom
-import test
+from tf_agents_lib.pyhanabi_env_wrapper import PyhanabiEnvWrapper
+from tf_agents_lib import critic_network_custom
+
 # game config
 variant = "Hanabi-Full"
 num_players = 5
@@ -112,7 +97,7 @@ def normal_projection_net(action_spec, init_means_output_factor=0.1):
         scale_distribution=True)
 
 
-import actor_distribution_network_custom
+from tf_agents_lib import actor_distribution_network_custom, dynamic_step_driver_custom
 
 # actor_net = actor_distribution_network.ActorDistributionNetwork(
 actor_net = actor_distribution_network_custom.ActorDistributionNetwork(
