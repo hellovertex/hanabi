@@ -1,7 +1,7 @@
 from typing import Dict
-from gui import gui_config as conf
+import gui_config as conf
 import vectorizer
-from gui import pyhanabi_mocks
+import pyhanabi_mocks
 from typing import Optional, Set, List
 import enum
 

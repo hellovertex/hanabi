@@ -1,8 +1,12 @@
 import ast
 from typing import Optional, List, Set, Dict
 import copy
+import os
+import sys
+rel_path = os.path.join(os.environ['PYTHONPATH'])
+sys.path.append(rel_path)
 import vectorizer
-from gui import pyhanabi_mocks, utils, commandsWebSocket
+import pyhanabi_mocks, utils, commandsWebSocket
 
 
 class GameStateWrapper:
