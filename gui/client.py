@@ -3,6 +3,7 @@
 from game_state_wrapper import GameStateWrapper
 import gui_config as conf, utils, commandsWebSocket as cmd
 from agents.simple_agent import SimpleAgent
+from agents.agent_player import RLPlayer
 """ PYTHON IMPORTS """
 from typing import Dict
 import requests

@@ -314,7 +314,7 @@ class GameStateWrapper:
         {"type":"discard","failed":false,"which":{"index":1,"suit":0,"rank":4,"order":7}}
         """
 
-        move = pyhanabi_mocks.get_pyhanabi_move_mock(dict_action, deepcopy_card_nums)
+        move = pyhanabi_mocks.get_pyhanabi_move_mock(dict_action, deepcopy_card_nums, self.num_players)
 
         def get_player(dict_action):
             player = None

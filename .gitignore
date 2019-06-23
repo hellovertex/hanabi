@@ -10,4 +10,5 @@ hanabi_lib/cmake_install.cmake
 hanabi_lib/libhanabi.a
 libpyhanabi.so
 *.pyc
-__pycache__/*.pyc
+__pycache__/*
+agents/*
