@@ -1,5 +1,5 @@
 import numpy as np
-
+from itertools import count
 np.set_printoptions(threshold=np.inf)
 import pyhanabi as utils
 
@@ -10,6 +10,8 @@ DISCARD = 2
 REVEAL_COLOR = 3
 REVEAL_RANK = 4
 DEAL = 5
+
+
 
 '''
 Used to vectorize/encode player-dependent state-dicts and action dicts that are used
@@ -100,6 +102,13 @@ class CardKnowledge(object):
             self.colors[color] = None
 
 class ObservationVectorizer(object):
+    _ids = count(0)
+    @property
+    def knowledge(self):
+        return self.__class__.knowledge
+    @knowledge.setter
+    def knowledge(self, player_knowledge):
+        self.__class__.knowledge = player_knowledge
 
     def __init__(self, env):
         '''
@@ -110,6 +119,7 @@ class ObservationVectorizer(object):
         +LastAcionEncoding
         +CardKnowledgeEncoding
         '''
+        self.id = next(self._ids)
         self.env = env
         self.obs = None
         self.num_players = self.env.num_players
@@ -151,8 +161,16 @@ class ObservationVectorizer(object):
         self.total_state_length = self.hands_bit_length + self.board_bit_length + self.discard_pile_bit_length \
                                   + self.last_action_bit_length + self.card_knowledge_bit_length
         self.obs_vec = np.zeros(self.total_state_length)
+        if self.id == 0:
 
-        self.player_knowledge = [HandKnowledge(self.hand_size, self.num_ranks, self.num_colors) for _ in range(self.num_players)]
+            self.player_knowledge = [HandKnowledge(
+                self.hand_size, self.num_ranks, self.num_colors) for _ in range(self.num_players)
+            ]
+
+            self.knowledge = self.player_knowledge
+
+        else:
+            self.player_knowledge = self.knowledge
 
         self.last_player_action = None
 
@@ -160,7 +178,8 @@ class ObservationVectorizer(object):
         return self.total_state_length
 
     def vectorize_observation(self, obs):
-
+        print("PLAYER KNOWLEDGE")
+        print(self.player_knowledge)
         self.obs_vec = np.zeros(self.total_state_length)
         self.obs = obs
 
@@ -214,6 +233,8 @@ class ObservationVectorizer(object):
         self.encode_discards(obs)
         self.encode_last_action()
         self.encode_card_knowledge(obs)
+
+        self.knowledge = self.player_knowledge
 
         return self.obs_vec
 
@@ -584,11 +605,16 @@ class ObservationVectorizer(object):
             rel_player_pos = (current_player_id + ih) % self.num_players
 
             print("\n===================")
-            print("CHECK IF CARD KNOWLEDGE ORDER MATCHES PLAYER KNOWLEDGE OBJECT")
-            print(f"CARD KNOWLEDGE: {ih}")
-            print(f"TAKING PLAYER KNOWLEDGE: {rel_player_pos}")
-            print(f"CARD KNOWLEDGE OF PLAYER {rel_player_pos} AFTER UPDATING LAST ACTION")
-
+            #print("CHECK IF CARD KNOWLEDGE ORDER MATCHES PLAYER KNOWLEDGE OBJECT")
+            #print(f"CARD KNOWLEDGE: {ih}")
+            #print(f"TAKING PLAYER KNOWLEDGE: {rel_player_pos}")
+            #print(f"CARD KNOWLEDGE OF PLAYER {rel_player_pos} AFTER UPDATING LAST ACTION")
+            print("SELF PLAYER KNOWLEDGE")
+            print(self.player_knowledge)
+            print("ACCESSED")
+            print(self.player_knowledge[rel_player_pos])
+            print("HAND")
+            print(self.player_knowledge[rel_player_pos].hand)
             for card in self.player_knowledge[rel_player_pos].hand:
                 print("COLORS")
                 print(card.colors)
@@ -643,7 +669,7 @@ class ObservationVectorizer(object):
 
 class LegalMovesVectorizer(object):
     '''
-    // Uid mapping.  h=hand_size, p=num_players, c=colors, r=ranks
+    // Uid mapping.  h=hand_size, p=num_player_knowledgeplayers, c=colors, r=ranks
     // 0, h-1: discard
     // h, 2h-1: play
     // 2h, 2h+(p-1)c-1: color hint

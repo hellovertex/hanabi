@@ -80,7 +80,7 @@ def get_move_card_index(move, deepcopy_card_nums):
         # get target player index
         pid = move['which']['index']
         # get index of card with number abs_card_num in hand of player pid
-        card_index = deepcopy_card_nums[pid][::-1].index(abs_card_num)
+        card_index = deepcopy_card_nums[pid].index(abs_card_num)
 
     return card_index
 
