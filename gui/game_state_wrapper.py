@@ -379,7 +379,6 @@ class GameStateWrapper:
 
         return [list(reversed(clues)) for clues in card_knowledge]
 
-
     def get_vectorized(self, observation):
         """ calls vectorizer.ObservationVectorizer with envMock to get the vectorized observation """
         return self.vectorizer.vectorize_observation(observation)

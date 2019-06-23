@@ -65,6 +65,11 @@ class HandKnowledge(object):
 
         self.hand = new_hand
 
+        print("\n=========================")
+        print("NEW HAND AFTER DISCARDING/PLAYING CARD")
+        print(new_hand)
+        print("==========================\n")
+
 '''
 Used to encode implicit hints
 '''
@@ -93,8 +98,6 @@ class CardKnowledge(object):
     def remove_color(self, color):
         if color in self.colors:
             self.colors[color] = None
-
-
 
 class ObservationVectorizer(object):
 
@@ -163,42 +166,48 @@ class ObservationVectorizer(object):
 
         if obs["last_moves"] != []:
 
-            print("LAST MOVES FÜR SASCHA")
-            [print(o) for o in obs["last_moves"]]
+            print("\n====================")
+            print("PRINTING LAST MOVES IN VECTORIZER")
+            for move in obs["last_moves"]:
+                print(move)
+            print("======================\n")
 
-            print("\nCard Knowledge FÜR SASCHA")
-            print(obs["card_knowledge"])
-
-            print("\nObserved Hand FÜR SASCHA")
-            print(obs["observed_hands"])
+            # print("LAST MOVES FÜR SASCHA")
+            # [print(o) for o in obs["last_moves"]]
+            #
+            # print("\nCard Knowledge FÜR SASCHA")
+            # print(obs["card_knowledge"])
+            #
+            # print("\nObserved Hand FÜR SASCHA")
+            # print(obs["observed_hands"])
 
             if obs["last_moves"][0].move().type() != DEAL:
 
-                print("========================")
-                print("LAST MOVE IS NOT DEAL")
-                print(f"LAST MOVE: {obs['last_moves']}")
-                print("========================")
+                # print("========================")
+                # print("LAST MOVE IS NOT DEAL")
+                # print(f"LAST MOVE: {obs['last_moves']}")
+                # print("========================")
 
                 self.last_player_action = obs["last_moves"][0]
 
             elif len(obs["last_moves"]) >= 2:
 
-                print("========================")
-                print("LAST MOVE IS DEAL SO GET PRELAST")
-                print(f"PRE-LAST MOVE: {obs['last_moves'][1]}")
-                print("========================")
+                # print("========================")
+                # print("LAST MOVE IS DEAL SO GET PRELAST")
+                # print(f"PRE-LAST MOVE: {obs['last_moves'][1]}")
+                # print("========================")
 
                 self.last_player_action = obs["last_moves"][1]
 
-            # else:
+            else:
             #
-            #     print("========================")
-            #     print("LINE 182")
-            #     print(f"LAST MOVES: {obs['last_moves']}")
-            #     print("ASSIGNED MOVE", obs["last_moves"][1])
-            #     print("========================")
+                 # print("========================")
+                 # print("LINE 182")
+                 # print(f"LAST MOVES: {obs['last_moves']}")
+                 # print("ASSIGNED MOVE", obs["last_moves"][1])
+                 # print("========================")
             #
-            #     self.last_player_action = []
+                 self.last_player_action = None
 
         self.encode_hands(obs)
         self.encode_board(obs)
@@ -343,10 +352,10 @@ class ObservationVectorizer(object):
 
     def encode_last_action(self):
 
-        print("\n================")
-        print("ENCODING LAST ACTION")
-        print(f"LAST ACTION: {self.last_player_action}")
-        print("================\n")
+        # print("\n================")
+        # print("ENCODING LAST ACTION")
+        # print(f"LAST ACTION: {self.last_player_action}")
+        # print("================\n")
 
         if self.last_player_action is None:
             self.offset += self.last_action_bit_length
@@ -378,6 +387,16 @@ class ObservationVectorizer(object):
             # encode target player (if hint action)
             if last_move_type == REVEAL_COLOR or last_move_type == REVEAL_RANK:
                 observer_relative_target = (self.last_player_action.player() + self.last_player_action.move().target_offset()) % self.num_players
+                print("\n==================================")
+                print(f"ENCODING TARGET PLAYER AS: {observer_relative_target}")
+                print("==================================")
+                # print("\n==================")
+                # print("MOVE IS REVEAL COLOR / RANK")
+                # print(f"LAST PLAYER ID: {self.last_player_action.player()}")
+                # print(f"RELATIVE TARGET TO OBSERVER: {observer_relative_target}")
+                # print("==================\n")
+
+
                 self.obs_vec[self.offset + observer_relative_target] = 1
 
             self.offset += self.num_players
@@ -385,6 +404,11 @@ class ObservationVectorizer(object):
             # encode color (if hint action)
             if last_move_type == REVEAL_COLOR:
                 last_move_color = self.last_player_action.move().color()
+
+                print("\n==========================")
+                print("ENCODING LAST ACTION AS REVEAL COLOR")
+                print("==========================\n")
+
                 self.obs_vec[self.offset + utils.color_char_to_idx(last_move_color)] = 1
 
             self.offset += self.num_colors
@@ -392,17 +416,22 @@ class ObservationVectorizer(object):
             # encode rank (if hint action)
             if last_move_type == REVEAL_RANK:
                 last_move_rank = self.last_player_action.move().rank()
+
+                print("\n==========================")
+                print("ENCODING LAST ACTION AS REVEAL RANK")
+                print("==========================\n")
+
                 self.obs_vec[self.offset + last_move_rank] = 1
 
             self.offset += self.num_ranks
 
             # If multiple positions where selected
             if last_move_type == REVEAL_COLOR or last_move_type == REVEAL_RANK:
-                print("===============================")
-                print("LINE 405")
-                print("LAST PLAYER ACTION WAS REVEAL MOVE")
-                print(f"LAST ACTIONS !!!!!{self.last_player_action}")
-                print("===============================0")
+                # print("===============================")
+                # print("LINE 405")
+                # print("LAST PLAYER ACTION WAS REVEAL MOVE")
+                # print(f"LAST ACTIONS !!!!!{self.last_player_action}")
+                # print("===============================0")
                 positions = self.last_player_action.card_info_revealed()
                 for pos in positions:
                     self.obs_vec[self.offset + pos] = 1
@@ -411,11 +440,11 @@ class ObservationVectorizer(object):
 
             # encode position (if play or discard action)
             if last_move_type == PLAY or last_move_type == DISCARD:
-                print("===============================")
-                print("LINE 418")
-                print("LAST PLAYER ACTION WAS PLAY OR DISCARD MOVE LINE 349")
-                print(f"LAST ACTIONS !!!!!{self.last_player_action}")
-                print("===============================0")
+                # print("===============================")
+                # print("LINE 418")
+                # print("LAST PLAYER ACTION WAS PLAY OR DISCARD MOVE LINE 349")
+                # print(f"LAST ACTIONS !!!!!{self.last_player_action}")
+                # print("===============================0")
                 card_index = self.last_player_action.move().card_index()
                 self.obs_vec[self.offset + card_index] = 1
 
@@ -424,19 +453,24 @@ class ObservationVectorizer(object):
 
             # encode card (if play or discard action)
             if last_move_type == PLAY or last_move_type == DISCARD:
-                print("===============================")
-                print("LINE 431")
-                print("LAST PLAYER ACTION WAS PLAY OR DISCARD MOVE LINE 359")
-                print(f"LAST ACTIONS !!!!!{self.last_player_action}")
-                print("===============================0")
+
+                print("\n==========================")
+                print("ENCODING LAST ACTION AS PLAY OR DISCARD ---> SEE NEXT")
+                print("==========================\n")
+
                 card_index_hgame = self.last_player_action.move().color() * self.num_ranks + \
                                    self.last_player_action.move().rank()
-                print(self.offset + card_index_hgame)
+                # print(self.offset + card_index_hgame)
                 self.obs_vec[self.offset + card_index_hgame] = 1
 
             self.offset += self.bits_per_card
 
             if last_move_type == PLAY:
+
+                print("\n==========================")
+                print("DEFINETLY ENCODING LAST ACTION AS PLAY")
+                print("==========================\n")
+
                 if self.last_player_action.scored():
                     self.obs_vec[self.offset] = 1
 
@@ -482,52 +516,87 @@ class ObservationVectorizer(object):
 
         ### SYNC CARD KNOWLEDGE AFTER HINT GIVEN ###
         if self.last_player_action != None:
+
             last_move_type = self.last_player_action.move().type()
+
             if last_move_type == REVEAL_COLOR:
-                player_hand_to_sync = (self.last_player_action.player() + self.last_player_action.move().target_offset() + current_player_id) % self.num_players
+
+                player_hand_to_sync = (self.last_player_action.player() + self.last_player_action.move().target_offset()) % self.num_players
+
                 card_pos_to_sync = self.last_player_action.card_info_revealed()
+
                 color_to_sync = utils.color_char_to_idx(self.last_player_action.move().color())
-                # print("\n==============================")
-                # print(f"SYNCING CARD KNOWLEDGE OF PLAYER: {player_hand_to_sync}")
-                # print("================================\n")
+
+                print("\n==============================")
+                print("SYNCING PLAYER KNOWLEDGE AFTER REVEAL COLOR")
+                print(f"TEMP PLAYER: {current_player_id}")
+                print(f"SYNCING CARD KNOWLEDGE OF PLAYER: {player_hand_to_sync}")
+                print(f"COLOR TO SYNC: {self.last_player_action.move().color()}")
+                print("================================\n")
+
                 self.player_knowledge[player_hand_to_sync].sync_colors(card_pos_to_sync, color_to_sync)
 
 
         if self.last_player_action != None:
+
             last_move_type = self.last_player_action.move().type()
+
             if last_move_type == REVEAL_RANK:
-                player_hand_to_sync = (self.last_player_action.player() + self.last_player_action.move().target_offset() + current_player_id) % self.num_players
+
+                player_hand_to_sync = (self.last_player_action.player() + self.last_player_action.move().target_offset()) % self.num_players
+
                 card_pos_to_sync = self.last_player_action.card_info_revealed()
+
                 rank_to_sync = self.last_player_action.move().rank()
-                # print("\n==============================")
-                # print(f"SYNCING CARD KNOWLEDGE OF PLAYER: {player_hand_to_sync}")
-                # print("================================\n")
+
+                print("\n==============================")
+                print("SYNCING PLAYER KNOWLEDGE AFTER REVEAL RANK")
+                print(f"TEMP PLAYER: {current_player_id}")
+                print(f"SYNCING CARD KNOWLEDGE OF PLAYER: {player_hand_to_sync}")
+                print(f"RANK TO SYNC: {self.last_player_action.move().rank()}")
+                print("================================\n")
+
                 self.player_knowledge[player_hand_to_sync].sync_ranks(card_pos_to_sync, rank_to_sync)
 
         if self.last_player_action != None:
+
             last_move_type = self.last_player_action.move().type()
+
             if last_move_type == PLAY or last_move_type == DISCARD:
-                player_id = (self.last_player_action.player() + current_player_id) % self.num_players
+
+                player_hand_to_sync = (self.last_player_action.player()) % self.num_players
+
                 card_id = self.last_player_action.move().card_index()
 
-                self.player_knowledge[player_id].remove_card(card_id)
+                print("\n==============================")
+                print("SYNCING PLAYER KNOWLEDGE AFTER PLAY OR DISCARD MOVE")
+                print(f"TEMP PLAYER: {current_player_id}")
+                print(f"SYNCING CARD KNOWLEDGE OF PLAYER: {player_hand_to_sync}")
+                print(f"CARD INDEX TO SYNC: {card_id}")
+                print("================================\n")
+
+                self.player_knowledge[player_hand_to_sync].remove_card(card_id)
 
         for ih, player_card_knowledge in enumerate(card_knowledge_list):
-            num_cards = 0
 
-            # print("##########################################")
-            # print("############### TMP PLAYER CARD KNOWLEDGE ID {} ################".format(ih))
-            # print(player_card_knowledge)
-            # print("##########################################\n")
+            num_cards = 0
 
             rel_player_pos = (current_player_id + ih) % self.num_players
 
-            for card_id, card in enumerate(player_card_knowledge):
+            print("\n===================")
+            print("CHECK IF CARD KNOWLEDGE ORDER MATCHES PLAYER KNOWLEDGE OBJECT")
+            print(f"CARD KNOWLEDGE: {ih}")
+            print(f"TAKING PLAYER KNOWLEDGE: {rel_player_pos}")
+            print(f"CARD KNOWLEDGE OF PLAYER {rel_player_pos} AFTER UPDATING LAST ACTION")
 
-                # print("\n###########################")
-                # print("CARD")
-                # print(card)
-                # print("###########################\n")
+            for card in self.player_knowledge[rel_player_pos].hand:
+                print("COLORS")
+                print(card.colors)
+                print("RANKS")
+                print(card.ranks)
+            print("===================\n")
+
+            for card_id, card in enumerate(player_card_knowledge):
 
                 for color in range(self.num_colors):
 
@@ -538,16 +607,6 @@ class ObservationVectorizer(object):
                             if self.player_knowledge[rel_player_pos].hand[card_id].rank_plausible(rank):
 
                                 card_index = card_index = color * self.num_ranks + rank
-                                # print("\n===============================")
-                                # print(f"CURRENT PLAYER REAL: {current_player_id}, CURRENT PLAYER HAND: {ih}, CURRENT PLAYER RELATIVE {rel_player_pos}")
-                                # print(f"OFFSET TO BE SET IN 555: {self.offset + card_index}")
-                                # print(f"ASSIGNING PLAUSIBLE=TRUE TO CARD_ID: {card_id}, FOR COLOR: {color} AND RANK: {rank}")
-                                # print("SET CARD KNOWLEDGE FOR THIS HAND")
-                                # print("COLORS")
-                                # print(self.player_knowledge[rel_player_pos].hand[0].colors,self.player_knowledge[rel_player_pos].hand[1].colors,self.player_knowledge[rel_player_pos].hand[2].colors,self.player_knowledge[rel_player_pos].hand[3].colors)
-                                # print("RANKS")
-                                # print(self.player_knowledge[rel_player_pos].hand[0].ranks,self.player_knowledge[rel_player_pos].hand[1].ranks,self.player_knowledge[rel_player_pos].hand[2].ranks,self.player_knowledge[rel_player_pos].hand[3].ranks)
-                                # print("===============================\n")
 
                                 self.obs_vec[self.offset + card_index] = 1
 
@@ -571,7 +630,7 @@ class ObservationVectorizer(object):
             if num_cards < self.hand_size:
                 self.offset += (self.hand_size - num_cards) * (self.bits_per_card + self.num_colors + self.num_ranks)
 
-        print(self.offset)
+        # print(self.offset)
         assert self.offset - (
                     self.hands_bit_length +
                     self.board_bit_length +
@@ -635,5 +694,9 @@ class LegalMovesVectorizer(object):
             target_offset = move["target_offset"]
             return self.hand_size + self.hand_size + self.max_reveal_color_moves + (target_offset-1) * self.num_ranks + rank
         else:
+            print("\n==================")
+            print("MOVE IS NOT POSSIBLE")
+            print("===================\n")
+
             # print(move)
             return -2

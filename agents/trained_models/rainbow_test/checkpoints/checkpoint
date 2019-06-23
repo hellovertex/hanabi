@@ -1,2 +1,0 @@
-model_checkpoint_path: "/home/dg/Projects/RL/Hanabi/NIP_Hanabi_2019/agents/trained_models/rainbow_test/checkpoints/tf_ckpt-0"
-all_model_checkpoint_paths: "/home/dg/Projects/RL/Hanabi/NIP_Hanabi_2019/agents/trained_models/rainbow_test/checkpoints/tf_ckpt-0"
