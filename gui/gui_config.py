@@ -1,6 +1,9 @@
 from pathlib import Path
+import os
+import sys
+path = os.path.dirname(sys.modules['__main__'].__file__)
+path_simple_agent = Path(path + 'agents' + 'simple_agent')
 
-path_simple_agent = Path(__file__ + 'agents' + 'simple_agent')
 path_rainbow_agent = Path(__file__ + 'agents' + 'agent_player')
 
 """ agent_classes provides the possible args for the clients agent instantiation.

@@ -147,15 +147,3 @@ def get_target_from_offset(offset, agent_pos, num_players):
     # make up for the fact, that we changed the order of the agents, s.t. self always is at first position
 
     return str((offset + agent_pos) % num_players)
-
-class GuiActionType(enum.IntEnum):
-    """Move types, consistent with GUI server"""
-    CLUE = 0
-    PLAY = 1
-    DISCARD = 2
-
-
-class GuiClueType(enum.IntEnum):
-    """Move types, consistent with GUI server"""
-    RANK = 0
-    COLOR = 1

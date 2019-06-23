@@ -2,7 +2,7 @@
 """ PROJECT LVL IMPORTS """
 from game_state_wrapper import GameStateWrapper
 import gui_config as conf, utils, commandsWebSocket as cmd
-
+from agents.simple_agent import SimpleAgent
 """ PYTHON IMPORTS """
 from typing import Dict
 import requests

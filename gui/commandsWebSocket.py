@@ -82,6 +82,11 @@ clue: { // Not present if the type is 1 or 2
         // (these mappings change in the mixed variants)
 },
 """
+CLUE = 0
+PLAY = 1
+DISCARD = 2
+RANK_CLUE = 0
+COLOR_CLUE = 1
 
 
 def _action_clue(action, agent_pos, num_players):
@@ -89,25 +94,25 @@ def _action_clue(action, agent_pos, num_players):
     This method is only called from inside get_server_msg_for_pyhanabi_action"""
     action_msg = ''
 
-    if action['type'] == "REVEAL_COLOR":
+    if action['action_type'] == "REVEAL_COLOR":
         # compute absolute player position from target_offset
         target = str((action['target_offset'] + agent_pos) % num_players)
         # Change color representation to GUI
         cluevalue = str(utils.convert_color(action['color']))
 
-        action_msg = 'action {"type":' + str(utils.GuiActionType.CLUE) + \
+        action_msg = 'action {"type":' + str(CLUE) + \
                      ',"target":' + target + \
-                     ',"clue":{"type":' + str(utils.GuiClueType.COLOR) + \
+                     ',"clue":{"type":' + str(COLOR_CLUE) + \
                      ',"value":' + cluevalue + '}}'
-    elif action['type'] == "REVEAL_RANK":
+    elif action['action_type'] == "REVEAL_RANK":
         # compute absolute player position from target_offset
         target = str((action['target_offset'] + agent_pos) % num_players)
         # Change color representation to GUI
         cluevalue = str(utils.convert_color(action['color']))
 
-        action_msg = 'action {"type":' + str(utils.GuiActionType.CLUE) + \
+        action_msg = 'action {"type":' + str(CLUE) + \
                      ',"target":' + target + \
-                     ',"clue":{"type":' + str(utils.GuiClueType.RANK) + \
+                     ',"clue":{"type":' + str(RANK_CLUE) + \
                      ',"value":' + cluevalue + '}}'
 
     return action_msg
@@ -116,23 +121,23 @@ def _action_clue(action, agent_pos, num_players):
 def _action_other(action, agent_pos, abs_card_nums, hand_size):
     """ Returns action string that can be read by GUI server
     This method is only called from inside get_server_msg_for_pyhanabi_action"""
-    if action['type'] == 'PLAY':
+    if action['action_type'] == 'PLAY':
         card_index = action['card_index']  # need for conversion from stack to fifo
         # Get GUI target from pyhanabi target_offset
         max_idx = hand_size - 1
         target = str(abs_card_nums[agent_pos][max_idx - card_index])
 
-        return 'action {"type":' + str(utils.GuiActionType.PLAY) + \
+        return 'action {"type":' + str(PLAY) + \
             ',"target":' + target + '}'
 
     # -------- Convert DISCARD ----------- #
-    if action['type'] == 'DISCARD':
+    if action['action_type'] == 'DISCARD':
         card_index = action['card_index']  # need for conversion from stack to fifo
         # Get GUI target from pyhanabi target_offset
         max_idx = hand_size - 1
         target = str(abs_card_nums[agent_pos][max_idx - card_index])
 
-        return 'action {"type":' + str(utils.GuiActionType.DISCARD) + \
+        return 'action {"type":' + str(DISCARD) + \
                ',"target":' + target + '}'
     else:
         raise ValueError
@@ -141,7 +146,7 @@ def _action_other(action, agent_pos, abs_card_nums, hand_size):
 def get_server_msg_for_pyhanabi_action(action, abs_card_nums, agent_pos, num_players, hand_size):
     """ Takes an action dictionary as gotten from pyhanabi
     converts it to action string for GUI server """
-    if action["type"] in ["REVEAL_COLOR", "REVEAL_RANK"]:
+    if action["action_type"] in ["REVEAL_COLOR", "REVEAL_RANK"]:
         return _action_clue(action, agent_pos, num_players)
-    elif action["type"] in ["PLAY", "DISCARD"]:
+    elif action["action_type"] in ["PLAY", "DISCARD"]:
         return _action_other(action, agent_pos, abs_card_nums, hand_size)
