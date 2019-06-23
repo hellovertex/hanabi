@@ -121,6 +121,7 @@ def _action_clue(action, agent_pos, num_players):
 def _action_other(action, agent_pos, abs_card_nums, hand_size):
     """ Returns action string that can be read by GUI server
     This method is only called from inside get_server_msg_for_pyhanabi_action"""
+
     if action['action_type'] == 'PLAY':
         card_index = action['card_index']  # need for conversion from stack to fifo
         # Get GUI target from pyhanabi target_offset

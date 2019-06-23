@@ -6,7 +6,8 @@ import sys
 rel_path = os.path.join(os.environ['PYTHONPATH'])
 sys.path.append(rel_path)
 import vectorizer
-import pyhanabi_mocks, utils, commandsWebSocket
+import pyhanabi_mocks, utils
+import commandsWebSocket as cmd
 
 
 class GameStateWrapper:
@@ -267,9 +268,9 @@ class GameStateWrapper:
             max_idx = self.hand_size - 1
             # card_info_revealed.append(idx_c)
             card_info_revealed.append(max_idx - idx_c)
-            if clue['type'] == utils.GuiClueType.RANK:
+            if clue['type'] == 0:
                 old_color_clue = self.clues[target][idx_c]['color']  # keep old clue value
-                new_rank_clue = self.card(-1, clue['value'])['rank']  # pass rank to card() function for conversion
+                new_rank_clue = self.card(old_color_clue, clue['value'])['rank']  # pass rank to card() function for conversion
                 # update old+new clue
                 self.clues[target][idx_c] = {'color': old_color_clue, 'rank': new_rank_clue}
             else:
@@ -277,6 +278,7 @@ class GameStateWrapper:
                 clued_card_color = self.card(clue['value'], -1)['color']  # pass color to card() function for conversion
                 # update old+new clue
                 self.clues[target][idx_c] = {'color': clued_card_color, 'rank': old_rank_clue}
+
         return card_info_revealed
 
     def play(self, card):
@@ -374,7 +376,9 @@ class GameStateWrapper:
         n = self.player_position
         card_knowledge = card_knowledge[n:] + card_knowledge[:n]
         # return each hand reversed, s.t. it matches the pyhanabi format
+
         return [list(reversed(clues)) for clues in card_knowledge]
+
 
     def get_vectorized(self, observation):
         """ calls vectorizer.ObservationVectorizer with envMock to get the vectorized observation """
@@ -408,7 +412,8 @@ class GameStateWrapper:
         legal_moves_as_int, legal_moves_as_int_formated = self.get_legal_moves_as_int(observation['legal_moves'])
         observation["legal_moves_as_int"] = legal_moves_as_int
         observation["legal_moves_as_int_formated"] = legal_moves_as_int_formated
-
+        print(f"CARD KNOWLEDGE AS SEEN BZ PLAYER {self.agent_name}")
+        print(observation['card_knowledge'])
         return observation
 
     @staticmethod
@@ -469,7 +474,7 @@ class GameStateWrapper:
         num_players = self.num_players
         hand_size = self.hand_size
 
-        return commandsWebSocket.get_server_msg_for_pyhanabi_action(
+        return cmd.get_server_msg_for_pyhanabi_action(
             action=action,
             abs_card_nums=abs_card_nums,
             agent_pos=agent_pos,
