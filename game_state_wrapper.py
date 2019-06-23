@@ -401,7 +401,8 @@ class GameStateWrapper:
         legal_moves_as_int, legal_moves_as_int_formated = self.get_legal_moves_as_int(observation['legal_moves'])
         observation["legal_moves_as_int"] = legal_moves_as_int
         observation["legal_moves_as_int_formated"] = legal_moves_as_int_formated
-        observation['last_moves'] = observation['last_moves'][0]
+        print(f"LEGALMOVES PLAYER {self.agent_name} \n")
+        print(observation['legal_moves'])
         #print(f"KNOWLEDGE PLAYER {self.agent_name} \n")
         #print(observation['card_knowledge'])
         #print(f"OBSERVED HANDS PLAYER {self.agent_name} \n")
@@ -424,7 +425,6 @@ class GameStateWrapper:
         """ Returns player index as desired by server. That means offset comes from an agents computation """
         # make up for the fact, that we changed the order of the agents, s.t. self always is at first position
         idx = self.player_position
-
 
         return (offset + idx) % self.num_players
 
