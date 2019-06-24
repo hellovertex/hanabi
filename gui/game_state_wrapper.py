@@ -68,7 +68,7 @@ class GameStateWrapper:
         self.num_colors = game_config['colors']
         self.num_ranks = game_config['ranks']
         self.max_moves = game_config['max_moves']
-
+        self.order = 0  # number of the next card on the deck, incremented when card is drawn(dealt)
         """
         # ################################################ #
         # -------------- USE PYHANABI MOCKS -------------- #
@@ -152,6 +152,8 @@ class GameStateWrapper:
 
         # decrease deck size counter
         self.deck_size -= 1
+        # increase card count
+        self.order += 1
 
         # unfortunately, server references clued cards by absolute number and not its index on the hand
         # so we store the number too, to map it onto indices for playing and discarding
@@ -467,6 +469,9 @@ class GameStateWrapper:
         """ Takes an action dictionary as gotten from pyhanabi
         converts it to action string for GUI server """
         # one of ['REVEAL_COLOR', 'REVEAL_RANK', 'PLAY', 'DISCARD']
+
+        assert isinstance(action, dict)  # make sure we did not get an int action
+        assert 'action_type' in action  # make sure we have an action dictionary
 
         abs_card_nums = copy.deepcopy(self.card_numbers)
         agent_pos = self.player_position

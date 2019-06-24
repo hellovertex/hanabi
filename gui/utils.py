@@ -138,6 +138,7 @@ def parse_rank_server(rank):
     """ Returns rank as expected by the gui """
     if int(rank) > -1:
             rank += 1
+
     return str(rank)
 
 

@@ -33,6 +33,7 @@ class Runner(object):
         self.agent_config = {'players': flags['players']}
         self.environment = rl_env.make('Hanabi-Full', num_players=flags['players'])
         self.agent_class = AGENT_CLASSES[flags['agent_class']]
+        self.game_state_wrappers = list()
 
     def run(self):
         """Run episodes."""
@@ -43,11 +44,21 @@ class Runner(object):
             agents = [self.agent_class(self.agent_config)
                       for _ in range(self.flags['players'])]
             done = False
+            print("OBSERVATIONS LAST MOVES AFTER RESET")
+            print(observations['player_observations'][0]['last_moves'])
             episode_reward = 0
             episode_correct_cards = 0
+
             while not done:
                 for agent_id, agent in enumerate(agents):
+
                     observation = observations['player_observations'][agent_id]
+                    print("CURRENT PLAYER")
+                    print(observation['current_player'])
+                    print("CURRENT PLAYER OFFSET")
+                    print(observation['current_player_offset'])
+                    print("LAST MOVES")
+                    print(observation['last_moves'])
                     # print(f"Player {observation['current_player']} to move:")
                     # print(observation['observed_hands'])
                     # print(observation.keys())
@@ -57,6 +68,7 @@ class Runner(object):
 
                         assert action is not None
                         current_player_action = action
+
                         break
 
                     else:

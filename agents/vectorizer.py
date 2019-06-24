@@ -247,10 +247,15 @@ class ObservationVectorizer(object):
                 self.last_player_action = []
 
         self.encode_hands(obs)
+
         self.encode_board(obs)
+
         self.encode_discards(obs)
+
         self.encode_last_action(obs)
+
         self.encode_card_knowledge(obs)
+
 
         return self.obs_vec
 

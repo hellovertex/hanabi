@@ -534,6 +534,6 @@ if __name__ == "__main__":
     for thread in process:
         thread.start()
 
-    # todo send gameJoin(gameID, password) when self.config['table_pw] is not '' for when -r is specified
+    # todo send gameJoin(gameID, password) when seelf.config['table_pw] is not '' for when -r is specified
     # todo make formatting for --verbose mode and write wiki entry for client
     # self.config['table_pw'] shall not be '' if -r is specified

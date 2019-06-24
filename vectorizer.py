@@ -229,10 +229,15 @@ class ObservationVectorizer(object):
                  self.last_player_action = None
 
         self.encode_hands(obs)
+        print("OFFSET END ENCODE HANDS", self.offset)
         self.encode_board(obs)
+        print("OFFSET END ENCODE BOARDS", self.offset)
         self.encode_discards(obs)
+        print("OFFSET END ENCODE DISCARDS", self.offset)
         self.encode_last_action()
+        print("OFFSET END ENCODE LAST ACTION", self.offset)
         self.encode_card_knowledge(obs)
+        print("OFFSET END ENCODE CARD KNOWLEDGE", self.offset)
 
         self.knowledge = self.player_knowledge
 
