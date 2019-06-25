@@ -53,12 +53,16 @@ class Runner(object):
                 for agent_id, agent in enumerate(agents):
 
                     observation = observations['player_observations'][agent_id]
-                    print("CURRENT PLAYER")
-                    print(observation['current_player'])
-                    print("CURRENT PLAYER OFFSET")
-                    print(observation['current_player_offset'])
-                    print("LAST MOVES")
-                    print(observation['last_moves'])
+
+                    #print("CURRENT PLAYER")
+                    #print(observation['current_player'])
+                    #print("CURRENT PLAYER OFFSET")
+                    if len(observation['last_moves']) > 0:
+                        print("PRINTING PLAYER")
+                        print(observation['last_moves'][0].player())
+                    #print(observation['current_player_offset'])
+                    #print("LAST MOVES")
+                    #print(observation['last_moves'])
                     # print(f"Player {observation['current_player']} to move:")
                     # print(observation['observed_hands'])
                     # print(observation.keys())

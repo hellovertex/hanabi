@@ -312,6 +312,7 @@ class GameStateWrapperTestMock:
     def __init__(self):
         # card_numbers are stored in reversed order
         self.card_numbers = [[9,8,7,6,5], [4,3,2,1,0]]
+        self.num_players = 2
 
 # (x)
 def test_pyhanabi_card_index_to_gui_card_order():
@@ -334,8 +335,18 @@ class LastMoveTestMock:
     def __init__(self, return_values=0, type=utils.HanabiMoveType.PLAY):
         self.ret_val = return_values
         self.type = type
+
     def player(self):
         return self.ret_val
+
+    def card_info_revealed(self):
+        return [0, 2, 3]  # just an example
+
+    def color(self):
+        return 0
+
+    def rank(self):
+        return 0
 
     def move(self):
         ret_val = self.ret_val
@@ -356,6 +367,8 @@ class LastMoveTestMock:
             def type(self):
 
                 return self.action_type
+            def target_offset(self):
+                return 1
         return MoveTestMock(ret_val, type)
 
 
@@ -364,7 +377,7 @@ def test_get_json_params_for_play_or_discard():
     last_move = LastMoveTestMock(0)
     game_state_wrapper = GameStateWrapperTestMock()
     test_index, test_suite, test_rank, test_order = 0, 3, 1, 5  # values derived from last_move andd game_state_wrapper
-    index, suite, rank, order = pyhanabi_to_gui.get_json_params_for_play_or_discard(game_state_wrapper, last_move)
+    index, suite, rank, order = pyhanabi_to_gui.get_json_params_for_play_or_discard(game_state_wrapper, last_move, 0)
 
     print( (test_index, test_suite, test_rank, test_order) == (index, suite, rank, order))
     assert (test_index, test_suite, test_rank, test_order) == (index, suite, rank, order)
@@ -377,7 +390,7 @@ def test_create_notify_message_play():
     last_move = LastMoveTestMock(0)
     game_state_wrapper = GameStateWrapperTestMock()
     test_msg = '{"type":"play","which":{"index":0,"suit":3,"rank":1,"order":5}}'
-    result = pyhanabi_to_gui.create_notify_message_play(game_state_wrapper, last_move)
+    result = pyhanabi_to_gui.create_notify_message_play(game_state_wrapper, last_move, agent_id = 0)
 
     print(test_msg == result)
     assert test_msg == result
@@ -403,6 +416,18 @@ def test_format_reveal_move():
     print(test_msg == result)
     assert test_msg == result
 
+# (x)
+def test_get_json_params_for_reveal_move():
+    game_state_wrapper = GameStateWrapperTestMock()
+    last_move = LastMoveTestMock(0, type=utils.HanabiMoveType.REVEAL_COLOR)
+
+    card_info_revealed = last_move.card_info_revealed()
+    test_params = (1,  3,  0, [5, 7, 8], 1)
+    result = pyhanabi_to_gui.get_json_params_for_reveal_move(game_state_wrapper, last_move, agent_id=0)
+
+    print(result == test_params)
+
+    assert result == test_params
 # test_format_names()
 # test_create_init_message()
 # test_format_draw()
@@ -416,3 +441,4 @@ def test_format_reveal_move():
 # test_create_notify_message_play()
 # test_create_notify_message_discard()
 # test_format_reveal_move()
+# test_get_json_params_for_reveal_move()

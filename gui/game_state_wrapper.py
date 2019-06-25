@@ -142,7 +142,8 @@ class GameStateWrapper:
                 # notifyList message also contains info on who goes first
                 if d['who'] == self.player_position:
                     self.agents_turn = True
-
+        print("AFTER DEALING CARDS")
+        print(self.card_numbers)
         return
 
     def draw_card(self, d):
@@ -263,7 +264,8 @@ class GameStateWrapper:
         clue = dict_clue['clue']
         target = dict_clue['target']
         touched_cards = dict_clue['List']
-
+        print(f"TOUCHED CARDS: {touched_cards}")
+        print(f"CARD NUMS: {self.card_numbers}")
         for c in touched_cards:
             idx_c = self.card_numbers[target].index(c)
             # reverse order to match with pyhanabi encoding

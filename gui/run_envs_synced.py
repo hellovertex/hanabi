@@ -23,6 +23,7 @@ from agents.simple_agent import SimpleAgent
 from game_state_wrapper import GameStateWrapper
 import pyhanabi_to_gui
 import numpy as np
+import utils
 
 def msg_deal_card(observation):
     """
@@ -160,14 +161,22 @@ class Runner(object):
                                                     current_player_action))
                 observations, reward, done, unused_info = self.environment.step(
                     current_player_action)
-
-                # after step, synchronize gui env by using last_moves,
-                last_moves = observations['player_observations'][agent_id]['last_moves']
-
-                # send json encoded action to all game_state_wrappers to update their internal state
-                for i in range(len(agents)):
-                    notify_msg = pyhanabi_to_gui.create_notify_message_from_last_move(self.game_state_wrappers[i],last_moves)
-                    self.game_state_wrappers[i].update_state(notify_msg)
+                if observation['current_player'] == agent_id:
+                    # after step, synchronize gui env by using last_moves,
+                    last_moves = observations['player_observations'][agent_id]['last_moves']
+                    print("LAST MOVES")
+                    print(last_moves)
+                    # send json encoded action to all game_state_wrappers to update their internal state
+                    for i in range(len(agents)):
+                        notify_msg = pyhanabi_to_gui.create_notify_message_from_last_move(self.game_state_wrappers[i],last_moves, agent_id)
+                        self.game_state_wrappers[i].update_state(notify_msg)
+                        # in case a card has been dealt, we need to update the game_state_wrappers as well
+                        # we do this seperately because I forgot about it when encoding the notify messages :)
+                        deal_msg = None
+                        if len(last_moves) > 0 and last_moves[0].move().type() == utils.HanabiMoveType.DEAL:
+                            deal_msg = pyhanabi_to_gui.create_notify_message_deal(self.game_state_wrappers[i],last_moves, agent_id)
+                        if deal_msg != None:
+                            self.game_state_wrappers[i].update_state(deal_msg)
 
                 episode_reward += reward
                 if reward > 0:
@@ -178,6 +187,7 @@ class Runner(object):
             print('Running episode: %d' % episode)
             print('Max Reward: %.3f' % max(rewards))
             print(f'Max Cards played correctly: {max(cards_played_correctly)}')
+
         return rewards
 
 
