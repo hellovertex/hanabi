@@ -139,7 +139,7 @@ class Runner(object):
                         if not equal:
                             last_false_idx = last_false(vectorized == vectorized_gui)
                             print(f"Last deviation at index: {last_false_idx}")
-                            print(vectorized_gui == vectorized)
+                        #    print(vectorized_gui == vectorized)
                         print('===========================================================')
                         print('===========================================================')
                         print('-------------------END COMPARISON--------------------------')

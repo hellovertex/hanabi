@@ -178,6 +178,7 @@ def pyhanabi_color_idx_to_gui_suit(color: int) -> int:
     // 4 is blue
     """
     # pyhanabi
+    if color == -1: return color
     COLOR_CHAR = ["R", "Y", "G", "W", "B"]
     COLOR_IDX = [0, 1, 2 ,3 ,4]
     # gui
@@ -454,6 +455,28 @@ def create_notify_message_from_last_move(game_state_wrapper, last_moves: List, a
 
     return ret_msg
 
-def create_notify_message_deal(game_state_wrappers, last_moves, agent_id):
-    """ """
-    pass
+
+def get_json_params_for_deal_move(game_state_wrapper, last_move, agent_id):
+    """ Returns keys "who", "rank", "suit", "order" for json encoded DEAL move as sent by gui server """
+    who = agent_id
+    rank = pyhanabi_rank_to_gui_rank(last_move.move().rank())
+    suit = pyhanabi_color_idx_to_gui_suit(last_move.move().rank())
+    order = game_state_wrapper.order  # contains number of card drawn next
+
+    return who, rank, suit, order
+
+
+def create_notify_message_deal(game_state_wrapper, last_moves, agent_id):
+    """ Converts pyhanabis DEAL action from last_move to json encoded DEAL action as sent by gui server
+    e.g. {"type":"draw","who":1,"rank":-1,"suit":-1,"order":11}
+    """
+    assert last_moves[0].move().type() == utils.HanabiMoveType.DEAL
+
+    ret_msg = 'notify '
+
+    who, rank, suit, order = get_json_params_for_deal_move(game_state_wrapper, last_moves[0], agent_id)
+
+    card = {'color': suit, 'rank': rank}
+    ret_msg += format_draw(card, who, order)
+
+    return ret_msg

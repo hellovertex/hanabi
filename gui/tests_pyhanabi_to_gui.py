@@ -428,6 +428,13 @@ def test_get_json_params_for_reveal_move():
     print(result == test_params)
 
     assert result == test_params
+
+
+def test_get_json_params_for_deal_move():
+    game_state_wrapper = GameStateWrapperTestMock()
+    last_move = LastMoveTestMock(type=utils.HanabiMoveType.DEAL)
+    # todo
+    pass
 # test_format_names()
 # test_create_init_message()
 # test_format_draw()
