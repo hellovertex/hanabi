@@ -472,6 +472,9 @@ class GameStateWrapper:
 
         assert isinstance(action, dict)  # make sure we did not get an int action
         assert 'action_type' in action  # make sure we have an action dictionary
+        # if one of the above assertions failed, it is probably due to the agent sending an
+        # integer version of the acction. It should be parsed to a dictionary by means of the
+        # environment in which the agent operates on, so we will not do it here (for now)
 
         abs_card_nums = copy.deepcopy(self.card_numbers)
         agent_pos = self.player_position

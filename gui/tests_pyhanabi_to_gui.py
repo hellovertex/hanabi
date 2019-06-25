@@ -303,6 +303,7 @@ def test_create_notifyList_message():
     assert test_msg == result
 
 
+
 # test_get_player_list()
 # test_format_names()
 # test_create_init_message()

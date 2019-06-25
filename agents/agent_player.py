@@ -40,8 +40,8 @@ class RLPlayer(object):
         #self.base_dir = "/home/dg/Projects/RL/Hanabi/NIP_Hanabi_2019/agents/trained_models/rainbow_10kit"
 
 
-        self.base_dir = "/home/cawa/Documents/SoSe19/NIP/hanabi/agents/rainbow_10kit/"
-        # self.base_dir = "/home/cawa/Documents/SoSe19/NIP/hanabi/"
+        # self.base_dir = "/home/cawa/Documents/SoSe19/NIP/hanabi/agents/rainbow_10kit/"
+        self.base_dir = "/home/cawa/Documents/SoSe19/NIP/hanabi/"
 
 
 

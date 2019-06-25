@@ -22,6 +22,7 @@ from agents.random_agent import RandomAgent
 from agents.simple_agent import SimpleAgent
 from game_state_wrapper import GameStateWrapper
 import pyhanabi_to_gui
+import numpy as np
 
 def msg_deal_card(observation):
     """
@@ -41,7 +42,12 @@ AGENT_CLASSES = {'SimpleAgent': SimpleAgent, 'RandomAgent': RandomAgent}
 
 # used for syncing game_state_wrappers
 
-
+def last_false(mask):
+    last_false = 0
+    for i in range(len(mask)):
+        if mask[i] == False:
+            last_false = i
+    return last_false
 
 class Runner(object):
     """Runner class."""
@@ -58,12 +64,12 @@ class Runner(object):
         """Run episodes."""
         rewards = []
         cards_played_correctly = []
+
         for episode in range(flags['num_episodes']):
             observations = self.environment.reset()
             agents = [self.agent_class(self.agent_config)
                       for _ in range(self.flags['players'])]
-            # agent usernames - redundant but we keep it for readability
-            usernames = [str(i) for i, _ in enumerate(agents)]
+
             game_config = {
                 'num_total_players': 4,
                 'life_tokens': 3,
@@ -74,66 +80,70 @@ class Runner(object):
                 'ranks': 5,
                 'max_moves': 38
             }
+
             done = False
             episode_reward = 0
             episode_correct_cards = 0
             it = 0
+            vectorized_observations = list()  # list that stores vectorized observation for each agent
             while not done:
                 for agent_id, agent in enumerate(agents):
-                    # get observation for pyhanabi env
+
+                    # get observation from pyhanabi env
                     observation = observations['player_observations'][agent_id]
 
+
+                    # on reset, setup game_state_wraopers for each agent
                     if it == 0:
-                        # create game_config for game_state_wrapper
-                        agent_config = game_config
-                        agent_config['username'] = str(agent_id)
-                        # init game_state_wrapper for each agent
-                        self.game_state_wrappers.append(GameStateWrapper(agent_config))
+                        for i in range(len(agents)):
+                            # create game_config for game_state_wrapper
+                            agent_config = game_config
+                            agent_config['username'] = str(i)
 
-                        # inject init message
-                        msg_init = pyhanabi_to_gui.create_init_message(observation, agent_id)
-                        self.game_state_wrappers[agent_id].init_players(msg_init)
+                            # init game_state_wrapper for each agent
+                            self.game_state_wrappers.append(GameStateWrapper(agent_config))
 
-                        # inject notifyList message
-                        msg_notifyList = pyhanabi_to_gui.create_notifyList_message(observation)
-                        self.game_state_wrappers[agent_id].deal_cards(msg_notifyList)
+                            # inject init message
+                            msg_init = pyhanabi_to_gui.create_init_message(observation, i)
+                            self.game_state_wrappers[i].init_players(msg_init)
 
-                    print("VECTORIZED PYHANABI")
-                    vectorized = observation['vectorized']
-                    print(vectorized)
-                    # get current observation for gui env
-                    observation_gui = self.game_state_wrappers[agent_id].get_agent_observation()
+                            # inject notifyList message
+                            msg_notifyList = pyhanabi_to_gui.create_notifyList_message(observation)
+                            self.game_state_wrappers[i].deal_cards(msg_notifyList)
 
-                    # compare vectorized objects for each agent
-                    # vectorized = observation['vectorized']
-                    if it == 0:
-                        vectorized_gui = observation_gui['vectorized']
-                        print(observations)
 
-                        print("VECTORIZED GUI")
-                        print(vectorized_gui)
-                        mask = vectorized_gui == vectorized
-                        print(mask)
-                        latest_false = 0
-                        for i in range(len(mask)):
-                            if mask[i] == False:
-                                latest_false = i
-                        print(latest_false)
+                            # get current observation for gui env
+                            observation_gui = self.game_state_wrappers[i].get_agent_observation()
+                            vectorized_gui = observation_gui['vectorized']
+                            vectorized_observations.append(vectorized_gui)
+
 
                     # generate action
                     action = agent.act(observation)
 
-                    # send json encoded action to all game_state_wrappers to update their internal state
-                    # do this for each agent
-
-                    #if action['action_type'] == 'REVEAL_COLOR':
-                        # create notify message
-                    #    notify_msg = None
-                        # update game state wrappers
-                    #    for i in range(len(agents)): game_state_wrappers[i].update_state(notify_msg)
-
                     if observation['current_player'] == agent_id:
+                        vectorized = np.array(observation['vectorized'])
+                        vectorized_gui = vectorized_observations[agent_id]
 
+                        # compare the 2 vectorized objects
+                        print('===========================================================')
+                        print('===========================================================')
+                        print('-----------------------COMPARISON--------------------------')
+                        print('===========================================================')
+                        print('===========================================================')
+                        print("Vectorized objects of rl_env and gui are equal:")
+                        equal = np.array_equal(vectorized, vectorized_gui)
+                        print(equal)
+
+                        if not equal:
+                            last_false_idx = last_false(vectorized == vectorized_gui)
+                            print(f"Last deviation at index: {last_false_idx}")
+                            print(vectorized_gui == vectorized)
+                        print('===========================================================')
+                        print('===========================================================')
+                        print('-------------------END COMPARISON--------------------------')
+                        print('===========================================================')
+                        print('===========================================================')
                         assert action is not None
                         current_player_action = action
                         print("ACTION")
@@ -150,6 +160,15 @@ class Runner(object):
                                                     current_player_action))
                 observations, reward, done, unused_info = self.environment.step(
                     current_player_action)
+
+                # after step, synchronize gui env by using last_moves,
+                last_moves = observations['player_observations'][agent_id]['last_moves']
+
+                # send json encoded action to all game_state_wrappers to update their internal state
+                for i in range(len(agents)):
+                    notify_msg = pyhanabi_to_gui.create_notify_message_from_last_move(self.game_state_wrappers[i],last_moves)
+                    self.game_state_wrappers[i].update_state(notify_msg)
+
                 episode_reward += reward
                 if reward > 0:
                     episode_correct_cards += 1
