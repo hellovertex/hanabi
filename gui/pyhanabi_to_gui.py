@@ -5,15 +5,7 @@ import enum
 https://github.com/deepmind/hanabi-learning-environment such that they can be sent to the gui client, mirroring 
 the behaviour of our gui server """
 
-# Just for convenience, copied from pyhanabi
-class HanabiMoveType(enum.IntEnum):
-    """Move types, consistent with hanabi_lib/hanabi_move.h."""
-    INVALID = 0
-    PLAY = 1
-    DISCARD = 2
-    REVEAL_COLOR = 3
-    REVEAL_RANK = 4
-    DEAL = 5
+
 
 
 """ 
@@ -97,6 +89,35 @@ def format_play(index, suit, rank, order):
         suit,
         rank,
         order)
+
+
+def format_discard(index, suit, rank, order):
+    """
+        Message sent on DISCARD action, e.g.
+        {"type":"discard","failed":false,"which":{"index":1,"suit":0,"rank":4,"order":7}}
+         """
+    return '{{"type":"discard","failed":false,"which":{{"index":{},"suit":{},"rank":{},"order":{}}}}}'.format(
+        index,
+        suit,
+        rank,
+        order)
+
+
+def format_reveal_move(cluetype, cluevalue, giver, touched, target):
+    """
+        Message sent on REVEAL_COLOR action, e.g.
+        {"type": "clue", "clue": {"type": 1, "value": 3}, "giver": 0, "list": [5, 8, 9], "target": 1, "turn": 0}
+        Note: a card is "touched" if it is target of a given hint
+     """
+
+    return '{{"type": "clue", "clue": {{"type": {}, "value": {}}}, "giver": {}, "list": {}, "target": {}, "turn": 0}}'.format(
+        cluetype,
+        cluevalue,
+        giver,
+        touched,
+        target
+    )
+
 """
     # ################################################ #
     # ------------ INDEX CONVERSION UTILS  ----------- #
@@ -190,6 +211,51 @@ def pyhanabi_card_index_to_gui_card_order(player, card_index, game_state_wrapper
 
     return card_num
 
+
+def get_json_params_for_play_or_discard(game_state_wrapper, last_move):
+    """
+    Assigns values to json keys in one of
+        {"type":"play","which":{"index":1,"suit":1,"rank":1,"order":11}}
+    or
+        {"type":"discard","failed":false,"which":{"index":1,"suit":0,"rank":4,"order":7}}
+    :param game_state_wrapper: Used to get value for "order" key
+    :param last_move: pyhanabi HanabiHistoryItem object containing data for index, suit, and rank
+    :return: 4-tuple (index, suit, rank, order) used in json encoding of action
+    """
+    # assign values to json keys (following the gui's naming conventions)
+    # player index
+    index = last_move.player()
+    # color of played card
+    suit = pyhanabi_color_idx_to_gui_suit(last_move.move().color())
+    # rank+1 of played card
+    rank = pyhanabi_rank_to_gui_rank(last_move.move().rank())
+    # absolute number of played card
+    card_index = last_move.move().card_index()
+    order = pyhanabi_card_index_to_gui_card_order(last_move.player(), card_index, game_state_wrapper)
+
+    return index, suit, rank, order
+
+
+def get_json_params_for_reveal_move(game_state_wrapper, last_move):
+    """
+        Assigns values to json keys in one of
+            {"type":"clue","clue":{"type":0,"value":3},"giver":0,"list":[5,8,9],"target":1,"turn":0}
+            for REVEAL_RANK moves ("clue" "type" is 0)
+        or
+            {"type":"clue","clue":{"type":1,"value":3},"giver":0,"list":[5,8,9],"target":1,"turn":0}
+            for REVEAL_COLOR moves ("clue" "type" is 1)
+        :param game_state_wrapper: Used to get value for key "List" that contains indices of touched cards
+        :param last_move: pyhanabi HanabiHistoryItem object containing data needed to compute keys
+        "clue"["type"], "value" "giver" "target"
+        :return: 5-tuple (cluetype, cluevalue, giver, touched, target) used in json encoding of action
+    """
+    cluetype = None
+    cluevalue = None
+    giver = None
+    touched = None
+    target = None
+
+    return cluetype, cluevalue, giver, touched, target
 """
     # ################################################ #
     # ---------- ACTION TO MESSAGE FUNCTIONs --------- #
@@ -279,26 +345,54 @@ def create_notify_message_play(game_state_wrapper, last_move):
     :return: json encoded action corresponding to last_move, e.g.
     {"type":"play","which":{"index":1,"suit":1,"rank":1,"order":11}}
     """
-    assert last_move.move().type() == HanabiMoveType.PLAY
+    assert last_move.move().type() == utils.HanabiMoveType.PLAY
 
-    # assign values to json keys (following the gui's naming conventions)
-    # player index
-    index = last_move.player()
-    # color of played card
-    suit = pyhanabi_color_idx_to_gui_suit(last_move.move().color())
-    # rank+1 of played card
-    rank = pyhanabi_rank_to_gui_rank(last_move.move().rank())
-    # absolute number of played card
-    card_index = last_move.move().card_index()
-    order = pyhanabi_card_index_to_gui_card_order(last_move.player() ,card_index, game_state_wrapper)
+    index, suit, rank, order = get_json_params_for_play_or_discard(game_state_wrapper, last_move)
 
     return format_play(index, suit, rank, order)
 
 
+def create_notify_message_discard(game_state_wrapper, last_move):
+    """
+    Returns json encoded message the server would send to its client when announcing a DISCARD move.
+    :param game_state_wrapper: Used for card lookup
+    :param last_move: HanabiHistoryItem object that contains the necessary information from pyhanabi
+    :return: json encoded DISCAD MESSAGE, e.g.
+    {"type":"discard","failed":false,"which":{"index":1,"suit":0,"rank":4,"order":7}}
+    note that when "failed" equals True, we have discarded through a PLAY move.
+    """
+
+    assert last_move.move().type() == utils.HanabiMoveType.DISCARD
+
+    index, suit, rank, order = get_json_params_for_play_or_discard(game_state_wrapper, last_move)
+
+    return format_discard(index, suit, rank, order)
+
+
+def create_notify_message_reveal_color(game_state_wrapper, last_move):
+    """
+    Returns json encoded message the server would send to its client when announcing a REVEAL_XYZ move.
+    :param game_state_wrapper: Used for card lookup
+    :param last_move: HanabiHistoryItem object that contains the necessary information from pyhanabi
+    :return: json encoded REVEAL MESSAGE, e.g.
+    a = {"type":"clue","clue":{"type":0,"value":3},"giver":0,"list":[5,8,9],"target":1,"turn":0}
+    Note that a["clue"]["type"] is 0 for REVEAL_RANK and 1 for REVEAL_COLOR
+    "giver" and "target" are absolute player indices
+    """
+
+    assert last_move.move().type() in [utils.HanabiMoveType.REVEAL_COLOR, utils.HanabiMoveType.REVEAL_RANK]
+
+    cluetype, cluevalue, giver, touched, target = get_json_params_for_reveal_move(game_state_wrapper, last_move)
+
+    assert cluetype == 1  # 1 means REVEAL_COLOR
+    return format_reveal_move(cluetype, cluevalue, giver, touched, target)
+
 def create_notify_message_from_last_move(game_state_wrapper, last_moves: List) -> str:
     """
-    Returns json encoded action for server using the corresponding HanabiHistoryItem.
-    We update the pyhanabi env first and then call this method here to sync the gui,
+
+
+    Returns json encoded action as sent by gui server using the corresponding HanabiHistoryItem.
+    We update the pyhanabi env first and then call this method here to sync the gui clients wrapped envs,
     before we start the next iteration of the game loop. This is for convenience, as the
     HanabiHistoryItem contains all the information, we otherwise had to compute from within
     the GameStateWrapper
@@ -308,21 +402,26 @@ def create_notify_message_from_last_move(game_state_wrapper, last_moves: List) -
     """
     ret_msg = ''
 
-
-
     assert len(last_moves) > 0
     # IGNORE DEAL MOVES
-    if last_moves[0].move().type() == HanabiMoveType.DEAL:
+    if last_moves[0].move().type() == utils.HanabiMoveType.DEAL:
         assert len(last_moves) > 1
         last_move = last_moves[1]  # we never see 2 consecutive DEAL moves in last_moves
     else:
         last_move = last_moves[0]
 
     # CASE 1: PLAY MOVE
-    if last_move.move().type() == HanabiMoveType.PLAY:
+    if last_move.move().type() == utils.HanabiMoveType.PLAY:
         ret_msg = create_notify_message_play(game_state_wrapper, last_move)
 
     # CASE 2: DISCARD MOVE
-    # CASE 3: REVEAL_RANK
-    # CASE 4: REVEAL_COLOR
+    if last_move.move().type() == utils.HanabiMoveType.DISCARD:
+        ret_msg = create_notify_message_discard(game_state_wrapper, last_move)
 
+    # CASE 3: REVEAL_COLOR
+    if last_move.move().type() == utils.HanabiMoveType.REVEAL_COLOR:
+        ret_msg = create_notify_message_reveal_color(game_state_wrapper, last_move)
+
+    # CASE 4: REVEAL_RANK
+
+    return ret_msg

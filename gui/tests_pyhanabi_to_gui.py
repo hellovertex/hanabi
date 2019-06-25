@@ -1,4 +1,5 @@
 import pyhanabi_to_gui
+import utils
 # example observation for 2 players
 observations = {'player_observations': [
     {'current_player': 0, 'current_player_offset': 0, 'life_tokens': 3, 'information_tokens': 8, 'num_players': 2,
@@ -330,18 +331,19 @@ def test_pyhanabi_card_index_to_gui_card_order():
 
 
 class LastMoveTestMock:
-    def __init__(self, return_values=0):
+    def __init__(self, return_values=0, type=utils.HanabiMoveType.PLAY):
         self.ret_val = return_values
-
+        self.type = type
     def player(self):
         return self.ret_val
 
     def move(self):
         ret_val = self.ret_val
+        type = self.type
         class MoveTestMock:
-            def __init__(self, return_values):
+            def __init__(self, return_values, type):
                 self.return_value = return_values
-
+                self.action_type = type
             def color(self):
                 return self.return_value
 
@@ -352,9 +354,21 @@ class LastMoveTestMock:
                 return self.return_value
 
             def type(self):
-                PLAY = 1
-                return PLAY
-        return MoveTestMock(ret_val)
+
+                return self.action_type
+        return MoveTestMock(ret_val, type)
+
+
+# (x)
+def test_get_json_params_for_play_or_discard():
+    last_move = LastMoveTestMock(0)
+    game_state_wrapper = GameStateWrapperTestMock()
+    test_index, test_suite, test_rank, test_order = 0, 3, 1, 5  # values derived from last_move andd game_state_wrapper
+    index, suite, rank, order = pyhanabi_to_gui.get_json_params_for_play_or_discard(game_state_wrapper, last_move)
+
+    print( (test_index, test_suite, test_rank, test_order) == (index, suite, rank, order))
+    assert (test_index, test_suite, test_rank, test_order) == (index, suite, rank, order)
+
 
 # (x)
 def test_create_notify_message_play():
@@ -368,6 +382,26 @@ def test_create_notify_message_play():
     print(test_msg == result)
     assert test_msg == result
 
+# (x)
+def test_create_notify_message_discard():
+    last_move = LastMoveTestMock(0, type=utils.HanabiMoveType.DISCARD)
+    game_state_wrapper = GameStateWrapperTestMock()
+    test_msg = '{"type":"discard","failed":false,"which":{"index":0,"suit":3,"rank":1,"order":5}}'
+    result = pyhanabi_to_gui.create_notify_message_discard(game_state_wrapper, last_move)
+    print(test_msg == result)
+    assert test_msg == result
+
+# (x)
+def test_format_reveal_move():
+    cluetype = 1
+    cluevalue = 3
+    giver = 0
+    target = 1
+    touched = [0]
+    test_msg = '{"type": "clue", "clue": {"type": 1, "value": 3}, "giver": 0, "list": [0], "target": 1, "turn": 0}'
+    result = pyhanabi_to_gui.format_reveal_move(cluetype, cluevalue, giver, touched, target)
+    print(test_msg == result)
+    assert test_msg == result
 
 # test_format_names()
 # test_create_init_message()
@@ -378,4 +412,7 @@ def test_create_notify_message_play():
 # test_create_notifyList_message()
 # test_format_play()
 # test_pyhanabi_card_index_to_gui_card_order()
+# test_get_json_params_for_play_or_discard()
 # test_create_notify_message_play()
+# test_create_notify_message_discard()
+# test_format_reveal_move()

@@ -5,6 +5,15 @@ import pyhanabi_mocks
 from typing import Optional, Set, List
 import enum
 
+# Just for convenience, copied from pyhanabi
+class HanabiMoveType(enum.IntEnum):
+    """Move types, consistent with hanabi_lib/hanabi_move.h."""
+    INVALID = 0
+    PLAY = 1
+    DISCARD = 2
+    REVEAL_COLOR = 3
+    REVEAL_RANK = 4
+    DEAL = 5
 
 def get_agent_config(game_config: Dict, agent: str):
     """ Performs look-up for agent in config.AGENT_CLASSES and returns individual config. The agent config must
