@@ -166,14 +166,6 @@ def test_msg_deal_card():
     ]
 
 
-# (x)
-def test_get_player_list():
-
-    test_player_ids = [0, 1]
-    result = pyhanabi_to_gui.get_player_list(observations['player_observations'])
-    print(test_player_ids == result) # suceeded
-    assert test_player_ids == result
-
 
 # (x)
 def test_format_names():
@@ -303,8 +295,80 @@ def test_create_notifyList_message():
     assert test_msg == result
 
 
+# (x)
+def test_format_play():
+    index = 0
+    suit = 1
+    rank = 1
+    order = 11
+    test_msg = '{"type":"play","which":{"index":0,"suit":1,"rank":1,"order":11}}'
+    result = pyhanabi_to_gui.format_play(index, suit, rank, order)
+    print(test_msg == result)
+    assert test_msg == result
 
-# test_get_player_list()
+
+class GameStateWrapperTestMock:
+    def __init__(self):
+        # card_numbers are stored in reversed order
+        self.card_numbers = [[9,8,7,6,5], [4,3,2,1,0]]
+
+# (x)
+def test_pyhanabi_card_index_to_gui_card_order():
+
+
+    game_state_wrapper = GameStateWrapperTestMock()
+
+    hand_size = 5
+    card_index = 1
+    players = [0, 1]
+    test_nums = [1, 6]  # expected returns when players 0 and 1 play cards with pyhanabi card_index 2
+
+    for pid, test_num in list(zip(players, test_nums)):
+        result = pyhanabi_to_gui.pyhanabi_card_index_to_gui_card_oder(pid, card_index, game_state_wrapper)
+        print(result == test_num)
+        assert result == test_num
+
+
+class LastMoveTestMock:
+    def __init__(self, return_values=0):
+        self.ret_val = return_values
+
+    def player(self):
+        return self.ret_val
+
+    def move(self):
+        ret_val = self.ret_val
+        class MoveTestMock:
+            def __init__(self, return_values):
+                self.return_value = return_values
+
+            def color(self):
+                return self.return_value
+
+            def rank(self):
+                return self.return_value
+
+            def card_index(self):
+                return self.return_value
+
+            def type(self):
+                PLAY = 1
+                return PLAY
+        return MoveTestMock(ret_val)
+
+# (x)
+def test_create_notify_message_play():
+
+
+    last_move = LastMoveTestMock(0)
+    game_state_wrapper = GameStateWrapperTestMock()
+    test_msg = '{"type":"play","which":{"index":0,"suit":3,"rank":1,"order":5}}'
+    result = pyhanabi_to_gui.create_notify_message_play(game_state_wrapper, last_move)
+
+    print(test_msg == result)
+    assert test_msg == result
+
+
 # test_format_names()
 # test_create_init_message()
 # test_format_draw()
@@ -312,3 +376,6 @@ def test_create_notifyList_message():
 # test_from_relative_to_abs()
 # test_format_text_who_goes_first()
 # test_create_notifyList_message()
+# test_format_play()
+# test_pyhanabi_card_index_to_gui_card_order()
+# test_create_notify_message_play()

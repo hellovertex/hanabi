@@ -1,7 +1,11 @@
 from typing import List, Optional, Dict, Tuple
 import utils
 import enum
+""" This module parses actions provided by the pyhanabi interface from 
+https://github.com/deepmind/hanabi-learning-environment such that they can be sent to the gui client, mirroring 
+the behaviour of our gui server """
 
+# Just for convenience, copied from pyhanabi
 class HanabiMoveType(enum.IntEnum):
     """Move types, consistent with hanabi_lib/hanabi_move.h."""
     INVALID = 0
@@ -36,8 +40,10 @@ EXAMPLE FORMATS FOR JSON ENCODED ACTIONS:
 
 def format_names(names: List) -> str:
     """
+    Part of json message sent by the gui when setting up the game
+
     :param names: Array of integers (agent_ids)
-    :return: Formatted string, that the gui server can read
+    :return: Formatted array string containing the list of all players
     """
     assert len(names) >= 2
 
@@ -51,6 +57,7 @@ def format_names(names: List) -> str:
 
 
 def format_draw(card: Dict, who: int, order: int) -> Optional[str]:
+    """ Json message server sends when card is dealt """
     def convert_rank(rank):
         if rank is None:
             return -1
@@ -67,6 +74,7 @@ def format_draw(card: Dict, who: int, order: int) -> Optional[str]:
 
 
 def format_status(clues, score, max_score=25):
+    """ Part of json message sent by the gui when setting up the game """
     ret_msg = '{{"type":"status","clues":{0},"score":{1},"maxScore":{2},"doubleDiscard":false}}'.format(
         clues,
         score,
@@ -78,6 +86,17 @@ def format_status(clues, score, max_score=25):
 def format_text_who_goes_first(name, pos_abs):
     return '{{"type":"text","text":"{0} goes first"}},{{"type":"turn","num":0,"who":{1}}}]'.format(name, pos_abs)
 
+
+def format_play(index, suit, rank, order):
+    """
+    Message sent on PLAY action, e.g.
+    {"type":"play","which":{"index":1,"suit":1,"rank":1,"order":11}}
+     """
+    return '{{"type":"play","which":{{"index":{},"suit":{},"rank":{},"order":{}}}}}'.format(
+        index,
+        suit,
+        rank,
+        order)
 """
     # ################################################ #
     # ------------ INDEX CONVERSION UTILS  ----------- #
@@ -97,19 +116,6 @@ def get_player_index_abs(player_observation):
     current_player_offset = player_observation['current_player_offset']
 
     return (current_player + current_player_offset) % num_players
-
-
-def get_player_list_abs(player_observation: List) -> Optional[List]:
-    """ Returns player list (indices) relative to current player """
-    current_player = player_observation['current_player']
-    player_ids = [current_player]
-    num_players = player_observation['num_players']
-
-    for offset in range(1, len(player_observation)):
-        # current player is the same for all obs at a fixed turn, just the offset changes
-        player_ids.append((current_player + offset) % num_players)
-
-    return player_ids
 
 
 def from_relative_to_abs(player_observation, target='observed_hands'):
@@ -135,22 +141,55 @@ def from_relative_to_abs(player_observation, target='observed_hands'):
     # ################################################ #
 """
 
-def get_card_order_from_color_and_rank(game_state_wrapper, card):
+def pyhanabi_color_idx_to_gui_suit(color: int) -> int:
+    """ Returns color used in json encoded action read by gui server
+    # in gui:
+    // blue is 0
+    // green is 1
+    // yellow is 2
+    // red is 3
+    // white is 4
+    # in pyhanabi
+    // 0 is red
+    // 1 is yellow
+    // 2 is green
+    // 3 is white
+    // 4 is blue
     """
-    Server handles internal card references by absolute card numbers, which are not provided by rl_env.
-    We can only restore the card order by looking directly into the game_state_wrapper
-    :param game_state_wrapper: Handles the gui environment. Each agent has its own game_state_wrapper
-    :param card: pyhanabi HanabiCard object)
-    returns: card_order, i.e. the number of the given card as stored inside the game_state_wrapper
-     """
+    # pyhanabi
+    COLOR_CHAR = ["R", "Y", "G", "W", "B"]
+    COLOR_IDX = [0, 1, 2 ,3 ,4]
+    # gui
+    SUIT_CHAR = ["B", "G", "Y", "R", "W"]
 
-    # TODO
-    # convert card to dictionary storing values as maintained by gui
-    # then get index of this card by performing lookup in self.hand_list,
-    # usinng this index, get abs card number by lookup in self.card_nums
-    # return index
+    assert color in COLOR_IDX
 
-    pass
+    return SUIT_CHAR.index(COLOR_CHAR[color])
+
+
+def pyhanabi_rank_to_gui_rank(rank: int) -> int:
+    """ Returns rank as expected by gui server, i.e. 1-indexed"""
+    if rank in [0,1,2,3,4]:
+        return rank + 1
+    else:
+        return rank
+
+
+def pyhanabi_card_index_to_gui_card_order(player, card_index, game_state_wrapper):
+    """
+    Returns the absolute card number of the card with given card_index in player's hand
+    :param player: agent_id
+    :param card_index:
+    :param game_state_wrapper: the game state wrapper corresponding to player
+    :return: Number of the card ranging from 0 to (deck_size - 1)
+    """
+    hand_size = len(game_state_wrapper.card_numbers[player])
+    # cards are in reverse order, so take the 'mirrored' index
+    actual_idx = (hand_size - 1) - card_index
+    card_num = game_state_wrapper.card_numbers[player][actual_idx]
+
+    return card_num
+
 """
     # ################################################ #
     # ---------- ACTION TO MESSAGE FUNCTIONs --------- #
@@ -218,7 +257,7 @@ def create_notifyList_message(player_observation):
         for cid in range(hand_size):
             ret_msg += format_draw(observed_hands_abs[pid][cid], who=pid, order=order) + ','
             order += 1
-    #
+
     # append json for game status
     clues = player_observation['information_tokens']
     score = 0
@@ -228,13 +267,12 @@ def create_notifyList_message(player_observation):
 
     # append json for who starts
     pos_abs = get_player_index_abs(player_observation)
-    name = str(pos_abs)
-    ret_msg += format_text_who_goes_first(name, pos_abs)
+    ret_msg += format_text_who_goes_first(name=str(pos_abs), pos_abs=pos_abs)
 
     return ret_msg
 
 
-def _create_notify_message_play(game_state_wrapper, last_move):
+def create_notify_message_play(game_state_wrapper, last_move):
     """
     Returns json encoded action given HanabiHistoryItem last_move
     :param last_move: HanabiHistoryItem
@@ -243,14 +281,18 @@ def _create_notify_message_play(game_state_wrapper, last_move):
     """
     assert last_move.move().type() == HanabiMoveType.PLAY
 
+    # assign values to json keys (following the gui's naming conventions)
     # player index
-    index = None
+    index = last_move.player()
     # color of played card
-    suit = None
+    suit = pyhanabi_color_idx_to_gui_suit(last_move.move().color())
     # rank+1 of played card
-    rank = None
+    rank = pyhanabi_rank_to_gui_rank(last_move.move().rank())
     # absolute number of played card
-    order = None
+    card_index = last_move.move().card_index()
+    order = pyhanabi_card_index_to_gui_card_order(last_move.player() ,card_index, game_state_wrapper)
+
+    return format_play(index, suit, rank, order)
 
 
 def create_notify_message_from_last_move(game_state_wrapper, last_moves: List) -> str:
@@ -275,9 +317,10 @@ def create_notify_message_from_last_move(game_state_wrapper, last_moves: List) -
         last_move = last_moves[1]  # we never see 2 consecutive DEAL moves in last_moves
     else:
         last_move = last_moves[0]
+
     # CASE 1: PLAY MOVE
     if last_move.move().type() == HanabiMoveType.PLAY:
-        ret_msg = _create_notify_message_play(game_state_wrapper, last_move)
+        ret_msg = create_notify_message_play(game_state_wrapper, last_move)
 
     # CASE 2: DISCARD MOVE
     # CASE 3: REVEAL_RANK
