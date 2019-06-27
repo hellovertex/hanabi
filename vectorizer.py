@@ -549,108 +549,47 @@ class ObservationVectorizer(object):
     def encode_card_knowledge(self, obs):
 
         card_knowledge_list = obs["card_knowledge"]
-        current_player_id = obs["current_player"]
+        current_pid = obs["current_player"]
+        action = self.last_player_action
 
-        ### SYNC CARD KNOWLEDGE AFTER HINT GIVEN ###
-        if self.last_player_action != None:
+        if action:  # comparison is equal to 'if action != []'
+            type_action = self.last_player_action.move().type()
 
-            last_move_type = self.last_player_action.move().type()
-
-            if last_move_type == REVEAL_COLOR:
-
-                player_hand_to_sync = (self.last_player_action.player() + self.last_player_action.move().target_offset()) % self.num_players
-
+            if type_action in [REVEAL_COLOR, REVEAL_RANK]:
+                player_hand_to_sync = (
+                    action.player() +
+                    action.move().target_offset() +
+                    current_pid
+                ) % self.num_players
                 card_pos_to_sync = self.last_player_action.card_info_revealed()
 
-                color_to_sync = utils.color_char_to_idx(self.last_player_action.move().color())
+                if type_action == REVEAL_COLOR:
+                    color_to_sync = utils.color_char_to_idx(self.last_player_action.move().color())
+                    self.player_knowledge[player_hand_to_sync].sync_colors(card_pos_to_sync, color_to_sync)
 
-                #print("\n==============================")
-                #print("SYNCING PLAYER KNOWLEDGE AFTER REVEAL COLOR")
-                #print(f"TEMP PLAYER: {current_player_id}")
-                #print(f"SYNCING CARD KNOWLEDGE OF PLAYER: {player_hand_to_sync}")
-                #print(f"COLOR TO SYNC: {self.last_player_action.move().color()}")
-                #print("================================\n")
+                elif type_action == REVEAL_RANK:
+                    rank_to_sync = self.last_player_action.move().rank()
+                    self.player_knowledge[player_hand_to_sync].sync_ranks(card_pos_to_sync, rank_to_sync)
 
-                self.player_knowledge[player_hand_to_sync].sync_colors(card_pos_to_sync, color_to_sync)
+            elif type_action in [PLAY, DISCARD]:
 
-
-        if self.last_player_action != None:
-
-            last_move_type = self.last_player_action.move().type()
-
-            if last_move_type == REVEAL_RANK:
-
-                player_hand_to_sync = (self.last_player_action.player() + self.last_player_action.move().target_offset()) % self.num_players
-
-                card_pos_to_sync = self.last_player_action.card_info_revealed()
-
-                rank_to_sync = self.last_player_action.move().rank()
-
-                #print("\n==============================")
-                #print("SYNCING PLAYER KNOWLEDGE AFTER REVEAL RANK")
-                #print(f"TEMP PLAYER: {current_player_id}")
-                #print(f"SYNCING CARD KNOWLEDGE OF PLAYER: {player_hand_to_sync}")
-                #print(f"RANK TO SYNC: {self.last_player_action.move().rank()}")
-                #print("================================\n")
-
-                self.player_knowledge[player_hand_to_sync].sync_ranks(card_pos_to_sync, rank_to_sync)
-
-        if self.last_player_action != None:
-
-            last_move_type = self.last_player_action.move().type()
-
-            if last_move_type == PLAY or last_move_type == DISCARD:
-
-                player_hand_to_sync = (self.last_player_action.player()) % self.num_players
-
-                card_id = self.last_player_action.move().card_index()
-
-                #print("\n==============================")
-                #print("SYNCING PLAYER KNOWLEDGE AFTER PLAY OR DISCARD MOVE")
-                #print(f"TEMP PLAYER: {current_player_id}")
-                #print(f"SYNCING CARD KNOWLEDGE OF PLAYER: {player_hand_to_sync}")
-                #print(f"CARD INDEX TO SYNC: {card_id}")
-                #print("================================\n")
+                player_hand_to_sync = (action.player() + current_pid) % self.num_players
+                card_id = action.move().card_index()
 
                 self.player_knowledge[player_hand_to_sync].remove_card(card_id)
 
-        for ih, player_card_knowledge in enumerate(card_knowledge_list):
-
+        for pid, player_card_knowledge in enumerate(card_knowledge_list):
             num_cards = 0
-
-            rel_player_pos = (current_player_id + ih) % self.num_players
-
-            #print("\n===================")
-            #print("CHECK IF CARD KNOWLEDGE ORDER MATCHES PLAYER KNOWLEDGE OBJECT")
-            #print(f"CARD KNOWLEDGE: {ih}")
-            #print(f"TAKING PLAYER KNOWLEDGE: {rel_player_pos}")
-            #print(f"CARD KNOWLEDGE OF PLAYER {rel_player_pos} AFTER UPDATING LAST ACTION")
-            #print("SELF PLAYER KNOWLEDGE")
-            #print(self.player_knowledge)
-            #print("ACCESSED")
-            #print(self.player_knowledge[rel_player_pos])
-            #print("HAND")
-            #print(self.player_knowledge[rel_player_pos].hand)
-            for card in self.player_knowledge[rel_player_pos].hand:
-                pass
-                #print("COLORS")
-                #print(card.colors)
-                #print("RANKS")
-                #print(card.ranks)
-            #print("===================\n")
+            rel_player_pos = (current_pid + pid) % self.num_players
 
             for card_id, card in enumerate(player_card_knowledge):
-
                 for color in range(self.num_colors):
 
                     if self.player_knowledge[rel_player_pos].hand[card_id].color_plausible(color):
-
                         for rank in range(self.num_ranks):
 
                             if self.player_knowledge[rel_player_pos].hand[card_id].rank_plausible(rank):
-
-                                card_index = card_index = color * self.num_ranks + rank
-
+                                card_index = color * self.num_ranks + rank
                                 self.obs_vec[self.offset + card_index] = 1
 
                 self.offset += self.bits_per_card
@@ -658,7 +597,6 @@ class ObservationVectorizer(object):
                 # Encode explicitly revealed colors and ranks
                 if card["color"] is not None:
                     color = utils.color_char_to_idx(card["color"])
-
                     self.obs_vec[self.offset + color] = 1
 
                 self.offset += self.num_colors
