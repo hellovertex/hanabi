@@ -96,6 +96,9 @@ class Runner(object):
 
                     # get observation from pyhanabi env
                     observation_pyhanabi = observations['player_observations'][agent_id]
+
+                    last_observations = observations['player_observations']
+                    last_pid = observations['current_player']
                     # 1 pyhanabi observation contains 4 vectorized objects and each is computed individually for one agent
                     # you can see that, when you print out observation['vectorized'] for different agent_ids
 
@@ -134,7 +137,7 @@ class Runner(object):
                         print('===========================================================')
                         print('===========================================================')
                         print("Vectorized objects of rl_env and gui are equal:")
-                        # equal = np.array_equal(vectorized, vectorized_gui)
+                        print(np.array_equal(vectorized, vectorized_gui))
                         print("Vectorized objects of rl_env and d are equal:")
                         equal = np.array_equal(vectorized, vectorized_d)
                         print(equal)
@@ -170,23 +173,21 @@ class Runner(object):
                     current_player_action)
 
                 # after step, synchronize gui env by using last_moves,
-                if observation_pyhanabi['current_player'] == agent_id:
-
-                    last_moves = observations['player_observations'][agent_id]['last_moves']
-                    # send json encoded action to all game_state_wrappers to update their internal state
-                    for i in range(len(agents)):
-                        notify_msg = pyhanabi_to_gui.create_notify_message_from_last_move(self.game_state_wrappers[i],last_moves, agent_id)
-                        self.game_state_wrappers[i].update_state(notify_msg)
-                        # in case a card has been dealt, we need to update the game_state_wrappers as well
-                        # we do this seperately because I forgot about it when encoding the notify messages :)
-                        deal_msg = None
-                        if len(last_moves) > 0 and last_moves[0].move().type() == utils.HanabiMoveType.DEAL:
-                            # we have to use last_moves of different agent in order to see color and rank of drawn card
-                            idx_next = (agent_id + 1) % observation_pyhanabi['num_players']
-                            last_moves = observations['player_observations'][idx_next]['last_moves']
-                            deal_msg = pyhanabi_to_gui.create_notify_message_deal(self.game_state_wrappers[i],last_moves, agent_id)
-                        if deal_msg != None:
-                            self.game_state_wrappers[i].update_state(deal_msg)
+                last_moves = observations['player_observations'][last_pid]['last_moves']
+                # send json encoded action to all game_state_wrappers to update their internal state
+                for i in range(len(agents)):
+                    notify_msg = pyhanabi_to_gui.create_notify_message_from_last_move(self.game_state_wrappers[i],last_moves, last_pid)
+                    self.game_state_wrappers[i].update_state(notify_msg)
+                    # in case a card has been dealt, we need to update the game_state_wrappers as well
+                    # we do this seperately because I forgot about it when encoding the notify messages :)
+                    deal_msg = None
+                    if len(last_moves) > 0 and last_moves[0].move().type() == utils.HanabiMoveType.DEAL:
+                        # we have to use last_moves of different agent in order to see color and rank of drawn card
+                        idx_next = (agent_id + 1) % observation_pyhanabi['num_players']
+                        last_moves = observations['player_observations'][idx_next]['last_moves']
+                        deal_msg = pyhanabi_to_gui.create_notify_message_deal(self.game_state_wrappers[i],last_moves, agent_id)
+                    if deal_msg != None:
+                        self.game_state_wrappers[i].update_state(deal_msg)
 
                 episode_reward += reward
                 if reward > 0:
