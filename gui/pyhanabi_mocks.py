@@ -167,7 +167,7 @@ def get_move_rank(move):
         if rankclue:
             rank = parse_rank_pyhanabi(move['clue']['value'])
         else:
-            rank = None
+            rank = -1
     # for DEAL moves
     if move['type'] == 'draw':
         rank = parse_rank_pyhanabi(move['rank'])

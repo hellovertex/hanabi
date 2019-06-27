@@ -332,7 +332,7 @@ class GameStateWrapper:
                 player = -1
             return player
 
-        player = get_player(dict_action)
+        player = 3  # get_player(dict_action)
         scored = scored  # boolean, True if firework increased
         information_token = information_token  # boolean, True if info_token gained on discard or play
         card_info_revealed = card_info_revealed
@@ -432,16 +432,18 @@ class GameStateWrapper:
 
     def get_legal_moves(self):
         """ Computes observation['legal_moves'] or observation.legal_moves(), depending on use_pyhanabi_mock"""
-        # order is 1. discard 2. play 3. reveal_color reveal rank and RYGWB for color
+        # order is 2. discard 1. play 3. reveal_color reveal rank and RYGWB for color
         legal_moves = []
+
+
+        # play
+        for i in range(self.hand_size):
+            legal_moves.append({'action_type': 'PLAY', 'card_index': i})
 
         # discard if possible
         if self.information_tokens < self.max_info_tokens:
             for i in range(self.hand_size):
                 legal_moves.append({'action_type': 'DISCARD', 'card_index': i})
-        # play
-        for i in range(self.hand_size):
-            legal_moves.append({'action_type': 'PLAY', 'card_index': i})
 
         # clue if info token available
         if self.information_tokens > 0:

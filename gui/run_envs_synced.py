@@ -90,103 +90,76 @@ class Runner(object):
             episode_reward = 0
             episode_correct_cards = 0
             it = 0
-            vectorized_observations = list()  # list that stores vectorized observation for each agent
+
             while not done:
-                for agent_id, agent in enumerate(agents):
 
-                    # get observation from pyhanabi env
-                    observation_pyhanabi = observations['player_observations'][agent_id]
+                # if start -> initialize wrapped environments
+                if it == 0:
+                    for i in range(len(agents)):
+                        # create game_config for game_state_wrapper
+                        agent_config = game_config
+                        agent_config['username'] = str(i)
+                        observation_tmp = observations['player_observations'][i]
+                        # init game_state_wrapper for each agent
+                        self.game_state_wrappers.append(GameStateWrapper(agent_config))
 
-                    last_observations = observations['player_observations']
-                    last_pid = observations['current_player']
-                    # 1 pyhanabi observation contains 4 vectorized objects and each is computed individually for one agent
-                    # you can see that, when you print out observation['vectorized'] for different agent_ids
+                        # inject init message
+                        msg_init = pyhanabi_to_gui.create_init_message(observation_tmp, i)
+                        self.game_state_wrappers[i].init_players(msg_init)
 
-                    # on reset, setup game_state_wraopers for each agent
-                    if it == 0:
-                        for i in range(len(agents)):
-                            # create game_config for game_state_wrapper
-                            agent_config = game_config
-                            agent_config['username'] = str(i)
-                            observation_tmp = observations['player_observations'][i]
-                            # init game_state_wrapper for each agent
-                            self.game_state_wrappers.append(GameStateWrapper(agent_config))
+                        # inject notifyList message
+                        msg_notifyList = pyhanabi_to_gui.create_notifyList_message(observation_tmp)
+                        self.game_state_wrappers[i].deal_cards(msg_notifyList)
 
-                            # inject init message
-                            msg_init = pyhanabi_to_gui.create_init_message(observation_tmp, i)
-                            self.game_state_wrappers[i].init_players(msg_init)
+                current_player = observations['current_player']
+                observation_current_player = observations['player_observations'][current_player]
 
-                            # inject notifyList message
-                            msg_notifyList = pyhanabi_to_gui.create_notifyList_message(observation_tmp)
-                            self.game_state_wrappers[i].deal_cards(msg_notifyList)
+                # else compare vectorized observations
+                print("============================================================================")
+                print("======================= START COMPARISON ===========================")
+                print("============================================================================")
 
+                vec_gui = self.game_state_wrappers[current_player].get_agent_observation()['vectorized']
+                vec_py = self.v.vectorize_observation(observation_current_player)
 
+                print("Vectorized objects of rl_env and gui are equal:")
+                print(np.array_equal(vec_py, vec_gui))
 
-                    # generate action
-                    action = agent.act(observation_pyhanabi)
+                print(f"SUM OF VEC PYHANABI = {sum(vec_py)}")
+                print(f"SUM OF VEC GUI = {sum(vec_gui)}")
 
-                    if observation_pyhanabi['current_player'] == agent_id:
-                        observation_gui = self.game_state_wrappers[agent_id].get_agent_observation()
-                        vectorized = np.array(observation_pyhanabi['vectorized'])
-                        vectorized_gui = observation_gui['vectorized']
-                        vectorized_d = self.v.vectorize_observation(observation_pyhanabi)
-                        # compare the 2 vectorized objects
-                        print('===========================================================')
-                        print('===========================================================')
-                        print('-----------------------COMPARISON--------------------------')
-                        print('===========================================================')
-                        print('===========================================================')
-                        print("Vectorized objects of rl_env and gui are equal:")
-                        print(np.array_equal(vectorized, vectorized_gui))
-                        print("Vectorized objects of rl_env and d are equal:")
-                        equal = np.array_equal(vectorized, vectorized_d)
-                        print(equal)
-                        print(f"SUM OF VEC PYHANABI = {sum(vectorized)}")
-                        print(f"SUM OF VEC GUI = {sum(vectorized_gui)}")
+                last_false_idx, idcs = last_false(vec_py == vec_gui)
+                print(f"Last deviation at index: {last_false_idx}")
+                print(f"{len(idcs)} mistakes at {idcs}")
 
-                        last_false_idx, idcs = last_false(vectorized_d == vectorized_gui)
-                        print(f"Last deviation at index: {last_false_idx}")
-                        print(f"mistakes at {idcs}")
-                        #print(vectorized_gui == vectorized)
-                        #print(observation_gui['observed_hands'])
+                print("============================================================================")
+                print("======================= END COMPARISON ===========================")
+                print("============================================================================")
 
-                        print('===========================================================')
-                        print('===========================================================')
-                        print('-------------------END COMPARISON--------------------------')
-                        print('===========================================================')
-                        print('===========================================================')
-                        assert action is not None
-                        current_player_action = action
-                        print("ACTION")
-                        print(action)
-                        break
-
-                    else:
-                        assert action is None
-
-                    it += 1
+                # sample action from current_player
+                action = agents[current_player].act(observation_current_player)
+                it += 1
 
                 # Make an environment step.
-                print('Agent: {} action: {}'.format(observation_pyhanabi['current_player'],
-                                                    current_player_action))
-                observations, reward, done, unused_info = self.environment.step(
-                    current_player_action)
+                print(f'Agent: {current_player} action: {action}')
+                observations, reward, done, unused_info = self.environment.step(action)
 
-                # after step, synchronize gui env by using last_moves,
-                last_moves = observations['player_observations'][last_pid]['last_moves']
+                # after step, synchronize gui env by using last_moves of new observation,
+                last_moves = observations['player_observations'][current_player]['last_moves']
+
                 # send json encoded action to all game_state_wrappers to update their internal state
                 for i in range(len(agents)):
-                    notify_msg = pyhanabi_to_gui.create_notify_message_from_last_move(self.game_state_wrappers[i],last_moves, last_pid)
+                    notify_msg = pyhanabi_to_gui.create_notify_message_from_last_move(self.game_state_wrappers[i],last_moves, current_player)
                     self.game_state_wrappers[i].update_state(notify_msg)
                     # in case a card has been dealt, we need to update the game_state_wrappers as well
                     # we do this seperately because I forgot about it when encoding the notify messages :)
                     deal_msg = None
                     if len(last_moves) > 0 and last_moves[0].move().type() == utils.HanabiMoveType.DEAL:
                         # we have to use last_moves of different agent in order to see color and rank of drawn card
-                        idx_next = (agent_id + 1) % observation_pyhanabi['num_players']
+                        idx_next = (current_player + 1) % observation_current_player['num_players']
                         last_moves = observations['player_observations'][idx_next]['last_moves']
-                        deal_msg = pyhanabi_to_gui.create_notify_message_deal(self.game_state_wrappers[i],last_moves, agent_id)
-                    if deal_msg != None:
+                        deal_msg = pyhanabi_to_gui.create_notify_message_deal(self.game_state_wrappers[i],last_moves, current_player)
+                    if deal_msg is not None:
                         self.game_state_wrappers[i].update_state(deal_msg)
 
                 episode_reward += reward

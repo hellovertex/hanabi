@@ -229,6 +229,7 @@ class ObservationVectorizer(object):
     def vectorize_observation(self,obs):
         # if len(obs["last_moves"]) > 2:
             # print(obs["last_moves"][1])
+
         self.obs_vec = np.zeros(self.total_state_length)
         self.obs = obs
         if obs["last_moves"] != []:
@@ -289,6 +290,7 @@ class ObservationVectorizer(object):
                 Leave the bits for the absent cards empty (adjust the offset to skip
                 bits for the missing cards).
                 '''
+
                 if num_cards < self.hand_size:
 
                     self.offset += (self.hand_size - num_cards) * self.bits_per_card
@@ -331,11 +333,12 @@ class ObservationVectorizer(object):
         for l in range(life_tokens):
             self.obs_vec[self.offset + l] = 1
         self.offset += self.max_life_tokens
-        print(f"inside encode_boards; OBS agents/VEC: {obs}")
+
         assert self.offset - (self.hands_bit_length + self.board_bit_length) == 0
         return True
 
     def encode_discards(self,obs):
+        #print(f"DISCARDPILE OBS GOOD = {obs}")
         discard_pile = obs["discard_pile"]
         counts = np.zeros(self.num_colors*self.num_ranks)
         for card in discard_pile:
@@ -359,9 +362,15 @@ class ObservationVectorizer(object):
         # print("==============")
         # print(self.last_player_action)
         # print("==============")
+
         if self.last_player_action == []:
             self.offset += self.last_action_bit_length
         else:
+            #print(f"player inside real vec: {self.last_player_action['player']}")
+            #print(f"last action inside real vec: {self.last_player_action}")
+            #print(f"COLOR INSIDE GOOD VEC {self.last_player_action['color']}")
+            #print(f"RANK INSIDE GOOD VEC {self.last_player_action['rank']}")
+            #print(f"last action good: {self.last_player_action}")
             last_move_type = self.last_player_action["action_type"]
             self.obs_vec[self.offset + self.last_player_action["player"]] = 1
             self.offset += self.num_players
@@ -439,8 +448,7 @@ class ObservationVectorizer(object):
         card_knowledge_list = obs["card_knowledge"]
         current_pid = obs["current_player"]
         action = self.last_player_action
-        print("CARD KNOWLEDGE IN REAL VECTORIZER")
-        print(obs['card_knowledge'])
+
         if action:  # comparison is equal to 'if action != []'
             type_action = self.last_player_action['action_type']
 

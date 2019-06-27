@@ -245,6 +245,7 @@ class ObservationVectorizer(object):
                 Leave the bits for the absent cards empty (adjust the offset to skip
                 bits for the missing cards).
                 '''
+
                 if num_cards < self.hand_size:
                     self.offset += (self.hand_size - num_cards) * self.bits_per_card
 
@@ -295,7 +296,7 @@ class ObservationVectorizer(object):
         for l in range(life_tokens):
             self.obs_vec[self.offset + l] = 1
         self.offset += self.max_life_tokens
-        print(f"inside encode_boards;  OBS VEC: {obs}")
+
         assert self.offset - (self.hands_bit_length + self.board_bit_length) == 0
         return True
 
@@ -322,6 +323,7 @@ class ObservationVectorizer(object):
     def encode_discards(self, obs):
         discard_pile = obs["discard_pile"]
         counts = np.zeros(self.num_colors * self.num_ranks)
+        # print(f"DISCARDPILE OBS BAD = {obs}")
         for card in discard_pile:
             color = utils.color_char_to_idx(card["color"])
             rank = card["rank"]
@@ -357,7 +359,13 @@ class ObservationVectorizer(object):
             self.offset += self.last_action_bit_length
         else:
             last_move_type = self.last_player_action.move().type()
-
+            #print(f"player inside broken vec: {self.last_player_action.player()}")
+            #print(f"action inside broken vec: "
+            #      f"{self.last_player_action.player()},"
+            #      f"{self.last_player_action.move().color()},"
+            #      f"{self.last_player_action.move().rank()},")
+            #print(f"COLORBAD: {self.last_player_action.move().color()}")
+            #print(f"RANKBAD: {self.last_player_action.move().rank()}")
             '''
             player_id
             Note: no assertion here. At a terminal state, the last player could have
@@ -391,10 +399,6 @@ class ObservationVectorizer(object):
             # encode color (if hint action)
             if last_move_type == REVEAL_COLOR:
                 last_move_color = self.last_player_action.move().color()
-
-                print("\n==========================")
-                print("ENCODING LAST ACTION AS REVEAL COLOR")
-                print("==========================\n")
 
                 self.obs_vec[self.offset + utils.color_char_to_idx(last_move_color)] = 1
 

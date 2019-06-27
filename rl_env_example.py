@@ -54,22 +54,15 @@ class Runner(object):
 
                     observation = observations['player_observations'][agent_id]
 
-                    #print("CURRENT PLAYER")
-                    #print(observation['current_player'])
-                    #print("CURRENT PLAYER OFFSET")
-                    if len(observation['last_moves']) > 0:
-                        print("PRINTING PLAYER")
-                        print(observation['last_moves'][0].player())
-                    #print(observation['current_player_offset'])
-                    #print("LAST MOVES")
-                    #print(observation['last_moves'])
-                    # print(f"Player {observation['current_player']} to move:")
-                    # print(observation['observed_hands'])
-                    # print(observation.keys())
-                    # print(observation['card_knowledge'])
                     action = agent.act(observation)
-                    if observation['current_player'] == agent_id:
 
+                    if observation['current_player'] == agent_id:
+                        print("1", observation['discard_pile'])
+                        if len(observation['last_moves']) > 0:
+                            pass
+                            #print("PRINTING PLAYER")
+                            #print(observation['last_moves'][0])
+                            #print(observation['last_moves'][0].player())
                         assert action is not None
                         current_player_action = action
 
@@ -83,6 +76,7 @@ class Runner(object):
                                                     current_player_action))
                 observations, reward, done, unused_info = self.environment.step(
                     current_player_action)
+                print("1", observations['player_observations'][observations['current_player']]['discard_pile'])
                 episode_reward += reward
                 if reward > 0:
                     episode_correct_cards += 1
@@ -96,7 +90,7 @@ class Runner(object):
 
 
 if __name__ == "__main__":
-    flags = {'players': 2, 'num_episodes': 1, 'agent_class': 'SimpleAgent'}
+    flags = {'players': 4, 'num_episodes': 1, 'agent_class': 'SimpleAgent'}
     options, arguments = getopt.getopt(sys.argv[1:], '',
                                        ['players=',
                                         'num_episodes=',
