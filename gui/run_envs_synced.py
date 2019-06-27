@@ -24,6 +24,7 @@ from game_state_wrapper import GameStateWrapper
 import pyhanabi_to_gui
 import numpy as np
 import utils
+import agents.vectorizer as vec
 
 def msg_deal_card(observation):
     """
@@ -45,10 +46,12 @@ AGENT_CLASSES = {'SimpleAgent': SimpleAgent, 'RandomAgent': RandomAgent}
 
 def last_false(mask):
     last_false = 0
+    falses = list()
     for i in range(len(mask)):
         if mask[i] == False:
+            falses.append(i)
             last_false = i
-    return last_false
+    return last_false, falses
 
 class Runner(object):
     """Runner class."""
@@ -60,6 +63,7 @@ class Runner(object):
         self.environment = rl_env.make('Hanabi-Full', num_players=flags['players'])
         self.agent_class = AGENT_CLASSES[flags['agent_class']]
         self.game_state_wrappers = list()
+        self.v = vec.ObservationVectorizer(self.environment)
 
     def run(self):
         """Run episodes."""
@@ -114,11 +118,6 @@ class Runner(object):
                             self.game_state_wrappers[i].deal_cards(msg_notifyList)
 
 
-                            # get current observation for gui env
-                            obs = self.game_state_wrappers[i].get_agent_observation()
-                            vectorized_gui = obs['vectorized']
-                            vectorized_observations.append(vectorized_gui)
-
 
                     # generate action
                     action = agent.act(observation_pyhanabi)
@@ -126,8 +125,8 @@ class Runner(object):
                     if observation_pyhanabi['current_player'] == agent_id:
                         observation_gui = self.game_state_wrappers[agent_id].get_agent_observation()
                         vectorized = np.array(observation_pyhanabi['vectorized'])
-                        vectorized_gui = vectorized_observations[agent_id]
-
+                        vectorized_gui = observation_gui['vectorized']
+                        vectorized_d = self.v.vectorize_observation(observation_pyhanabi)
                         # compare the 2 vectorized objects
                         print('===========================================================')
                         print('===========================================================')
@@ -135,15 +134,18 @@ class Runner(object):
                         print('===========================================================')
                         print('===========================================================')
                         print("Vectorized objects of rl_env and gui are equal:")
-                        equal = np.array_equal(vectorized, vectorized_gui)
+                        # equal = np.array_equal(vectorized, vectorized_gui)
+                        print("Vectorized objects of rl_env and d are equal:")
+                        equal = np.array_equal(vectorized, vectorized_d)
                         print(equal)
                         print(f"SUM OF VEC PYHANABI = {sum(vectorized)}")
                         print(f"SUM OF VEC GUI = {sum(vectorized_gui)}")
-                        if not equal:
-                            last_false_idx = last_false(vectorized == vectorized_gui)
-                            print(f"Last deviation at index: {last_false_idx}")
-                            print(vectorized_gui == vectorized)
-                            #print(observation_gui['observed_hands'])
+
+                        last_false_idx, idcs = last_false(vectorized_d == vectorized_gui)
+                        print(f"Last deviation at index: {last_false_idx}")
+                        print(f"mistakes at {idcs}")
+                        #print(vectorized_gui == vectorized)
+                        #print(observation_gui['observed_hands'])
 
                         print('===========================================================')
                         print('===========================================================')
