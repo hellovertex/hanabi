@@ -142,8 +142,8 @@ class Runner(object):
                         if not equal:
                             last_false_idx = last_false(vectorized == vectorized_gui)
                             print(f"Last deviation at index: {last_false_idx}")
-                            #print(vectorized_gui == vectorized)
-                            print(observation_gui['observed_hands'])
+                            print(vectorized_gui == vectorized)
+                            #print(observation_gui['observed_hands'])
 
                         print('===========================================================')
                         print('===========================================================')
@@ -166,11 +166,11 @@ class Runner(object):
                                                     current_player_action))
                 observations, reward, done, unused_info = self.environment.step(
                     current_player_action)
+
+                # after step, synchronize gui env by using last_moves,
                 if observation_pyhanabi['current_player'] == agent_id:
-                    # after step, synchronize gui env by using last_moves,
+
                     last_moves = observations['player_observations'][agent_id]['last_moves']
-                    print("LAST MOVES")
-                    print(last_moves)
                     # send json encoded action to all game_state_wrappers to update their internal state
                     for i in range(len(agents)):
                         notify_msg = pyhanabi_to_gui.create_notify_message_from_last_move(self.game_state_wrappers[i],last_moves, agent_id)
@@ -179,6 +179,9 @@ class Runner(object):
                         # we do this seperately because I forgot about it when encoding the notify messages :)
                         deal_msg = None
                         if len(last_moves) > 0 and last_moves[0].move().type() == utils.HanabiMoveType.DEAL:
+                            # we have to use last_moves of different agent in order to see color and rank of drawn card
+                            idx_next = (agent_id + 1) % observation_pyhanabi['num_players']
+                            last_moves = observations['player_observations'][idx_next]['last_moves']
                             deal_msg = pyhanabi_to_gui.create_notify_message_deal(self.game_state_wrappers[i],last_moves, agent_id)
                         if deal_msg != None:
                             self.game_state_wrappers[i].update_state(deal_msg)

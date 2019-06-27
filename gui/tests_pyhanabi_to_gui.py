@@ -449,6 +449,8 @@ def test_get_json_params_for_deal_move():
     last_move = LastMoveTestMock(type=utils.HanabiMoveType.DEAL)
     # todo
     pass
+
+
 # test_format_names()
 # test_create_init_message()
 # test_format_draw()

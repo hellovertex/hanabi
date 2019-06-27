@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict, Tuple
 import utils
+import pyhanabi
 import enum
 """ This module parses actions provided by the pyhanabi interface from 
 https://github.com/deepmind/hanabi-learning-environment such that they can be sent to the gui client, mirroring 
@@ -146,12 +147,14 @@ def from_relative_to_abs(player_observation, target='observed_hands'):
     def shift(arr, n):
         return arr[n:] + arr[:n]
 
-    p_idx = get_player_index_abs(player_observation)
-
     assert target in player_observation
     assert isinstance(player_observation[target], list)
 
-    return shift(player_observation[target], p_idx)
+    cur_pid = player_observation['current_player']
+    cur_pid_offset = player_observation['current_player_offset']  # distance from calling agent to current player
+    pid = (cur_pid_offset - cur_pid) % player_observation['num_players']  # absolute player position
+
+    return shift(player_observation[target], pid)
 
 # todo add yield to enforce order of calling these methods
 
@@ -208,9 +211,7 @@ def pyhanabi_card_index_to_gui_card_order(player, card_index, game_state_wrapper
     hand_size = len(game_state_wrapper.card_numbers[player])
     # cards are in reverse order, so take the 'mirrored' index
     actual_idx = (hand_size - 1) - card_index
-    print(f"CARD NUMBERS {game_state_wrapper.card_numbers}")
-    print(f"PLAYER {player}")
-    print(f"ACTUAL INDEX {actual_idx}")
+
     card_num = game_state_wrapper.card_numbers[player][actual_idx]
 
     return card_num
@@ -340,14 +341,10 @@ def create_notifyList_message(player_observation):
     # Server stores order to represent the absolute card number ranging from 0 to deck size-1
     order = 0
     # birds eye
-    #
-    #
-    #
     observed_hands_abs = from_relative_to_abs(player_observation, target='observed_hands')
 
-    hand_size = len(player_observation['observed_hands'][0])
-
     # append jsons for card deals
+    hand_size = len(player_observation['observed_hands'][0])
     for pid in range(player_observation['num_players']):
         for cid in range(hand_size):
             ret_msg += format_draw(observed_hands_abs[pid][cid], who=pid, order=order) + ','
@@ -377,7 +374,7 @@ def create_notify_message_play(game_state_wrapper, last_move, agent_id):
     assert last_move.move().type() == utils.HanabiMoveType.PLAY
 
     index, suit, rank, order = get_json_params_for_play_or_discard(game_state_wrapper, last_move, agent_id)
-    print(f"INDEX PLAY: {index}")
+
     return format_play(index, suit, rank, order)
 
 
@@ -394,7 +391,7 @@ def create_notify_message_discard(game_state_wrapper, last_move, agent_id):
     assert last_move.move().type() == utils.HanabiMoveType.DISCARD
 
     index, suit, rank, order = get_json_params_for_play_or_discard(game_state_wrapper, last_move, agent_id)
-    print(f"INDEX DISCARD: {index}")
+
     return format_discard(index, suit, rank, order)
 
 
@@ -412,7 +409,7 @@ def create_notify_message_reveal_move(game_state_wrapper, last_move, agent_id):
     assert last_move.move().type() in [utils.HanabiMoveType.REVEAL_COLOR, utils.HanabiMoveType.REVEAL_RANK]
 
     cluetype, cluevalue, giver, touched, target = get_json_params_for_reveal_move(game_state_wrapper, last_move, agent_id)
-    print(f"GIVER REVEAL: {giver}")
+
     return format_reveal_move(cluetype, cluevalue, giver, touched, target)
 
 
@@ -461,8 +458,8 @@ def create_notify_message_from_last_move(game_state_wrapper, last_moves: List, a
 def get_json_params_for_deal_move(game_state_wrapper, last_move, agent_id):
     """ Returns keys "who", "rank", "suit", "order" for json encoded DEAL move as sent by gui server """
     who = agent_id
-    rank = pyhanabi_rank_to_gui_rank(last_move.move().rank())
-    suit = pyhanabi_color_idx_to_gui_suit(last_move.move().rank())
+    rank = last_move.move().rank()
+    suit = pyhanabi.color_idx_to_char(last_move.move().color())
     order = game_state_wrapper.order  # contains number of card drawn next
 
     return who, rank, suit, order
@@ -476,9 +473,9 @@ def create_notify_message_deal(game_state_wrapper, last_moves, agent_id):
 
     ret_msg = 'notify '
 
-    who, rank, suit, order = get_json_params_for_deal_move(game_state_wrapper, last_moves[0], agent_id)
-
-    card = {'color': suit, 'rank': rank}
+    who, rank, color, order = get_json_params_for_deal_move(game_state_wrapper, last_moves[0], agent_id)
+    card = {'color': color, 'rank': rank}
+    # format draw expects color and rank as in pyhanabi
     ret_msg += format_draw(card, who, order)
 
     return ret_msg
