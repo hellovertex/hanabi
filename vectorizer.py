@@ -230,14 +230,25 @@ class ObservationVectorizer(object):
 
         self.encode_hands(obs)
         print("OFFSET END ENCODE HANDS", self.offset)
+        offset_encode_hands = self.offset
+        print("SUM END ENCODE HANDS", sum(self.obs_vec[:self.offset]))
+
         self.encode_board(obs)
         print("OFFSET END ENCODE BOARDS", self.offset)
+        offset_encode_boards = self.offset
+        print("SUM END ENCODE BOARDS", sum(self.obs_vec[offset_encode_hands:self.offset]))
         self.encode_discards(obs)
         print("OFFSET END ENCODE DISCARDS", self.offset)
+        offset_encode_discards = self.offset
+        print("SUM END ENCODE DISCARDS", sum(self.obs_vec[offset_encode_boards:self.offset]))
         self.encode_last_action()
         print("OFFSET END ENCODE LAST ACTION", self.offset)
+        offset_encode_last_action = self.offset
+        print("SUM END ENCODE LAST_ACTION", sum(self.obs_vec[offset_encode_discards:self.offset]))
         self.encode_card_knowledge(obs)
         print("OFFSET END ENCODE CARD KNOWLEDGE", self.offset)
+
+        print("SUM END ENCODE CARD_KNOWLEDGE", sum(self.obs_vec[offset_encode_last_action:self.offset]))
 
         self.knowledge = self.player_knowledge
 

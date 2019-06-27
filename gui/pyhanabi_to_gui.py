@@ -340,10 +340,12 @@ def create_notifyList_message(player_observation):
     # Server stores order to represent the absolute card number ranging from 0 to deck size-1
     order = 0
     # birds eye
+    #
+    #
+    #
     observed_hands_abs = from_relative_to_abs(player_observation, target='observed_hands')
 
-    num_players = player_observation['observed_hands'][0]
-    hand_size = len(num_players)
+    hand_size = len(player_observation['observed_hands'][0])
 
     # append jsons for card deals
     for pid in range(player_observation['num_players']):

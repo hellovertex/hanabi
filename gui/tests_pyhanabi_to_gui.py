@@ -274,7 +274,7 @@ def test_from_relative_to_abs():
 # (x)
 def test_create_notifyList_message():
     # created from player observation on top of file by manually replacing rank and suits
-    test_msg = 'notifyList [' \
+    test_msg0 = 'notifyList [' \
                      '{"type":"draw","who":0,"rank":-1,"suit":-1,"order":0},' \
                      '{"type":"draw","who":0,"rank":-1,"suit":-1,"order":1},' \
                      '{"type":"draw","who":0,"rank":-1,"suit":-1,"order":2},' \
@@ -287,13 +287,27 @@ def test_create_notifyList_message():
                      '{"type":"draw","who":1,"rank":3,"suit":2,"order":9},' \
                      '{"type":"status","clues":8,"score":0,"maxScore":25,"doubleDiscard":false},' \
                      '{"type":"text","text":"0 goes first"},{"type":"turn","num":0,"who":0}]'
-    agent_id = 0
+    # agent_id = 0
+    test_msg1 = 'notifyList [' \
+                '{"type":"draw","who":0,"rank":3,"suit":1,"order":0},' \
+                '{"type":"draw","who":0,"rank":2,"suit":0,"order":1},' \
+                '{"type":"draw","who":0,"rank":1,"suit":1,"order":2},' \
+                '{"type":"draw","who":0,"rank":3,"suit":2,"order":3},' \
+                '{"type":"draw","who":0,"rank":5,"suit":3,"order":4},' \
+                '{"type":"draw","who":1,"rank":-1,"suit":-1,"order":5},' \
+                '{"type":"draw","who":1,"rank":-1,"suit":-1,"order":6},' \
+                '{"type":"draw","who":1,"rank":-1,"suit":-1,"order":7},' \
+                '{"type":"draw","who":1,"rank":-1,"suit":-1,"order":8},' \
+                '{"type":"draw","who":1,"rank":-1,"suit":-1,"order":9},' \
+                '{"type":"status","clues":8,"score":0,"maxScore":25,"doubleDiscard":false},' \
+                '{"type":"text","text":"1 goes first"},{"type":"turn","num":0,"who":1}]'
+    agent_id = 1
     player_observation = observations['player_observations'][agent_id]
     result = pyhanabi_to_gui.create_notifyList_message(player_observation)
 
-    print(test_msg, result)
-    print(test_msg == result)
-    assert test_msg == result
+    print(test_msg1, result)
+    print(test_msg1 == result)
+    assert test_msg1 == result
 
 
 # (x)

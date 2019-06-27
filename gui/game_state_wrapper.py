@@ -101,6 +101,7 @@ class GameStateWrapper:
         self.player_position = None
         self.agents_turn = False
         self.deck_size = self.max_deck_size
+        self.order = 0
         return
 
     def init_players(self, notify_msg: str):
@@ -411,10 +412,11 @@ class GameStateWrapper:
             # rl_env.HanabiEnvobservation._extract_from_dict method, but we need a history so we add this here.
             # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         }
-        observation['vectorized'] = self.get_vectorized(observation)
+
         legal_moves_as_int, legal_moves_as_int_formated = self.get_legal_moves_as_int(observation['legal_moves'])
         observation["legal_moves_as_int"] = legal_moves_as_int
         observation["legal_moves_as_int_formated"] = legal_moves_as_int_formated
+        observation['vectorized'] = self.get_vectorized(observation)
         print(f"CARD KNOWLEDGE AS SEEN BZ PLAYER {self.agent_name}")
         print(observation['card_knowledge'])
         return observation
