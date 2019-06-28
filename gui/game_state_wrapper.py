@@ -161,7 +161,7 @@ class GameStateWrapper:
         # so we store the number too, to map it onto indices for playing and discarding
         self.card_numbers[d['who']].insert(0, d['order'])
 
-    def discard(self, d):
+    def discard(self, d, true_discard):
         """
         Synchronizes references between handcards and clues.
         Need to reference by card_number, as we cannot access the card by rank and suit, if we discard own card,
@@ -181,8 +181,9 @@ class GameStateWrapper:
         del self.clues[pid][idx_card]
         self.clues[pid].insert(0, {'color': None, 'rank': None})
 
-        # Update discard pile
-        self.discard_pile.append(self.card(d['which']['suit'], d['which']['rank']))
+        # Update discard pile only if not PLAY move
+        if true_discard:
+            self.discard_pile.append(self.card(d['which']['suit'], d['which']['rank']))
 
         return
 
@@ -211,15 +212,19 @@ class GameStateWrapper:
 
         # DISCARD
         if d['type'] == 'discard':
-            self.discard(d)
+            true_discard = False
             # only recover info token when not discarding through failed play
             if 'failed' in d and d['failed'] is False:
                 self.information_tokens += 1
+                true_discard = True
                 # will be used in HanabiHistoryItemMock
                 information_token = True
             if 'failed' in d and d['failed']:
                 discarded = True
+                true_discard = True
                 d['type'] = 'play'
+
+            self.discard(d, true_discard=true_discard)
 
         # DRAW - if player with pid draws a card, it is prepended to hand_list[pid]
         if d['type'] == 'draw':
@@ -230,12 +235,13 @@ class GameStateWrapper:
             # server names some plays "discard" and hence we can come from the discard-if
             if not discarded:
                 # remove card
-                self.discard(d)
+                self.discard(d, true_discard=False)
 
             # update fireworks and life tokens eventually
             c = self.card(d['which']['suit'], d['which']['rank'])
             scored, information_token = self.play(c)
-
+            if 'failed' not in d and not scored:
+                self.discard_pile.append(self.card(d['which']['suit'], d['which']['rank']))
         # CLUE - change players card_knowledge and remove an info-token
         if d['type'] == 'clue':
             card_info_revealed = self.update_clues(d)

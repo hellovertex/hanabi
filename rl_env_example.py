@@ -57,7 +57,7 @@ class Runner(object):
                     action = agent.act(observation)
 
                     if observation['current_player'] == agent_id:
-                        print("1", observation['discard_pile'])
+                        #print("1", observation['discard_pile'])
                         if len(observation['last_moves']) > 0:
                             pass
                             #print("PRINTING PLAYER")
@@ -76,7 +76,7 @@ class Runner(object):
                                                     current_player_action))
                 observations, reward, done, unused_info = self.environment.step(
                     current_player_action)
-                print("1", observations['player_observations'][observations['current_player']]['discard_pile'])
+                print("2", observations['player_observations'][observations['current_player']]['discard_pile'])
                 episode_reward += reward
                 if reward > 0:
                     episode_correct_cards += 1

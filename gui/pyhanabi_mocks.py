@@ -60,7 +60,7 @@ def get_move_type(move):
     return HanabiMoveType.INVALID
 
 
-def get_move_card_index(move, deepcopy_card_nums):
+def get_move_card_index(move, deepcopy_card_nums, num_players):
     """
     Input: Move dictionary sent by server, e.g. one out of
         ############   DRAW   ##############
@@ -81,7 +81,9 @@ def get_move_card_index(move, deepcopy_card_nums):
         pid = move['which']['index']
         # get index of card with number abs_card_num in hand of player pid
         card_index = deepcopy_card_nums[pid].index(abs_card_num)
-
+        # flip because hands are inverted in pyhanabi
+        max_idx = num_players - 1
+        card_index = max_idx - card_index
     return card_index
 
 
@@ -473,7 +475,7 @@ def get_pyhanabi_move_mock(dict_action, deepcopy_card_nums, num_players):
     """
 
     move_type = get_move_type(dict_action)
-    card_index = get_move_card_index(dict_action, deepcopy_card_nums)
+    card_index = get_move_card_index(dict_action, deepcopy_card_nums, num_players)
     if "target" in dict_action and "giver" in dict_action:
         target_offset = get_target_offset(dict_action['giver'], dict_action['target'], num_players)
     else:

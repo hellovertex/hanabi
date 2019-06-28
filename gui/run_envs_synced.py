@@ -125,12 +125,12 @@ class Runner(object):
                 print("Vectorized objects of rl_env and gui are equal:")
                 print(np.array_equal(vec_py, vec_gui))
 
-                print(f"SUM OF VEC PYHANABI = {sum(vec_py)}")
-                print(f"SUM OF VEC GUI = {sum(vec_gui)}")
+                #print(f"SUM OF VEC PYHANABI = {sum(vec_py)}")
+                #print(f"SUM OF VEC GUI = {sum(vec_gui)}")
 
                 last_false_idx, idcs = last_false(vec_py == vec_gui)
-                print(f"Last deviation at index: {last_false_idx}")
-                print(f"{len(idcs)} mistakes at {idcs}")
+                #print(f"Last deviation at index: {last_false_idx}")
+                #print(f"{len(idcs)} mistakes at {idcs}")
 
                 print("============================================================================")
                 print("======================= END COMPARISON ===========================")

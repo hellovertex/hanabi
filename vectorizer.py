@@ -292,7 +292,9 @@ class ObservationVectorizer(object):
         self.offset += self.max_info_tokens
 
         # encode life tokens
+
         life_tokens = obs["life_tokens"]
+        #print(f"BAD lifetokens = {life_tokens}")
         for l in range(life_tokens):
             self.obs_vec[self.offset + l] = 1
         self.offset += self.max_life_tokens
@@ -321,9 +323,10 @@ class ObservationVectorizer(object):
     '''
 
     def encode_discards(self, obs):
-        discard_pile = obs["discard_pile"]
+        discard_pile = obs['discard_pile']
         counts = np.zeros(self.num_colors * self.num_ranks)
-        # print(f"DISCARDPILE OBS BAD = {obs}")
+        #print(f"GBAD discard_pile = {discard_pile}")
+        #print(f"GBAD lifes = {obs['life_tokens']}")
         for card in discard_pile:
             color = utils.color_char_to_idx(card["color"])
             rank = card["rank"]
@@ -421,12 +424,9 @@ class ObservationVectorizer(object):
 
             # encode position (if play or discard action)
             if last_move_type == PLAY or last_move_type == DISCARD:
-                # print("===============================")
-                # print("LINE 418")
-                # print("LAST PLAYER ACTION WAS PLAY OR DISCARD MOVE LINE 349")
-                # print(f"LAST ACTIONS !!!!!{self.last_player_action}")
-                # print("===============================0")
+
                 card_index = self.last_player_action.move().card_index()
+                #print(f"BAD card_index={card_index}")
                 self.obs_vec[self.offset + card_index] = 1
 
             self.offset += self.hand_size
