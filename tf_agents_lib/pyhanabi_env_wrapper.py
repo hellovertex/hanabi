@@ -14,6 +14,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
     def __init__(self, env):
         super(PyEnvironmentBaseWrapper, self).__init__()
         self._env = env
+        self._episode_ended = False
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
@@ -32,17 +33,17 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         returns a boolean mask indicating whether actions are legal or not """
 
         legal_moves_as_int = observation['legal_moves_as_int']
-        mask = np.zeros(self._env.num_moves())
-        mask[legal_moves_as_int] += 1
+        mask = np.full(self._env.num_moves(), np.finfo(np.float32).min)
+        mask[legal_moves_as_int] = 0
 
-        return mask.astype(int)
+        return mask.astype(np.float32)
 
     def _reset(self):
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
         # i.e. ['step_type', 'reward', 'discount', 'observation']
+        self._episode_ended = False
         observations = self._env.reset()
-        cur_player = observations['current_player']
-        observation = observations['player_observations'][cur_player]
+        observation = observations['player_observations'][observations['current_player']]
 
         # reward is 0 on reset
         reward = np.asarray(0, dtype=np.float32)
@@ -51,28 +52,33 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
-
+        # (48, ) int64
+        #print(mask_valid_actions.shape, mask_valid_actions.dtype)
         return TimeStep(StepType.FIRST, reward, discount, obs)
 
     def _step(self, action):
-        if self._env.state.is_terminal():
-            return self._reset()
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTuple obj"""
-        if isinstance(action, np.ndarray):
-            action = int(action)
+
+        if self._episode_ended:
+            # The last action ended the episode. Ignore the current action and start
+            # a new episode.
+            return self.reset()
+
+        #print('#### TYPE OF ACTION', type(action))
+        #if isinstance(action, np.ndarray):
+        action = int(action)
+        #print('#### TYPE OF ACTION', type(action))
         observations, reward, done, info = self._env.step(action)
-        cur_player = observations['current_player']
-        observation = observations['player_observations'][cur_player]
+        observation = observations['player_observations'][observations['current_player']]
 
         reward = np.asarray(reward, dtype=np.float32)
 
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
-        legal_moves_as_int = observation['legal_moves_as_int']
-
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
 
         if done:
+            self._episode_ended = True
             step_type = StepType.LAST
         else:
             step_type = StepType.MID
@@ -92,13 +98,10 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
             maximum=1,
             name='state'
         )
-        mask_spec = BoundedArraySpec(
+        mask_spec = ArraySpec(
             shape=(self._env.num_moves(), ),
-            dtype=int,
-            minimum=0,
-            maximum=1,
-            name='mask'
-        )
+            dtype=np.float32,
+            name='mask')
 
         return {'state': state_spec, 'mask': mask_spec}
 
