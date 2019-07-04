@@ -135,6 +135,9 @@ def train_eval(
         tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
         tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes)
     ]
+
+    eval_summary_flush_op = eval_summary_writer.flush()
+
     pyhanabi_env = rl_env.make(environment_name="Hanabi-Full", num_players=4)
     pyhanabi_env_eval = rl_env.make(environment_name="Hanabi-Full", num_players=4)
     py_env = pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
@@ -265,55 +268,56 @@ def train_eval(
             sample_batch_size=batch_size,
             num_steps=2).prefetch(3)
         iterator = iter(dataset)
-
-        for _ in range(num_iterations):
-            start_time = time.time()
-            time_step, policy_state = collect_driver.run(
-                time_step=time_step,
-                policy_state=policy_state,
-            )
-            for _ in range(train_steps_per_iteration):
-                experience, _ = next(iterator)
-                train_loss = tf_agent.train(experience)
-            time_acc += time.time() - start_time
-
-            if global_step.numpy() % log_interval == 0:
-                logging.info('step = %d, loss = %f', global_step.numpy(),
-                             train_loss.loss)
-                steps_per_sec = (global_step.numpy() - timed_at_step) / time_acc
-                logging.info('%.3f steps/sec', steps_per_sec)
-                tf.compat.v2.summary.scalar(
-                    name='global_steps_per_sec', data=steps_per_sec, step=global_step)
-                timed_at_step = global_step.numpy()
-                time_acc = 0
-
-            for train_metric in train_metrics:
-                train_metric.tf_summaries(
-                    train_step=global_step, step_metrics=train_metrics[:2])
-
-            if global_step.numpy() % eval_interval == 0:
-                results = metric_utils.eager_compute(
-                    eval_metrics,
-                    eval_tf_env,
-                    eval_policy,
-                    num_episodes=num_eval_episodes,
-                    train_step=global_step,
-                    summary_writer=eval_summary_writer,
-                    summary_prefix='Metrics',
+        with tf.compat.v1.Session() as sess:
+            for _ in range(num_iterations):
+                start_time = time.time()
+                time_step, policy_state = collect_driver.run(
+                    time_step=time_step,
+                    policy_state=policy_state,
                 )
-                if eval_metrics_callback is not None:
-                    eval_metrics_callback(results, global_step.numpy())
-                metric_utils.log_metrics(eval_metrics)
+                for _ in range(train_steps_per_iteration):
+                    experience, _ = next(iterator)
+                    train_loss = tf_agent.train(experience)
+                time_acc += time.time() - start_time
 
-            global_step_val = global_step.numpy()
-            if global_step_val % train_checkpoint_interval == 0:
-                train_checkpointer.save(global_step=global_step_val)
+                if global_step.numpy() % log_interval == 0:
+                    logging.info('step = %d, loss = %f', global_step.numpy(),
+                                 train_loss.loss)
+                    steps_per_sec = (global_step.numpy() - timed_at_step) / time_acc
+                    logging.info('%.3f steps/sec', steps_per_sec)
+                    tf.compat.v2.summary.scalar(
+                        name='global_steps_per_sec', data=steps_per_sec, step=global_step)
+                    timed_at_step = global_step.numpy()
+                    time_acc = 0
 
-            if global_step_val % policy_checkpoint_interval == 0:
-                policy_checkpointer.save(global_step=global_step_val)
+                for train_metric in train_metrics:
+                    train_metric.tf_summaries(
+                        train_step=global_step, step_metrics=train_metrics[:2])
 
-            if global_step_val % rb_checkpoint_interval == 0:
-                rb_checkpointer.save(global_step=global_step_val)
+                if global_step.numpy() % eval_interval == 0:
+                    results = metric_utils.eager_compute(
+                        eval_metrics,
+                        eval_tf_env,
+                        eval_policy,
+                        num_episodes=num_eval_episodes,
+                        train_step=global_step,
+                        summary_writer=eval_summary_writer,
+                        summary_prefix='Metrics',
+                    )
+                    if eval_metrics_callback is not None:
+                        eval_metrics_callback(results, global_step.numpy())
+                    metric_utils.log_metrics(eval_metrics)
+                    # sess.run(eval_summary_flush_op)
+
+                global_step_val = global_step.numpy()
+                if global_step_val % train_checkpoint_interval == 0:
+                    train_checkpointer.save(global_step=global_step_val)
+
+                if global_step_val % policy_checkpoint_interval == 0:
+                    policy_checkpointer.save(global_step=global_step_val)
+
+                if global_step_val % rb_checkpoint_interval == 0:
+                    rb_checkpointer.save(global_step=global_step_val)
         return train_loss
 
 

@@ -123,11 +123,13 @@ class CategoricalProjectionNetwork(network.DistributionNetwork):
         batch_squash = utils.BatchSquash(outer_rank)
         inputs = batch_squash.flatten(inputs)
         inputs = tf.cast(inputs, tf.float32)
-
+        print("INPUTS")
+        print(inputs)
         logits = self._projection_layer(inputs)
         logits = tf.reshape(logits, [-1] + self._output_shape.as_list())
         logits = batch_squash.unflatten(logits)
-
+        print("LOGITS")
+        print(logits)
         valid_logits = self.clip_invalid_logits(logits, mask)
 
         return self.output_spec.build_distribution(logits=valid_logits)

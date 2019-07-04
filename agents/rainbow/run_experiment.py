@@ -173,6 +173,8 @@ def create_agent(environment, obs_stacker, agent_type='Rainbow'):
         observation_size=obs_stacker.observation_size(),
         num_actions=environment.num_moves(),
         num_players=environment.players)
+  elif agent_type == 'SAC':
+    raise NotImplementedError(f'SAC needs to be added to the create_agent() method inside {__file__}')
   else:
     raise ValueError('Expected valid agent_type, got {}'.format(agent_type))
 
@@ -336,7 +338,7 @@ def run_one_episode(agent, environment, obs_stacker):
 
   agent.end_episode(reward_since_last_action)
 
-  tf.logging.info('EPISODE: %d %g', step_number, total_reward)
+  tf.logging.info('STEP NUMBER: %d, TOTAL REWARD: %g', step_number, total_reward)
   return step_number, total_reward
 
 

@@ -68,6 +68,8 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
+        legal_moves_as_int = observation['legal_moves_as_int']
+
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
 
         if done:
