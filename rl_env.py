@@ -364,8 +364,8 @@ class HanabiEnv(Environment):
         observation = self._make_observation_all_players()
         done = self.state.is_terminal()
         # Reward is score differential. May be large and negative at game end.
-        reward = self.state.score() - last_score
-        # reward = self._custom_reward(last_score, observation, old_observation)
+        # reward = self.state.score() - last_score
+        reward = self._custom_reward(last_score, observation, old_observation)
         info = {}
 
         return (observation, reward, done, info)
@@ -381,22 +381,22 @@ class HanabiEnv(Environment):
 
         # fall back to standard reward,
         # if the situation does not match any of those that we want to customize the reward for
-        def standard_reward(self):
+        def standard_reward():
             return self.state.score() - last_score
 
         reward = standard_reward()
 
-        last_moves = observation[pid]['last_moves']
+        last_moves = observation['player_observations'][pid]['last_moves']
         if not last_moves: return reward  # on empty history, return standard_reward
 
-        last_move = last_moves[0].move()
+        last_move = last_moves[0]
         # skip DEAL moves (reward will always be immediate, i.e. for the last non-deal move)
-        if last_move.type() == HanabiMoveType.DEAL:
-            last_move = last_moves[1].move()
+        if last_move.move().type() == HanabiMoveType.DEAL:
+            last_move = last_moves[1]
 
         last_pid = old_observation['current_player']
         """ reward hinting playable card """
-        if last_move.type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
+        if last_move.move().type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
             # Reward hinting playable cards, even if non-playables are touched as well
             # We rely on the interaction with the punishment for losing life tokens,
             # that agents will learn to play the right card, in case non-playable cards are touched
@@ -407,29 +407,29 @@ class HanabiEnv(Environment):
             # need old observation, because in case the hint was given to the next player, we can not check,
             # if the card is playable, because we dont see our own hand
 
-            observed_hands = old_observation[last_pid]['observed_hands']
+            observed_hands = old_observation['player_observations'][last_pid]['observed_hands']
             target_hand = observed_hands[target_offset]
             hinted_cards = last_move.card_info_revealed()
 
             # check if one of the hinted cards is playable on fireworks
-            fireworks = observation[pid]['fireworks']
+            fireworks = observation['player_observations'][pid]['fireworks']
             for cid in hinted_cards:
                 card = target_hand[cid]
                 # card is playable
                 if card['rank'] == fireworks[card['color']]:
-                    reward = card['rank']
+                    reward = card['rank'] + 1  # add 1 to be better than standard reward for 0 rank
 
         """ reward playing hinted card """
-        if last_move.type() == HanabiMoveType.PLAY and last_move.scored():
+        if last_move.move().type() == HanabiMoveType.PLAY and last_move.scored():
             # if card was hinted
-            own_card_knowledge = old_observation[last_pid]['card_knowledge'][0]
+            own_card_knowledge = old_observation['player_observations'][last_pid]['card_knowledge'][0]
             played_card_knowledge = own_card_knowledge[last_move.move().card_index()]
             if played_card_knowledge['color'] is not None or played_card_knowledge['rank'] is not None:
                 # Set the reward equal to the rank of the card, to reward agents for consecutive scoring plays
                 reward = last_move.rank() + 2  # add 2 to be better than standard reward for 0 rank
 
         """ punish losing life token """
-        if last_move.type() == HanabiMoveType.PLAY and not last_move.scored():
+        if last_move.move().type() == HanabiMoveType.PLAY and not last_move.scored():
             reward = -1
 
         return reward
