@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 import pyhanabi
-from pyhanabi import color_char_to_idx
+from pyhanabi import color_char_to_idx, HanabiMoveType, color_idx_to_char
 
 MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 
@@ -354,6 +354,7 @@ class HanabiEnv(Environment):
                 action, type(action)))
 
         last_score = self.state.score()
+        old_observation = self._make_observation_all_players()
         # Apply the action to the state.
         self.state.apply_move(action)
 
@@ -364,15 +365,72 @@ class HanabiEnv(Environment):
         done = self.state.is_terminal()
         # Reward is score differential. May be large and negative at game end.
         reward = self.state.score() - last_score
-        # reward = self._custom_reward()
+        # reward = self._custom_reward(last_score, observation, old_observation)
         info = {}
 
         return (observation, reward, done, info)
 
-    def _custom_reward(self):
-        # punish losing a life token very very hard
-        # reward playing a hinted card and giving a hint that has a card played
-        pass
+    def _custom_reward(self, last_score, observation, old_observation):
+        """
+        Adopts the reward for certain scenarios, to potentially improve training convergence
+        The reward will always be immediate, i.e. for the last non-deal move.
+        For recurrent rewards, we would have to adjust the replay buffer which is out of scope here.
+        """
+        # current_player (after action has been taken)
+        pid = observation["current_player"]
+
+        # fall back to standard reward,
+        # if the situation does not match any of those that we want to customize the reward for
+        def standard_reward(self):
+            return self.state.score() - last_score
+
+        reward = standard_reward()
+
+        last_moves = observation[pid]['last_moves']
+        if not last_moves: return reward  # on empty history, return standard_reward
+
+        last_move = last_moves[0].move()
+        # skip DEAL moves (reward will always be immediate, i.e. for the last non-deal move)
+        if last_move.type() == HanabiMoveType.DEAL:
+            last_move = last_moves[1].move()
+
+        """ reward hinting playable card """
+        if last_move.type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
+            # Reward hinting playable cards, even if non-playables are touched as well
+            # We rely on the interaction with the punishment for losing life tokens,
+            # that agents will learn to play the right card, in case non-playable cards are touched
+
+            # offset from last player to the player to whom a card info was revealed
+            target_offset = last_move.move().target_offset()
+
+            # need old observation, because in case the hint was given to the next player, we can not check,
+            # if the card is playable, because we dont see our own hand
+            last_pid = old_observation['current_player']
+            observed_hands = old_observation[last_pid]['observed_hands']
+            target_hand = observed_hands[target_offset]
+            hinted_cards = last_move.card_info_revealed()
+
+            # check if one of the hinted cards is playable on fireworks
+            fireworks = observation[pid]['fireworks']
+            for cid in hinted_cards:
+                card = target_hand[cid]
+                # card is playable
+                if card['rank'] == fireworks[card['color']]:
+                    reward = card['rank']
+
+        """ reward playing hinted card """
+        if last_move.type() == HanabiMoveType.PLAY and last_move.scored():
+            # Set the reward equal to the rank of the card, to reward agents for consecutive scoring plays
+            reward = last_move.rank()
+
+        """ punish losing life token """
+        if last_move.type() == HanabiMoveType.PLAY and not last_move.scored():
+            # -8 is useful for Hanabi-Full games:
+            # By that, agents will be allowed to risk losing one or two lifes
+            # as they can still receive a positive sum of rewards at the end, if they play good enough
+            reward = -8
+
+        return reward
 
     def _make_observation_all_players(self):
         """Make observation for all players.
