@@ -43,7 +43,6 @@ import tensorflow as tf
 from tf_agents.agents.ddpg import critic_network
 from tf_agents.agents.sac import sac_agent
 from tf_agents.drivers import dynamic_step_driver
-from tf_agents.environments import suite_mujoco
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
 from tf_agents.metrics import py_metrics
@@ -96,8 +95,8 @@ def train_eval(
         critic_joint_fc_layers=(256, 256),
         # Params for collect
         #initial_collect_steps=10000,
-        initial_collect_steps=100,
-        collect_steps_per_iteration=30,
+        initial_collect_steps=1000,
+        collect_steps_per_iteration=1,
         replay_buffer_capacity=10000,
         # Params for target update
         target_update_tau=0.005,
@@ -229,10 +228,10 @@ def train_eval(
             return ~trajectories.is_boundary()[0]
         
         dataset = replay_buffer.as_dataset(
-            sample_batch_size=5 * batch_size,
+            sample_batch_size=256,
             num_steps=2).apply(tf.data.experimental.unbatch()).filter(
-            _filter_invalid_transition).batch(batch_size).prefetch(
-            batch_size * 5)
+            _filter_invalid_transition).batch(1).prefetch(
+                    256)
         dataset_iterator = tf.compat.v1.data.make_initializable_iterator(dataset)
         """
         dataset = replay_buffer.as_dataset(

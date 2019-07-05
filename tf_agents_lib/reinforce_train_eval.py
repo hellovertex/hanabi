@@ -41,7 +41,6 @@ import tensorflow as tf
 
 from tf_agents.agents.reinforce import reinforce_agent
 from tf_agents.drivers import dynamic_episode_driver
-from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
 from tf_agents.metrics import py_metrics
@@ -58,14 +57,14 @@ from tf_agents_lib import masked_networks, pyhanabi_env_wrapper
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_integer('num_iterations', 1000,
-                     'Total number train/eval iterations to perform.')
+#flags.DEFINE_integer('num_iterations', 10000000,
+#                     'Total number train/eval iterations to perform.')
 FLAGS = flags.FLAGS
 
 
 def train_eval(
     root_dir,
-    num_iterations=1000000,
+    num_iterations=10000000,
     actor_fc_layers=(100,),
     value_net_fc_layers=(100,),
     use_value_network=False,
@@ -299,7 +298,7 @@ def compute_avg_return(environment, policy, num_episodes=30):
 def main(_):
   tf.compat.v1.enable_resource_variables()
   logging.set_verbosity(logging.INFO)
-  train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
+  train_eval(FLAGS.root_dir)
 
 
 if __name__ == '__main__':
