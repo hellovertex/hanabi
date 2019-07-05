@@ -394,6 +394,7 @@ class HanabiEnv(Environment):
         if last_move.type() == HanabiMoveType.DEAL:
             last_move = last_moves[1].move()
 
+        last_pid = old_observation['current_player']
         """ reward hinting playable card """
         if last_move.type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
             # Reward hinting playable cards, even if non-playables are touched as well
@@ -405,7 +406,7 @@ class HanabiEnv(Environment):
 
             # need old observation, because in case the hint was given to the next player, we can not check,
             # if the card is playable, because we dont see our own hand
-            last_pid = old_observation['current_player']
+
             observed_hands = old_observation[last_pid]['observed_hands']
             target_hand = observed_hands[target_offset]
             hinted_cards = last_move.card_info_revealed()
@@ -420,15 +421,16 @@ class HanabiEnv(Environment):
 
         """ reward playing hinted card """
         if last_move.type() == HanabiMoveType.PLAY and last_move.scored():
-            # Set the reward equal to the rank of the card, to reward agents for consecutive scoring plays
-            reward = last_move.rank()
+            # if card was hinted
+            own_card_knowledge = old_observation[last_pid]['card_knowledge'][0]
+            played_card_knowledge = own_card_knowledge[last_move.move().card_index()]
+            if played_card_knowledge['color'] is not None or played_card_knowledge['rank'] is not None:
+                # Set the reward equal to the rank of the card, to reward agents for consecutive scoring plays
+                reward = last_move.rank() + 2  # add 2 to be better than standard reward for 0 rank
 
         """ punish losing life token """
         if last_move.type() == HanabiMoveType.PLAY and not last_move.scored():
-            # -8 is useful for Hanabi-Full games:
-            # By that, agents will be allowed to risk losing one or two lifes
-            # as they can still receive a positive sum of rewards at the end, if they play good enough
-            reward = -8
+            reward = -1
 
         return reward
 
