@@ -226,6 +226,7 @@ def train_eval(
             observers=replay_observer,
             num_steps=initial_collect_steps)
 
+        # this ugly motherfucker always returns one fucking timestep
         collect_driver = dynamic_step_driver.DynamicStepDriver(
             tf_env,
             collect_policy,

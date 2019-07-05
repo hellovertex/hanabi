@@ -88,8 +88,8 @@ def normal_projection_net(action_spec,
 def train_eval(
         root_dir,
         env_name='HalfCheetah-v2',
-        #num_iterations=100000000,
-        num_iterations=2,
+        num_iterations=100000000,
+        #num_iterations=2,
         actor_fc_layers=(256, 256),
         critic_obs_fc_layers=None,
         critic_action_fc_layers=None,
@@ -97,8 +97,8 @@ def train_eval(
         # Params for collect
         #initial_collect_steps=10000,
         initial_collect_steps=100,
-        collect_steps_per_iteration=1,
-        replay_buffer_capacity=1000000,
+        collect_steps_per_iteration=30,
+        replay_buffer_capacity=10000,
         # Params for target update
         target_update_tau=0.005,
         target_update_period=1,
@@ -144,6 +144,7 @@ def train_eval(
     pyhanabi_env_eval = rl_env.make(environment_name="Hanabi-Full", num_players=4)
     py_env = pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
     py_env_eval = pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env_eval)
+    py_env_eval2 = pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env_eval)
 
     global_step = tf.compat.v1.train.get_or_create_global_step()
     with tf.compat.v2.summary.record_if(lambda: tf.math.equal(global_step % summary_interval, 0)):
@@ -198,6 +199,8 @@ def train_eval(
         replay_observer = [replay_buffer.add_batch]
 
         eval_py_policy = py_tf_policy.PyTFPolicy(
+            greedy_policy.GreedyPolicy(tf_agent.policy))
+        eval_py_policy2 = py_tf_policy.PyTFPolicy(
             greedy_policy.GreedyPolicy(tf_agent.policy))
 
         train_metrics = [
@@ -345,6 +348,7 @@ def train_eval(
                         log=True,
                     )
                     sess.run(eval_summary_flush_op)
+                    print('AVG RETURN:', compute_avg_return(py_env_eval2, eval_py_policy2))
 
                 if global_step_val % train_checkpoint_interval == 0:
                     train_checkpointer.save(global_step=global_step_val)
@@ -355,6 +359,33 @@ def train_eval(
                 if global_step_val % rb_checkpoint_interval == 0:
                     rb_checkpointer.save(global_step=global_step_val)
 
+
+
+def compute_avg_return(environment, policy, num_episodes=30):
+    total_return = 0.0
+    for _ in range(num_episodes):
+
+        time_step = environment.reset()
+        episode_return = 0.0
+        #policy_state = policy.get_initial_state(1)
+
+        #print('TIME STEP', time_step)
+        #print('TIME STEP', time_step.is_last())
+        #print('POLICY STATE', policy_state)
+
+        while not time_step.is_last():
+            policy_step = policy.action(time_step)
+            #policy_state = policy_step.state
+            time_step = environment.step(policy_step.action)
+
+            if time_step.reward == 1 or time_step.is_last():
+                episode_return += time_step.reward
+
+        total_return += episode_return
+
+    avg_return = total_return / num_episodes
+    environment.reset()
+    return avg_return
 
 def main(_):
     tf.compat.v1.enable_resource_variables()
