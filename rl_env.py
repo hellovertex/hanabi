@@ -364,8 +364,8 @@ class HanabiEnv(Environment):
         observation = self._make_observation_all_players()
         done = self.state.is_terminal()
         # Reward is score differential. May be large and negative at game end.
-        # reward = self.state.score() - last_score
-        reward = self._custom_reward(last_score, observation, old_observation)
+        reward = self.state.score() - last_score
+        # reward = self._custom_reward(last_score, observation, old_observation)
         info = {}
 
         return (observation, reward, done, info)
@@ -376,6 +376,8 @@ class HanabiEnv(Environment):
         The reward will always be immediate, i.e. for the last non-deal move.
         For recurrent rewards, we would have to adjust the replay buffer which is out of scope here.
         """
+        if self.state.is_terminal():
+            return self.state.score()
         # current_player (after action has been taken)
         pid = observation["current_player"]
 

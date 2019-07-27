@@ -23,7 +23,7 @@ RainbowAgent.target_update_period = 500 # agent steps
 RainbowAgent.epsilon_train = 0.0
 RainbowAgent.epsilon_eval = 0.0
 RainbowAgent.epsilon_decay_period = 1000 # agent steps
-RainbowAgent.tf_device = '/gpu:0'  # '/cpu:*' use for non-GPU version
+RainbowAgent.tf_device = '/cpu:*' # use for non-GPU version  '/gpu:0' 
 WrappedReplayMemory.replay_capacity = 50000
 
 # Small Hanabi.

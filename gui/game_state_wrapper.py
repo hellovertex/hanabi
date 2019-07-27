@@ -102,6 +102,8 @@ class GameStateWrapper:
         self.agents_turn = False
         self.deck_size = self.max_deck_size
         self.order = 0
+        self.vectorizer = vectorizer.ObservationVectorizer(self.env)
+        self.legal_moves_vectorizer = vectorizer.LegalMovesVectorizer(self.env)
         return
 
     def init_players(self, notify_msg: str):

@@ -14,6 +14,8 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
     def __init__(self, env):
         super(PyEnvironmentBaseWrapper, self).__init__()
         self._env = env
+        self.it = 1  # do not evaluate at first run
+        self.mvg_avg_len = 10  # compute average return all 10 resets
         self._episode_ended = False
 
     def __getattr__(self, name):
@@ -72,7 +74,35 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         observation = observations['player_observations'][observations['current_player']]
 
         reward = np.asarray(reward, dtype=np.float32)
-
+        """ 
+        # compute old reward
+        if done:
+            # get standard score
+            score = self._env.state.score()
+            if score < 0: score = 0
+            # write score to logfile
+            with open('tmp_score_log', 'r') as f:
+                arr = f.readlines()
+                with open('tmp_score_log', 'a') as f:
+                    if len(arr) > 0:
+                        f.write(',' + str(score))
+                    else:
+                        f.write(str(score))
+        if (self.it % self.mvg_avg_len) == 0:
+            # compute avg return file
+            with open('tmp_score_log', 'r') as f:
+                arr = f.readlines()
+                scores = list(map(int, arr[0].split(',')))
+                avg = sum(scores) / len(scores)
+            # write to avgreturns
+            with open('tmp_avg_returns_log', 'a') as f:
+                f.write(f"({self.it},{avg}),")
+            # flush logfile
+            with open('tmp_score_log', 'r+') as f:
+                f.truncate(0)
+        
+        # write avg for log interval and flush reward logfile
+        """
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
@@ -83,6 +113,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         else:
             step_type = StepType.MID
 
+        self.it += 1
         return TimeStep(step_type, reward, discount, obs)
 
     def observation_spec(self):

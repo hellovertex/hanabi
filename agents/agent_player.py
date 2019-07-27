@@ -41,6 +41,7 @@ class RLPlayer(object):
 
 
         self.base_dir = "/home/cawa/Documents/SoSe19/NIP/hanabi/agents/rainbow_10kit/"
+        #self.base_dir = "/home/cawa/" # Documents/SoSe19/NIP/hanabi/agents/rainbow_10kit/"
         # self.base_dir = "/home/cawa/Documents/SoSe19/NIP/hanabi/"
 
 

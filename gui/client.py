@@ -60,6 +60,7 @@ class Client:
         # Agents username as seen in the server lobby
         assert 'username' in client_config
         self.username = client_config['username']
+
         # Stores observations for agent
         self.game = GameStateWrapper(client_config)
 
@@ -358,9 +359,11 @@ def get_game_config_from_args(cmd_args) -> Dict:
 def get_client_config_from_args(cmd_args, game_config, agent: int) -> Dict:
     players = cmd_args.num_humans + len(cmd_args.agent_classes)
     deck_size = (game_config['colors'] * 2 + 1) if game_config['ranks'] < 5 else (game_config['colors'] * 10)
+    tmp_name = "Human" if agent == 0 else f"Rainbow0{agent}"
     client_config = {
         'agent_class': cmd_args.agent_classes[agent],
-        'username': get_agent_name_from_cls(cmd_args.agent_classes[agent], agent),
+        #'username': get_agent_name_from_cls(cmd_args.agent_classes[agent], agent),
+        'username': tmp_name,
         'num_human_players': cmd_args.num_humans,
         'num_total_players': players,
         "players": players,
@@ -528,13 +531,12 @@ if __name__ == "__main__":
         c = Client('ws://' + addr + '/ws', cookie, client_config, agent_config)
         clients.append(c)
 
-        # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
+        # append to lists, s.t. threads can be started later and their objects dont get removed from GC
         client_thread = threading.Thread(target=c.run)
         process.append(client_thread)
 
     for thread in process:
         thread.start()
 
-    # todo send gameJoin(gameID, password) when seelf.config['table_pw] is not '' for when -r is specified
-    # todo make formatting for --verbose mode and write wiki entry for client
+    # todo verbose formatting && send gameJoin(gameID, password) when seelf.config['table_pw] is not '' for when -r is specified
     # self.config['table_pw'] shall not be '' if -r is specified

@@ -5,27 +5,19 @@ from __future__ import print_function
 import os
 import sys
 
-rel_path = os.path.join(os.environ['PYTHONPATH'],'agents/rainbow/')
-sys.path.append(rel_path)
-
-import tensorflow as tf
 import numpy as np
 
-from absl import app
-from absl import flags
-
-import dqn_agent as dqn
 import run_experiment_ui as xp
 import rainbow_agent as rainbow
-import functools
-from third_party.dopamine import logger
 
-BASE_DIR = "/home/cawa/"
+from agents.rainbow.third_party.dopamine import logger
+
+BASE_DIR = '/home/cawa/'
 
 
-class AdHocRLPlayer(object):
+class RainbowAdHocRLPlayer(object):
 
-    def __init__(self, observation_size, num_players, history_size, max_moves, type):
+    def __init__(self, observation_size, num_players, history_size, max_moves, type, version):
 
         agent_config = {
             "observation_size": observation_size,
@@ -36,31 +28,33 @@ class AdHocRLPlayer(object):
         }
 
         self.observation_size = agent_config["observation_size"]
-        self.players = agent_config["num_players"]
+        self.num_players = agent_config["num_players"]
         self.history_size = agent_config["history_size"]
         self.vectorized_observation_shape = agent_config["observation_size"]
         self.num_actions = agent_config["max_moves"]
 
-        self.base_dir = None
 
-        if agent_config["type"] == "10kit":
-            self.base_dir = BASE_DIR
-        elif agent_config["type"] == "20kit":
-            self.base_dir = BASE_DIR
-        elif agent_config["type"] == "custom_dis_punish":
-            self.base_dir = BASE_DIR
-        else:
-            print("AGENT TYPE UNKNOWN")
-            sys.exit(0)
+        if agent_config["type"] == "rainbow_10kit":
+            self.base_dir = "/home/dg/Projects/RL/Hanabi/NIP_Hanabi_2019/agents/trained_models/rainbow_10kit"
 
-        ## Hard coded for now
-        self.experiment_logger = logger.Logger(BASE_DIR)
+        elif agent_config["type"] == "Rainbow":
+            if version == "10k":
+                self.base_dir = BASE_DIR
+            if version == "20k":
+                self.base_dir = BASE_DIR
+            if version == "custom_r1":
+                self.base_dir = BASE_DIR
 
-        path_weights = os.path.join(self.base_dir,'checkpoints')
+            self.experiment_logger = logger.Logger(self.base_dir+'/logs')
 
-        self.agent = xp.create_agent(self.observation_size, self.num_actions, self.players, "Rainbow")
+            self.agent = rainbow.RainbowAgent(
+                observation_size=self.observation_size,
+                num_actions=self.num_actions,
+                num_players=self.num_players
+                )
+            path_weights = os.path.join(self.base_dir,'checkpoints')
+            start_iteration, experiment_checkpointer = xp.initialize_checkpointing(self.agent,self.experiment_logger,path_weights,"ckpt")
 
-        start_iteration, experiment_checkpointer = xp.initialize_checkpointing(self.agent,self.experiment_logger,path_weights,"ckpt")
         print("\n---------------------------------------------------")
         print("Initialized Model weights at start iteration: {}".format(start_iteration))
         print("---------------------------------------------------\n")

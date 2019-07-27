@@ -11,7 +11,7 @@ from tf_agents.agents.ddpg import critic_rnn_network
 from tf_agents.agents.ddpg import actor_rnn_network
 
 import numpy as np
-
+import sys
 
 class MaskedActorDistributionNetwork(ActorDistributionNetwork):
     """An actor network which filters the output action distribution using a mask.
@@ -69,7 +69,14 @@ class MaskedValueNetwork(ValueNetwork):
         super().__init__(input_tensor_spec['state'], fc_layer_params=fc_layer_params)
 
     def call(self, observation, step_type=None, network_state=()):
-        return super().call(observation['state'], step_type, network_state)
+        #print("HALLO HALLO")
+        #a = tf.print('hallo', observation, output_stream=sys.stdout)
+
+
+        # If the observation dictionary had been casted before coming here,
+        # we can directly pass the vectorized observation
+        # with tf.control_dependencies([a]):
+        return super().call(observation, step_type, network_state)
 
     def __call__(self, inputs, *args, **kwargs):
         return super(Network, self).__call__(inputs, *args, **kwargs)

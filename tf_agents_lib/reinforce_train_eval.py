@@ -147,7 +147,10 @@ def train_eval(
 
     eval_py_policy = py_tf_policy.PyTFPolicy(tf_agent.policy)
     eval_py_policy_custom_return = py_tf_policy.PyTFPolicy(tf_agent.policy)
+    def standard_reward(traj):
+        """ Observer for collect_op that takes a customized rewards and returns the pyhanabi standard reward """
 
+        pass
     train_metrics = [
         tf_metrics.NumberOfEpisodes(),
         tf_metrics.EnvironmentSteps(),
