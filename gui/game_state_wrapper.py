@@ -189,6 +189,18 @@ class GameStateWrapper:
 
         return
 
+    def vectorization_synchronization(self, notify_msg):
+        # if necessary, advance state of vectorizer
+        # the vectorizer is stateful and synchronizes across all players, only problem:
+        # if human player made a turn, the agents never get to vectorize his observation and it is skipped
+        # so we 'simulate' vectorization of the human players observation here, s.t. the state of the vectorizer
+        # does not fall behind
+
+        # get players name from notify_msg
+
+        return
+
+
     def update_state(self, notify_msg):
         """
         This is the main event loop of the game
@@ -197,6 +209,14 @@ class GameStateWrapper:
         Notify message can contain 'turn', 'draw', 'play', 'clue', 'discard' as "type"-values
         Computes last_moves including recursive
         """
+
+        # if necessary, advance state of vectorizer
+        # the vectorizer is stateful and synchronizes across all players, only problem:
+        # if human player made a turn, the agents never get to vectorize his observation and it is skipped
+        # so we 'simulate' vectorization of the human players observation here, s.t. the state of the vectorizer
+        # does not fall behind
+        self.vectorization_synchronization(notify_msg)
+
 
         'Create dictionary from server message that contains actions'
         d = ast.literal_eval(
