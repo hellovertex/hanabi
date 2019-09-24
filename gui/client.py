@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 """ PROJECT LVL IMPORTS """
 from game_state_wrapper import GameStateWrapper
-import gui_config as conf, utils, commandsWebSocket as cmd
+import config as conf, utils, commands_websocket as cmd
 from agents.simple_agent import SimpleAgent
-from agents.agent_player import RLPlayer
+from evaluation.rainbow_gui import RainbowPlayer
 """ PYTHON IMPORTS """
 from typing import Dict
 import requests
@@ -14,7 +14,7 @@ import re
 from itertools import count
 import argparse
 
-
+# Just to immitate clients that have compatible browsers
 BROWSERS = [
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) snap Chromium/74.0.3729.131 Chrome/74.0.3729.131 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
@@ -60,10 +60,10 @@ class Client:
         # Agents username as seen in the server lobby
         assert 'username' in client_config
         self.username = client_config['username']
-
         # Stores observations for agent
         self.game = GameStateWrapper(client_config)
-
+        if self.id == 0:
+            self.game.caller_is_admin = True
         # Will be set when server sends notification that a game has been created (auto-join always joins last game)
         self.gameID = None
 
@@ -359,11 +359,9 @@ def get_game_config_from_args(cmd_args) -> Dict:
 def get_client_config_from_args(cmd_args, game_config, agent: int) -> Dict:
     players = cmd_args.num_humans + len(cmd_args.agent_classes)
     deck_size = (game_config['colors'] * 2 + 1) if game_config['ranks'] < 5 else (game_config['colors'] * 10)
-    tmp_name = "Human" if agent == 0 else f"Rainbow0{agent}"
     client_config = {
         'agent_class': cmd_args.agent_classes[agent],
-        #'username': get_agent_name_from_cls(cmd_args.agent_classes[agent], agent),
-        'username': tmp_name,
+        'username': get_agent_name_from_cls(cmd_args.agent_classes[agent], agent),
         'num_human_players': cmd_args.num_humans,
         'num_total_players': players,
         "players": players,
@@ -400,7 +398,7 @@ def get_configs_from_args(cmd_args) -> Dict:
         # Config for client instance, e.g. username etc
         client_config = get_client_config_from_args(cmd_args, game_config, i)
 
-        # Config for agent instance, e.g. num_actions for rainbow agent
+        # Config for agent instance, e.g. num_actions for rainbow_copy agent
         conf = utils.get_agent_config(client_config, cmd_args.agent_classes[i])
 
         # concatenate with game_config
@@ -438,13 +436,13 @@ def init_args(argparser):
         '--num_episodes',
         help='Number of games that will be played until agents idle. Default is e=1. -e flag will only be parsed when '
              '-n flag is set to 0, i.e. in AGENTS_ONLY mode',
-        type=int,
-        default=1
+        default=1,
+        type=int
     )
     argparser.add_argument(
         '-a',
         '--agent_classes',
-        help='Expects agent-class keywords as specified in client_config.py. Example: \n client.py -a simple rainbow '
+        help='Expects agent-class keywords as specified in client_config.py. Example: \n client.py -a simple rainbow_copy '
              'simple \n will run a game with 2 SimpleAgent instances and 1 RainbowAgent instance. Default is simple '
              'simple, i.e. running with 2 SimpleAgent instances',
         nargs='+',
@@ -531,12 +529,13 @@ if __name__ == "__main__":
         c = Client('ws://' + addr + '/ws', cookie, client_config, agent_config)
         clients.append(c)
 
-        # append to lists, s.t. threads can be started later and their objects dont get removed from GC
+        # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
         client_thread = threading.Thread(target=c.run)
         process.append(client_thread)
 
     for thread in process:
         thread.start()
 
-    # todo verbose formatting && send gameJoin(gameID, password) when seelf.config['table_pw] is not '' for when -r is specified
+    # todo send gameJoin(gameID, password) when seelf.config['table_pw] is not '' for when -r is specified
+    # todo make formatting for --verbose mode and write wiki entry for client
     # self.config['table_pw'] shall not be '' if -r is specified

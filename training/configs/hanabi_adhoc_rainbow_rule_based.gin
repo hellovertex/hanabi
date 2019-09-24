@@ -1,0 +1,44 @@
+# This configures the DQN Agent.
+#AGENT_CLASS = @DQNAgent
+#DQNAgent.gamma = 0.99
+#DQNAgent.update_horizon = 1
+#DQNAgent.min_replay_history = 500 # agent steps
+#DQNAgent.target_update_period = 500 # agent steps
+#DQNAgent.epsilon_train = 0.0
+#DQNAgent.epsilon_eval = 0.0
+#DQNAgent.epsilon_decay_period = 1000 # agent steps
+#DQNAgent.tf_device = '/cpu:*'  # '/cpu:*' use for non-GPU version
+
+# This configures the Rainbow agent.
+AGENT_CLASS_2 = @RainbowAgent
+RainbowAgent.gamma = 0.99
+RainbowAgent.update_horizon = 1
+RainbowAgent.num_atoms = 51
+RainbowAgent.min_replay_history = 500 # agent steps
+RainbowAgent.target_update_period = 500 # agent steps
+RainbowAgent.epsilon_train = 0.0
+RainbowAgent.epsilon_eval = 0.0
+RainbowAgent.epsilon_decay_period = 1000 # agent steps
+RainbowAgent.tf_device = '/cpu:*'  # '/cpu:*' use for non-GPU version
+WrappedReplayMemory.replay_capacity = 50000
+
+#This configures the SimpleAgent (rule based)
+AGENT_CLASS_3 = @RuleBasedAgent
+
+# Configures adhoc team
+create_adhoc_team.team_no = 1
+
+run_adhoc_experiment.run_experiment.training_steps = 10001
+run_adhoc_experiment.run_experiment.num_iterations = 20000
+run_adhoc_experiment.run_experiment.checkpoint_every_n = 100
+run_adhoc_experiment.run_one_iteration.evaluate_every_n = 50
+
+# Small Hanabi.
+run_adhoc_experiment.create_environment.game_type = 'Hanabi-Full-CardKnowledge'
+run_adhoc_experiment.create_environment.num_players = 4
+
+# create_agent.agent_type = 'Rainbow'
+run_adhoc_experiment.create_obs_stacker.history_size = 1
+
+rainbow_template.layer_size=512
+rainbow_template.num_layers=1

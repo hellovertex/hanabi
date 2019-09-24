@@ -6,8 +6,8 @@ import sys
 rel_path = os.path.join(os.environ['PYTHONPATH'])
 sys.path.append(rel_path)
 import vectorizer
-import pyhanabi_mocks, utils
-import commandsWebSocket as cmd
+import json_to_pyhanabi, utils
+import commands_websocket as cmd
 
 
 class GameStateWrapper:
@@ -61,21 +61,21 @@ class GameStateWrapper:
         self.discard_pile = list()
 
         # actually not contained in the returned dict of the
-        # rl_env.HanabiEnvobservation._extract_from_dict method, but we need a history so we add this here.
-        # Similarly, it can be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
+        # rl_env.HanabiEnvobservation._extract_from_dict()-method, but we need a history so we add this here.
+        # Similarly, it could be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         self.last_moves = list()
         self.variant = game_config['variant']
         self.num_colors = game_config['colors']
         self.num_ranks = game_config['ranks']
         self.max_moves = game_config['max_moves']
-        self.order = 0  # number of the next card on the deck, incremented when card is drawn(dealt)
+        self.order = 0  # number of the next card on the deck, incremented when card is drawn/dealt
         """
         # ################################################ #
         # -------------- USE PYHANABI MOCKS -------------- #
         # ################################################ #
         """
 
-        self.env = pyhanabi_mocks.create_env_mock(
+        self.env = json_to_pyhanabi.create_env_mock(
             num_players=self.num_players,
             num_colors=self.num_colors,
             num_ranks=self.num_ranks,
@@ -86,6 +86,13 @@ class GameStateWrapper:
             variant=self.variant
         )
 
+        self.caller_is_admin = False  # flag is used to determine one RL agent that keeps track of human players
+        # environment observations in order to be able to keep the vectorized observations synchronized
+        if self.agent_name[-2:] == '00':
+            self.caller_is_admin = True  # admin is the first instance of the client class
+        self.idx_human_player = -1  # used to determine whenever human is target of a card hint and thus when
+        # hints will be out of sync with vectorizer environment state
+        self.vectorizer_is_synced = False  # if human player got card hints, the other vectorizer instances must know
         self.vectorizer = vectorizer.ObservationVectorizer(self.env)
         self.legal_moves_vectorizer = vectorizer.LegalMovesVectorizer(self.env)
 
@@ -102,8 +109,6 @@ class GameStateWrapper:
         self.agents_turn = False
         self.deck_size = self.max_deck_size
         self.order = 0
-        self.vectorizer = vectorizer.ObservationVectorizer(self.env)
-        self.legal_moves_vectorizer = vectorizer.LegalMovesVectorizer(self.env)
         return
 
     def init_players(self, notify_msg: str):
@@ -122,6 +127,20 @@ class GameStateWrapper:
 
         # determine table position of our agent
         self.player_position = self.players.index(self.agent_name)
+
+        """ Following code has been added afterwards in order to cope with the fact that the vectorizer is stateful 
+         and therefore needs to be synchronized by being called with the observation of the human players"""
+        # determine if there are human players and if not, get their index
+        # as of now we hardcode it assuming there are only rainbow agents and simple agents
+        for p_name in self.players:
+            if ('SimpleAgent' not in p_name) and ('RainbowPlayer' not in p_name):  # Assume it is a human player
+                self.idx_human_player = self.players.index(p_name)
+                break  # assume there is at most one human player
+        if self.player_position < self.idx_human_player:
+            # We set this flag to False, whenever it was our turn, to indicate a new round
+            self.vectorizer_is_synced = True
+        if self.idx_human_player == - 1: # idx_human_players is equal to -1 if there is no human
+            self.vectorizer_is_synced = True  # in which case we do not sync anything
         return
 
     def deal_cards(self, notify_msg):
@@ -189,17 +208,27 @@ class GameStateWrapper:
 
         return
 
-    def vectorization_synchronization(self, notify_msg):
-        # if necessary, advance state of vectorizer
-        # the vectorizer is stateful and synchronizes across all players, only problem:
-        # if human player made a turn, the agents never get to vectorize his observation and it is skipped
-        # so we 'simulate' vectorization of the human players observation here, s.t. the state of the vectorizer
-        # does not fall behind
-
-        # get players name from notify_msg
-
+    def sync_vectorizer(self, notify_msg):
+        """ if necessary, invoke the vectorize_observation()-method with the card knowledge of the human player,
+        in order to keep the vectorizer synced, as it is stateful across all its instances """
+        def shift(card_knowledge):
+            offset = self.idx_human_player - self.player_position
+            shifted = card_knowledge[offset:] + card_knowledge[:offset]
+            return shifted
+        # Once per round, if we are admin
+        if self.caller_is_admin:
+            if not self.vectorizer_is_synced:
+                # compute observation stub to be passed to vectorizer
+                obs_stub = self.get_agent_observation()
+                # rotate card knowledge list to perspective of human player
+                # this is the only part that is stateful across instances and will not be thrown away after vectorizing
+                humans_card_knowledge = shift(obs_stub['card_knowledge'])
+                # replace it
+                obs_stub['card_knowledge'] = humans_card_knowledge
+                # synchronize vectorizer
+                _ = self.vectorizer.vectorize_observation(obs_stub)
+                self.vectorizer_is_synced = True
         return
-
 
     def update_state(self, notify_msg):
         """
@@ -209,14 +238,6 @@ class GameStateWrapper:
         Notify message can contain 'turn', 'draw', 'play', 'clue', 'discard' as "type"-values
         Computes last_moves including recursive
         """
-
-        # if necessary, advance state of vectorizer
-        # the vectorizer is stateful and synchronizes across all players, only problem:
-        # if human player made a turn, the agents never get to vectorize his observation and it is skipped
-        # so we 'simulate' vectorization of the human players observation here, s.t. the state of the vectorizer
-        # does not fall behind
-        self.vectorization_synchronization(notify_msg)
-
 
         'Create dictionary from server message that contains actions'
         d = ast.literal_eval(
@@ -273,10 +294,12 @@ class GameStateWrapper:
         if d['type'] == 'turn':
             if d['who'] == self.player_position:
                 self.agents_turn = True
+                if self.idx_human_player != -1:
+                    self.vectorizer_is_synced = False
             else:
                 self.agents_turn = False
 
-        # Print move to console and add move to last_moves()
+        # Print move and add it to last_moves()
         if d['type'] in ['play', 'draw', 'clue', 'discard']:
             #  {type: "discard", failed: true, which: {index: 1, suit: 2, rank: 2, order: 8}} is also possible
             self.append_to_last_moves(d, tmp_deepcopy, scored, information_token, deal_to_player, card_info_revealed)
@@ -284,6 +307,11 @@ class GameStateWrapper:
         # On end of game, do something later if necessary (resetting happens on init so no need here)
         if d['type'] == 'turn' and d['who'] == -1:
             pass
+
+        if not self.vectorizer_is_synced:
+            if self.caller_is_admin:
+                self.sync_vectorizer(d)  # if necessary, invoke the vectorize_observation()-method with the card knowledge of
+        # the human player, in order to keep the vectorizer synced, as it is stateful across all its instances
 
         return
 
@@ -347,7 +375,7 @@ class GameStateWrapper:
         {"type":"discard","failed":false,"which":{"index":1,"suit":0,"rank":4,"order":7}}
         """
 
-        move = pyhanabi_mocks.get_pyhanabi_move_mock(dict_action, deepcopy_card_nums, self.num_players)
+        move = json_to_pyhanabi.get_pyhanabi_move_mock(dict_action, deepcopy_card_nums, self.num_players)
 
         def get_player(dict_action):
             player = None
@@ -366,7 +394,7 @@ class GameStateWrapper:
         card_info_revealed = card_info_revealed
         deal_to_player = deal_to_player
 
-        history_item_mock = pyhanabi_mocks.HanabiHistoryItemMock(
+        history_item_mock = json_to_pyhanabi.HanabiHistoryItemMock(
             move=move,
             player=player,
             scored=scored,

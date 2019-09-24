@@ -1,0 +1,27 @@
+# This configures the Rainbow agent.
+AGENT_CLASS_2 = @RainbowAgentNoNStep
+RainbowAgent.gamma = 0.99
+RainbowAgent.update_horizon = 5
+RainbowAgent.num_atoms = 51
+RainbowAgent.min_replay_history = 500 # agent steps
+RainbowAgent.target_update_period = 500 # agent steps
+RainbowAgent.epsilon_train = 0.0
+RainbowAgent.epsilon_eval = 0.0
+RainbowAgent.epsilon_decay_period = 1000 # agent steps
+RainbowAgent.tf_device = '/cpu:*'  # '/gpu:0' use for non-GPU version
+WrappedReplayMemory.replay_capacity = 50000 
+
+run_experiment.training_steps = 10000
+run_experiment.num_iterations = 10005
+run_experiment.checkpoint_every_n = 50
+run_one_iteration.evaluate_every_n = 10
+
+# Small Hanabi.
+create_environment.game_type = 'Hanabi-Full-CardKnowledge'
+create_environment.num_players = 4
+
+create_agent.agent_type = 'RainbowAgentNoNStep'
+create_obs_stacker.history_size = 1
+
+#rainbow_template.layer_size=512
+#rainbow_template.num_layers=1

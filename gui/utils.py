@@ -1,7 +1,7 @@
 from typing import Dict
-import gui_config as conf
+import config as conf
 import vectorizer
-import pyhanabi_mocks
+import json_to_pyhanabi
 from typing import Optional, Set, List
 import enum
 
@@ -23,7 +23,7 @@ def get_agent_config(game_config: Dict, agent: str):
     if agent not in conf.AGENT_CLASSES:
         raise NotImplementedError
 
-    if agent == 'rainbow':
+    if agent == 'rainbow_copy' or agent == 'rainbow':
         return dict({
             'observation_size': get_observation_size(game_config),
             'num_actions': get_num_actions(game_config),
@@ -48,7 +48,7 @@ def get_observation_size(game_config):
     max_life_tokens = game_config['info_tokens']
     max_moves = game_config['max_moves']
     variant = game_config['variant']
-    env = pyhanabi_mocks.create_env_mock(
+    env = json_to_pyhanabi.create_env_mock(
         num_players=num_players,
         num_colors=num_colors,
         num_ranks=num_ranks,

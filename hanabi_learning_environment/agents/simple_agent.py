@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import sys
 """Simple Agent."""
-from hanabi_learning_environment.rl_env import Agent
+
+from rl_env import Agent
 
 
 class SimpleAgent(Agent):
