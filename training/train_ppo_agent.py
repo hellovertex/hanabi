@@ -72,7 +72,7 @@ flags.DEFINE_integer('replay_buffer_capacity', 1001,
                      'Replay buffer capacity per env.')
 flags.DEFINE_integer('num_parallel_environments', 30,
                      'Number of environments to run in parallel')
-flags.DEFINE_integer('num_environment_steps', 10000000,
+flags.DEFINE_integer('num_environment_steps', int(1e09),
                      'Number of environment steps to run before finishing.')
 flags.DEFINE_integer('num_epochs', 25,
                      'Number of epochs for computing policy updates.')
@@ -103,7 +103,7 @@ def train_eval(
     value_fc_layers_rnn=(150,),
     use_rnns=False,
     # Params for collect
-    num_environment_steps=10000000,
+    num_environment_steps=int(1e09),
     collect_episodes_per_iteration=30,
     num_parallel_environments=30,
     replay_buffer_capacity=1001,  # Per-environment
