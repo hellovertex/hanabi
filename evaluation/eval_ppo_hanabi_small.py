@@ -14,6 +14,8 @@ from tf_agents.agents.ppo.ppo_agent import PPOAgent
 
 flags.DEFINE_string('root_dir', os.getenv('UNDEFINED'),
                     'Root directory for writing logs/summaries/checkpoints.')
+flags.DEFINE_integer('num_episodes', 1,
+                     'Number of games to be played')
 flags.DEFINE_integer('num_players', 4,
                      'Number of agents playing')
 flags.DEFINE_string('game_type', 'Hanabi-Small',
@@ -76,10 +78,9 @@ class TrainedPPOAgent:
 
 
 def main(_):
-    """ Runs a single game of Hanabi-small using a trained ppo agent"""
+    """ Runs {FLAGS.num_episodes} games of Hanabi-small using a trained ppo agent"""
 
     # --- Load ppo agent with trained policy --- #
-    # todo restoring of policy does not seem to work
     agent = TrainedPPOAgent(train_dir=FLAGS.root_dir)
 
     # --- Create Environment for evaluation --- #
@@ -91,14 +92,15 @@ def main(_):
     sum_rewards = 0
     time_step = eval_env.reset()
 
-    while not time_step.is_last():
-        # act
-        action = agent.act(time_step)
-        # step
-        time_step = eval_env.step(action)
-        print(f'Got reward {time_step.reward} at turn {i}')
-        sum_rewards += time_step.reward
-        i += 1
+    for i in range(FLAGS.num_episodes):
+        while not time_step.is_last():
+            # act
+            action = agent.act(time_step)
+            # step
+            time_step = eval_env.step(action)
+            print(f'Got reward {time_step.reward} at turn {i}')
+            sum_rewards += time_step.reward
+            i += 1
 
     if time_step.is_last():
         print(f'Game ended at turn {i-1}')
