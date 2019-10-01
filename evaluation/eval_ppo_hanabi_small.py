@@ -88,24 +88,24 @@ def main(_):
     eval_env = PyhanabiEnvWrapper(env)
 
     # --- Run single game for inspection --- #
-    i = 1
-    sum_rewards = 0
-    time_step = eval_env.reset()
-
     for i in range(FLAGS.num_episodes):
+        turn = 1
+        sum_rewards = 0
+        time_step = eval_env.reset()
         while not time_step.is_last():
             # act
             action = agent.act(time_step)
             # step
             time_step = eval_env.step(action)
-            print(f'Got reward {time_step.reward} at turn {i}')
+            if time_step.reward > 0:
+                print(f'Got reward {time_step.reward} at turn {turn}')
             sum_rewards += time_step.reward
-            i += 1
+            turn += 1
 
-    if time_step.is_last():
-        print(f'Game ended at turn {i-1}')
+        if time_step.is_last():
+            print(f'Game {i+1} ended at turn {turn-1}')
 
-    print(f'total reward was {sum_rewards}')
+        print(f'total reward was {sum_rewards}')
 
 
 if __name__ == '__main__':
