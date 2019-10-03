@@ -119,7 +119,7 @@ def load_gin_configs(gin_files, gin_bindings):
 
 
 @gin.configurable
-def create_environment(game_type='Hanabi-Full', num_players=2):
+def create_environment(game_type='Hanabi-Full', num_players=4):
   """Creates the Hanabi environment.
 
   Args:
@@ -136,7 +136,7 @@ def create_environment(game_type='Hanabi-Full', num_players=2):
 
 
 @gin.configurable
-def create_obs_stacker(environment, history_size=4):
+def create_obs_stacker(environment, history_size=1):
   """Creates an observation stacker.
 
   Args:
@@ -514,7 +514,7 @@ def run_experiment(agent,
                    num_iterations=200,
                    training_steps=5000,
                    logging_file_prefix='log',
-                   log_every_n=1,
+                   log_every_n=100,
                    checkpoint_every_n=1):
   """Runs a full experiment, spread over multiple iterations."""
   tf.logging.info('Beginning training...')

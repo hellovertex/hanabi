@@ -18,7 +18,10 @@
 # This file is a fork of the original Dopamine code incorporating changes for
 # the multiplayer setting and the Hanabi Learning Environment.
 #
-"""The entry point for running a Rainbow agent on Hanabi."""
+"""The entry point for training a Rainbow agent on Hanabi.
+python3 -um train_rainbow_variants --base_dir="{base_dir}" --gin_files="{gin_file}"
+"""
+
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,7 +33,6 @@ from absl import flags
 from agents.rainbow_copy.third_party.dopamine import logger
 import agents.run_experiment as run_experiment
 
-FLAGS = flags.FLAGS
 
 flags.DEFINE_multi_string(
     'gin_files', [],
@@ -42,7 +44,8 @@ flags.DEFINE_multi_string(
     '(e.g. "DQNAgent.epsilon_train=0.1").')
 
 flags.DEFINE_string('base_dir', None,
-                    'Base directory to host all required sub-directories.')
+                    'Base directory to host all required sub-directories. '
+                    'Path for logs and checkpoints')
 
 flags.DEFINE_string('checkpoint_dir', '',
                     'Directory where checkpoint files should be saved. If '
@@ -54,55 +57,40 @@ flags.DEFINE_string('logging_dir', '',
                     'no checkpoints will be saved.')
 flags.DEFINE_string('logging_file_prefix', 'log',
                     'Prefix to use for the log files.')
-
-
-def launch_experiment():
-  """Launches the experiment.
-
-  Specifically:
-  - Load the gin configs and bindings.
-  - Initialize the Logger object.
-  - Initialize the environment.
-  - Initialize the observation stacker.
-  - Initialize the agent.
-  - Reload from the latest checkpoint, if available, and initialize the
-    Checkpointer object.
-  - Run the experiment.
-  """
-  if FLAGS.base_dir == None:
-    raise ValueError('--base_dir is None: please provide a path for '
-                     'logs and checkpoints.')
-
-  run_experiment.load_gin_configs(FLAGS.gin_files, FLAGS.gin_bindings)
-  experiment_logger = logger.Logger('{}/logs'.format(FLAGS.base_dir))
-
-  environment = run_experiment.create_environment()
-  obs_stacker = run_experiment.create_obs_stacker(environment)
-  print("Before agent creation")
-  agent = run_experiment.create_agent(environment, obs_stacker)
-  print("After agent creation")
-
-  checkpoint_dir = '{}/checkpoints'.format(FLAGS.base_dir)
-  start_iteration, experiment_checkpointer = (
-      run_experiment.initialize_checkpointing(agent,
-                                              experiment_logger,
-                                              checkpoint_dir,
-                                              FLAGS.checkpoint_file_prefix))
-
-  run_experiment.run_experiment(agent, environment, start_iteration,
-                                obs_stacker,
-                                experiment_logger, experiment_checkpointer,
-                                checkpoint_dir,
-                                logging_file_prefix=FLAGS.logging_file_prefix)
+flags.DEFINE_string('game_type', 'Hanabi-Full',
+                    'Hanabi-Full or Hanabi-Small, etc.')
+FLAGS = flags.FLAGS
 
 
 def main(unused_argv):
-  """This main function acts as a wrapper around a gin-configurable experiment.
+    """ Runs the experiment. """
 
-  Args:
-    unused_argv: Arguments (unused).
-  """
-  launch_experiment()
+    # Load the gin configs and bindings.
+    run_experiment.load_gin_configs(FLAGS.gin_files, FLAGS.gin_bindings)
+    # Initialize the Logger object.
+    experiment_logger = logger.Logger('{}/logs'.format(FLAGS.base_dir))
+    # Initialize the environment.
+    environment = run_experiment.create_environment(game_type='Hanabi-Small')
+    # Initialize the observation stacker.
+    obs_stacker = run_experiment.create_obs_stacker(environment)
+    # Initialize the agent.
+    agent = run_experiment.create_agent(environment, obs_stacker, agent_type='Rainbow')
+    # Reload latest checkpoint, if available, and initialize Checkpointer object
+    checkpoint_dir = f'{FLAGS.base_dir}/checkpoints'
+    start_iteration, experiment_checkpointer = (
+        run_experiment.initialize_checkpointing(agent,
+                                                experiment_logger,
+                                                checkpoint_dir,
+                                                FLAGS.checkpoint_file_prefix))
+
+    run_experiment.run_experiment(agent, environment, start_iteration,
+                                  obs_stacker,
+                                  experiment_logger, experiment_checkpointer,
+                                  checkpoint_dir,
+                                  logging_file_prefix=FLAGS.logging_file_prefix)
+
 
 if __name__ == '__main__':
-  app.run(main)
+    flags.mark_flag_as_required('base_dir')
+    flags.mark_flag_as_required('gin_files')
+    app.run(main)
