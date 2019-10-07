@@ -1,5 +1,6 @@
 *.pycgame_example
 .idea/
+env/
 CMakeCache.txt
 CMakeFiles/
 Makefile
