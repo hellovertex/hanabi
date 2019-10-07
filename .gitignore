@@ -1,14 +1,5 @@
 *.pycgame_example
 .idea/
-CMakeCache.txt
-CMakeFiles/
-Makefile
-cmake_install.cmake
-hanabi_lib/CMakeFiles/
-hanabi_lib/Makefile
-hanabi_lib/cmake_install.cmake
-hanabi_lib/libhanabi.a
-libpyhanabi.so
 *.pyc
 __pycache__/*
 agents/rainbow_10kit/*
