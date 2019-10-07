@@ -9,7 +9,7 @@ from training.tf_agents_lib.pyhanabi_env_wrapper import PyhanabiEnvWrapper
 from evaluation.tf_agent_adhoc_player_ppo import PPOTfAgentAdHocPlayer
 from tf_agents.environments import tf_py_environment
 from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork
-from training.tf_agents_lib.masked_networks import MaskedValueNetwork
+from training.tf_agents_lib.masked_networks import MaskedValueEvalNetwork
 from tf_agents.agents.ppo.ppo_agent import PPOAgent
 
 flags.DEFINE_string('root_dir', os.getenv('UNDEFINED'),
@@ -30,7 +30,7 @@ def load_networks(tf_env):
         tf_env.action_spec(),
         fc_layer_params=(150, 75)
     )
-    value_net = MaskedValueNetwork(  # set up value network as trained before
+    value_net = MaskedValueEvalNetwork(  # set up value network as trained before
         tf_env.observation_spec(), fc_layer_params=(150, 75)
     )
     return actor_net, value_net
