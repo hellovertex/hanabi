@@ -85,22 +85,22 @@ flags.DEFINE_integer('num_eval_episodes', 30,
                      'The number of episodes to run eval on.')
 flags.DEFINE_boolean('use_rnns', False,
                      'If true, use RNN for policy and value function.')
-flags.DEFINE_boolean('custom_env', False,
-                     'if true, environment will be loaded from config passed via args')
-flags.DEFINE_integer('colors', 2,
-                     'overwrites number of colors in environment creation')
-flags.DEFINE_integer('ranks', 5,
-                     'overwrites number of rank in environment creation')
-flags.DEFINE_integer('players', 4,
-                     'overwrites number of players in environment creation')
-flags.DEFINE_integer('hand_size', 4,
-                     'overwrites hand_size in environment creation')
-flags.DEFINE_integer('max_information_tokens', 3,
-                     'overwrites number of info_tokens in environment creation')
-flags.DEFINE_integer('max_life_tokens', 1,
-                     'overwrites number of life_tokens in environment creation')
-flags.DEFINE_integer('observation_type', 1,
-                     'overwrites pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value in environment creation')
+# flags.DEFINE_boolean('custom_env', False,
+#                      'if true, environment will be loaded from config passed via args')
+# flags.DEFINE_integer('colors', 2,
+#                      'overwrites number of colors in environment creation')
+# flags.DEFINE_integer('ranks', 5,
+#                      'overwrites number of rank in environment creation')
+# flags.DEFINE_integer('players', 4,
+#                      'overwrites number of players in environment creation')
+# flags.DEFINE_integer('hand_size', 4,
+#                      'overwrites hand_size in environment creation')
+# flags.DEFINE_integer('max_information_tokens', 3,
+#                      'overwrites number of info_tokens in environment creation')
+# flags.DEFINE_integer('max_life_tokens', 1,
+#                      'overwrites number of life_tokens in environment creation')
+# flags.DEFINE_integer('observation_type', 1,
+#                      'overwrites pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value in environment creation')
 FLAGS = flags.FLAGS
 
 
@@ -358,30 +358,34 @@ def train_eval(
 
 
 def load_hanabi_env(env_name="Hanabi-Small", num_players=4):
-  pyhanabi_env = None
-  if not FLAGS.custom_env:
     pyhanabi_env = rl_env.make(environment_name=env_name, num_players=num_players)
-  else:
-      config = {
-          "colors":
-              FLAGS.colors,
-          "ranks":
-              FLAGS.rank,
-          "players":
-              FLAGS.players,
-          "hand_size":
-              FLAGS.hand_size,
-          "max_information_tokens":
-              FLAGS.max_information_tokens,
-          "max_life_tokens":
-              FLAGS.max_life_tokens,
-          "observation_type":
-              FLAGS.observations_type}
-      pyhanabi_env = rl_env.HanabiEnv(config)
-  if pyhanabi_env is not None:
-      py_env = pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
-  
-  return py_env
+    return pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
+  # if not FLAGS.custom_env:
+  #
+  #   pyhanabi_env = rl_env.make(environment_name=env_name, num_players=num_players)
+  # else:
+  #     config = {
+  #         "colors":
+  #             FLAGS.colors,
+  #         "ranks":
+  #             FLAGS.rank,
+  #         "players":
+  #             FLAGS.players,
+  #         "hand_size":
+  #             FLAGS.hand_size,
+  #         "max_information_tokens":
+  #             FLAGS.max_information_tokens,
+  #         "max_life_tokens":
+  #             FLAGS.max_life_tokens,
+  #         "observation_type":
+  #             FLAGS.observations_type}
+  #     pyhanabi_env = rl_env.HanabiEnv(config)
+  #
+  # if pyhanabi_env is not None:
+  #     print('YOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO')
+  #     return pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
+  #
+  # return None
 
 
 def compute_avg_return(environment, policy, num_episodes=30):
