@@ -85,22 +85,22 @@ flags.DEFINE_integer('num_eval_episodes', 30,
                      'The number of episodes to run eval on.')
 flags.DEFINE_boolean('use_rnns', False,
                      'If true, use RNN for policy and value function.')
-# flags.DEFINE_boolean('custom_env', False,
-#                      'if true, environment will be loaded from config passed via args')
-# flags.DEFINE_integer('colors', 2,
-#                      'overwrites number of colors in environment creation')
-# flags.DEFINE_integer('ranks', 5,
-#                      'overwrites number of rank in environment creation')
-# flags.DEFINE_integer('players', 4,
-#                      'overwrites number of players in environment creation')
-# flags.DEFINE_integer('hand_size', 4,
-#                      'overwrites hand_size in environment creation')
-# flags.DEFINE_integer('max_information_tokens', 3,
-#                      'overwrites number of info_tokens in environment creation')
-# flags.DEFINE_integer('max_life_tokens', 1,
-#                      'overwrites number of life_tokens in environment creation')
-# flags.DEFINE_integer('observation_type', 1,
-#                      'overwrites pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value in environment creation')
+flags.DEFINE_boolean('custom_env', False,
+                     'if true, environment will be loaded from config passed via args')
+flags.DEFINE_integer('colors', 2,
+                     'overwrites number of colors in environment creation')
+flags.DEFINE_integer('ranks', 5,
+                     'overwrites number of rank in environment creation')
+flags.DEFINE_integer('players', 4,
+                     'overwrites number of players in environment creation')
+flags.DEFINE_integer('hand_size', 2,
+                     'overwrites hand_size in environment creation')
+flags.DEFINE_integer('max_information_tokens', 3,
+                     'overwrites number of info_tokens in environment creation')
+flags.DEFINE_integer('max_life_tokens', 1,
+                     'overwrites number of life_tokens in environment creation')
+flags.DEFINE_integer('observation_type', 1,
+                     'overwrites pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value in environment creation')
 FLAGS = flags.FLAGS
 
 
@@ -138,12 +138,21 @@ def train_eval(
     summaries_flush_secs=1,
     debug_summaries=False,
     summarize_grads_and_vars=False,
-    eval_metrics_callback=None):
+    eval_metrics_callback=None,
+    custom_env=False):
   """A simple train and eval for PPO."""
   if root_dir is None:
     raise AttributeError('train_eval requires a root_dir.')
 
   root_dir = os.path.expanduser(root_dir)
+  if custom_env:
+      root_dir += f'/pl{FLAGS.players}_' \
+                  f'hs{FLAGS.hand_size}_' \
+                  f'c{FLAGS.colors}_' \
+                  f'r{FLAGS.ranks}_' \
+                  f'it{FLAGS.max_information_tokens}_' \
+                  f'lt{FLAGS.max_life_tokens}_' \
+                  f'ot{FLAGS.observation_type}/'
   train_dir = os.path.join(root_dir, 'train')
   eval_dir = os.path.join(root_dir, 'eval')
 
@@ -358,15 +367,17 @@ def train_eval(
 
 
 def load_hanabi_env(env_name="Hanabi-Small", num_players=4):
-  py_env = None
+  #  pyhanabi_env = rl_env.make(environment_name=env_name, num_players=num_players)
+  #  return pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
   if not FLAGS.custom_env:
+
     pyhanabi_env = rl_env.make(environment_name=env_name, num_players=num_players)
   else:
       config = {
           "colors":
               FLAGS.colors,
           "ranks":
-              FLAGS.rank,
+              FLAGS.ranks,
           "players":
               FLAGS.players,
           "hand_size":
@@ -376,13 +387,13 @@ def load_hanabi_env(env_name="Hanabi-Small", num_players=4):
           "max_life_tokens":
               FLAGS.max_life_tokens,
           "observation_type":
-              FLAGS.observations_type}
+              FLAGS.observation_type}
       pyhanabi_env = rl_env.HanabiEnv(config)
-  if pyhanabi_env is not None:
-      py_env = pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
-  
-  return py_env
 
+  if pyhanabi_env is not None:
+      return pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
+
+  return None
 
 
 def compute_avg_return(environment, policy, num_episodes=30):
@@ -429,7 +440,8 @@ def main(_):
       num_epochs=FLAGS.num_epochs,
       collect_episodes_per_iteration=FLAGS.collect_episodes_per_iteration,
       num_eval_episodes=FLAGS.num_eval_episodes,
-      use_rnns=FLAGS.use_rnns)
+      use_rnns=FLAGS.use_rnns,
+      custom_env=FLAGS.custom_env)
 
 
 if __name__ == '__main__':
