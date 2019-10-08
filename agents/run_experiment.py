@@ -309,7 +309,7 @@ def parse_observations(observations, num_actions, obs_stacker):
 
 
 class AverageReturnMetric(object):
-  def __init__(self, buffer_size=10):
+  def __init__(self, buffer_size=20):
     self._buffer = np.zeros([buffer_size])
     self.buffer_size = buffer_size
     self.reset()
@@ -553,6 +553,20 @@ def initialize_uninitialized_variables(session, var_list=None):
     session.run(tf.compat.v1.variables_initializer(uninitialized_vars))
 
 
+class EnvironmentSteps(object):
+  def __init__(self, name='EnvironmentSteps', dtype=tf.int64):
+    self.dtype = dtype
+    # self.environment_steps = utils.create_variable(initial_value=0, dtype=self.dtype, shape=(), name='environment_steps')
+    self.environment_steps = 0
+  def __call__(self, num_steps):
+    # self.environment_steps.assign_add(num_steps)
+    self.environment_steps += num_steps
+    return num_steps
+  def result(self):
+    #return tf.identity(self.environment_steps, name=self.name)
+    pass
+
+
 @gin.configurable
 def run_experiment(agent,
                    environment,
@@ -578,37 +592,42 @@ def run_experiment(agent,
   """
 
   # -----------
-  train_summary_writer = tf.compat.v2.summary.create_file_writer(checkpoint_dir+'tb/', flush_millis=1000)
+  train_summary_writer = tf.compat.v2.summary.create_file_writer(checkpoint_dir+'_tensorboard/', flush_millis=1000)
   train_summary_writer.set_as_default()
   global_step = tf.compat.v1.train.get_or_create_global_step()
   metric_avg_return = AverageReturnMetric()
+  observers = [metric_avg_return]
+  env_steps = EnvironmentSteps()
+  # write graph to disk
   with tf.compat.v2.summary.record_if(lambda: tf.math.equal(global_step % 5, 0)):
-    summary_avg_return = metric_avg_return.tf_summaries(train_step=global_step)
+    summary_avg_return = tf.identity(metric_avg_return.tf_summaries(train_step=global_step))
     with tf.Session() as sess:
       initialize_uninitialized_variables(sess)
       sess.run(train_summary_writer.init())
-
       # -----------
 
       for iteration in range(start_iteration, num_iterations):
         # -----------
-        sess.run(global_step)
+        global_step_val = sess.run(global_step)
         # -----------
-        start_time = time.time()
-        statistics = run_one_iteration(agent, environment, obs_stacker, iteration,
-                                       training_steps)
-        tf.logging.info('Iteration %d took %d seconds', iteration,
-                        time.time() - start_time)
-        start_time = time.time()
-        log_experiment(experiment_logger, iteration, statistics,
-                       logging_file_prefix, log_every_n)
-        tf.logging.info('Logging iteration %d took %d seconds', iteration,
-                        time.time() - start_time)
-        start_time = time.time()
-        checkpoint_experiment(experiment_checkpointer, agent, experiment_logger,
-                              iteration, checkpoint_dir, checkpoint_every_n)
-        tf.logging.info('Checkpointing iteration %d took %d seconds', iteration,
-                        time.time() - start_time)
+        # start_time = time.time()
+        statistics = run_one_iteration(agent, environment, obs_stacker, iteration, training_steps, observers=observers)
+
+        # tf.logging.info('Iteration %d took %d seconds', iteration, time.time() - start_time)
+        # start_time = time.time()
+        log_experiment(experiment_logger, iteration, statistics, logging_file_prefix, log_every_n)
+        # tf.logging.info('Logging iteration %d took %d seconds', iteration, time.time() - start_time)
+
+        # start_time = time.time()
+        checkpoint_experiment(
+          experiment_checkpointer,
+          agent,
+          experiment_logger,
+          iteration,
+          checkpoint_dir,
+          checkpoint_every_n
+        )
+        # tf.logging.info('Checkpointing iteration %d took %d seconds', iteration, time.time() - start_time)
         # -----------
         _ = sess.run(summary_avg_return)  # The writing happens due to contextmanager 'summary.record_if()'
         # -----------
