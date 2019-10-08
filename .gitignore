@@ -1,3 +1,5 @@
+env/
+tensorboard/
 *.pycgame_example
 .idea/
 env/
