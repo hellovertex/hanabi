@@ -41,10 +41,11 @@ import tensorflow as tf
 
 from tf_agents.agents.reinforce import reinforce_agent
 from tf_agents.drivers import dynamic_episode_driver
-from tf_agents.environments import tf_py_environment
+from tf_agents.environments import tf_py_environment, parallel_py_environment
 from tf_agents.eval import metric_utils
-from tf_agents.metrics import py_metrics
+from tf_agents.metrics import py_metrics, batched_py_metric
 from tf_agents.metrics import tf_metrics
+from tf_agents.metrics.py_metrics import AverageReturnMetric, AverageEpisodeLengthMetric
 from tf_agents.networks import actor_distribution_network
 from tf_agents.networks import value_network
 from tf_agents.policies import py_tf_policy
@@ -71,7 +72,7 @@ def train_eval(
     use_value_network=False,
     # Params for collect
     collect_episodes_per_iteration=30,
-    replay_buffer_capacity=2000,
+    replay_buffer_capacity=1001,
     # Params for train
     learning_rate=1e-3,
     gamma=0.9,
@@ -85,8 +86,8 @@ def train_eval(
     train_checkpoint_interval=2000,
     policy_checkpoint_interval=1000,
     rb_checkpoint_interval=4000,
-    log_interval=100,
-    summary_interval=100,
+    log_interval=50,
+    summary_interval=50,
     summaries_flush_secs=1,
     debug_summaries=True,
     summarize_grads_and_vars=False,
@@ -105,16 +106,25 @@ def train_eval(
   eval_summary_writer = tf.compat.v2.summary.create_file_writer(
       eval_dir, flush_millis=summaries_flush_secs * 1000)
   eval_metrics = [
-      py_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
-      py_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes),
+      batched_py_metric.BatchedPyMetric(
+          AverageReturnMetric,
+          metric_args={'buffer_size': num_eval_episodes},
+          batch_size=30),
+      batched_py_metric.BatchedPyMetric(
+          AverageEpisodeLengthMetric,
+          metric_args={'buffer_size': num_eval_episodes},
+          batch_size=30),
   ]
+  eval_summary_writer_flush_op = eval_summary_writer.flush()
 
   global_step = tf.compat.v1.train.get_or_create_global_step()
   with tf.compat.v2.summary.record_if(
       lambda: tf.math.equal(global_step % summary_interval, 0)):
-    eval_py_env = load_env()
-    eval_py_env2 = load_env()
-    tf_env = tf_py_environment.TFPyEnvironment(load_env())
+    eval_py_env = parallel_py_environment.ParallelPyEnvironment([lambda: load_env("Hanabi-Small", 4)] * 30)
+    tf_env = tf_py_environment.TFPyEnvironment(
+        parallel_py_environment.ParallelPyEnvironment(
+            [lambda: load_env("Hanabi-Small", 4)] * 30))
+    # tf_env = tf_py_environment.TFPyEnvironment(load_env())
 
     # TODO(b/127870767): Handle distributions without gin.
     actor_net = masked_networks.MaskedActorDistributionNetwork(
@@ -147,7 +157,7 @@ def train_eval(
         max_length=replay_buffer_capacity)
 
     eval_py_policy = py_tf_policy.PyTFPolicy(tf_agent.policy)
-    eval_py_policy_custom_return = py_tf_policy.PyTFPolicy(tf_agent.policy)
+    # eval_py_policy_custom_return = py_tf_policy.PyTFPolicy(tf_agent.policy)
 
     train_metrics = [
         tf_metrics.NumberOfEpisodes(),
@@ -265,35 +275,14 @@ def train_eval(
               global_step=global_step_val,
               callback=eval_metrics_callback,
           )
-          print('AVG RETURN:', compute_avg_return(eval_py_env2, eval_py_policy_custom_return))
+          # print('AVG RETURN:', compute_avg_return(eval_py_env2, eval_py_policy_custom_return))
 
 
-def load_env(variant="Hanabi-Full", players=4):
+def load_env(variant="Hanabi-Small", players=4):
     pyhanabi_env = rl_env.make(environment_name=variant, num_players=players)
     py_env = pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
 
     return py_env
-
-
-def compute_avg_return(environment, policy, num_episodes=30):
-    total_return = 0.0
-    for _ in range(num_episodes):
-
-        time_step = environment.reset()
-        episode_return = 0.0
-
-        while not time_step.is_last():
-            policy_step = policy.action(time_step)
-            time_step = environment.step(policy_step.action)
-
-            if time_step.reward == 1 or time_step.is_last():
-                episode_return += time_step.reward
-
-        total_return += episode_return
-
-    avg_return = total_return / num_episodes
-    environment.reset()
-    return avg_return
 
 
 def main(_):
