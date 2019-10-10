@@ -317,13 +317,18 @@ class AverageReturnMetric(object):
   def __call__(self, _, reward):
     """ Adds reward to buffer """
     self._buffer = np.roll(self._buffer, 1)
-    self._buffer[0] = reward
+    self._buffer[0] = np.float32(reward)
 
   def reset(self):
     self._buffer = np.zeros([self.buffer_size])
 
   def result(self):
-    return np.sum(self._buffer)/self.buffer_size
+    def _result():
+      return np.sum(self._buffer)/self.buffer_size
+    result_value = tf.py_function(_result, [], tf.float32, name='metric_result_py_func')
+    if not tf.executing_eagerly():
+      return result_value.set_shape(())
+    return result_value
 
   def tf_summaries(self, train_step=None):
     """ Must return tensorflow op """
@@ -463,8 +468,7 @@ def run_one_iteration(agent, environment, obs_stacker,
 
   # First perform the training phase, during which the agent learns.
   agent.eval_mode = False
-  number_steps, sum_returns, num_episodes = (
-      run_one_phase(agent, environment, obs_stacker, training_steps, statistics,
+  number_steps, sum_returns, num_episodes = (run_one_phase(agent, environment, obs_stacker, training_steps, statistics,
                     'train', observers=observers))
   time_delta = time.time() - start_time
   tf.logging.info('Average training steps per second: %.2f',
@@ -592,43 +596,54 @@ def run_experiment(agent,
   """
 
   # -----------
-  train_summary_writer = tf.compat.v2.summary.create_file_writer(checkpoint_dir+'_tensorboard/', flush_millis=1000)
-  train_summary_writer.set_as_default()
-  global_step = tf.compat.v1.train.get_or_create_global_step()
-  metric_avg_return = AverageReturnMetric()
-  observers = [metric_avg_return]
-  env_steps = EnvironmentSteps()
+
+
+  # train_summary_writer = tf.compat.v2.summary.create_file_writer(checkpoint_dir+'_tensorboard/', flush_millis=1000)
+  # train_summary_writer.set_as_default()
+
+  # metric_avg_return = AverageReturnMetric()
+  # env_steps = EnvironmentSteps()
+
+  # observers = [metric_avg_return]
+  # global_step = tf.compat.v1.train.get_or_create_global_step()
   # write graph to disk
-  with tf.compat.v2.summary.record_if(lambda: tf.math.equal(global_step % 5, 0)):
-    summary_avg_return = tf.identity(metric_avg_return.tf_summaries(train_step=global_step))
-    with tf.Session() as sess:
-      initialize_uninitialized_variables(sess)
-      sess.run(train_summary_writer.init())
+  # with tf.compat.v2.summary.record_if(lambda: tf.math.equal(global_step % 5, 0)):
+  #   summary_avg_return = tf.identity(metric_avg_return.tf_summaries(train_step=global_step))
+  #   with tf.Session() as sess:
+  #     initialize_uninitialized_variables(sess)
+  #     sess.run(train_summary_writer.init())
       # -----------
+  tf.reset_default_graph()
+  sess = tf.Session()
+  for iteration in range(start_iteration, num_iterations):
+    # # -----------
+    # global_step_val = sess.run(global_step)
+    # # -----------
+    # start_time = time.time()
+    statistics = run_one_iteration(agent, environment, obs_stacker, iteration, training_steps, observers=None)
+    # tf.logging.info('Iteration %d took %d seconds', iteration, time.time() - start_time)
+    # start_time = time.time()
+    log_experiment(experiment_logger, iteration, statistics, logging_file_prefix, log_every_n)
+    # tf.logging.info('Logging iteration %d took %d seconds', iteration, time.time() - start_time)
 
-      for iteration in range(start_iteration, num_iterations):
-        # -----------
-        global_step_val = sess.run(global_step)
-        # -----------
-        # start_time = time.time()
-        statistics = run_one_iteration(agent, environment, obs_stacker, iteration, training_steps, observers=observers)
+    # start_time = time.time()
+    checkpoint_experiment(
+      experiment_checkpointer,
+      agent,
+      experiment_logger,
+      iteration,
+      checkpoint_dir,
+      checkpoint_every_n
+    )
+    summary_writer = tf.summary.FileWriter(checkpoint_dir + '/summary/')
+    summary = tf.Summary()
+    summary.value.add(tag='AverageReturn/EnvironmentSteps', simple_value=statistics['average_return'][0])
+    summary_writer.add_summary(summary, statistics['env_steps'][0])
+    summary_writer.flush()
 
-        # tf.logging.info('Iteration %d took %d seconds', iteration, time.time() - start_time)
-        # start_time = time.time()
-        log_experiment(experiment_logger, iteration, statistics, logging_file_prefix, log_every_n)
-        # tf.logging.info('Logging iteration %d took %d seconds', iteration, time.time() - start_time)
 
-        # start_time = time.time()
-        checkpoint_experiment(
-          experiment_checkpointer,
-          agent,
-          experiment_logger,
-          iteration,
-          checkpoint_dir,
-          checkpoint_every_n
-        )
-        # tf.logging.info('Checkpointing iteration %d took %d seconds', iteration, time.time() - start_time)
-        # -----------
-        _ = sess.run(summary_avg_return)  # The writing happens due to contextmanager 'summary.record_if()'
-        # -----------
+    # tf.logging.info('Checkpointing iteration %d took %d seconds', iteration, time.time() - start_time)
+    # # -----------
+    # _ = sess.run(summary_avg_return)  # The writing happens due to contextmanager 'summary.record_if()'
+    # # -----------
 
