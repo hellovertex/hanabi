@@ -37,14 +37,14 @@ import tensorflow as tf
 from agents.rainbow_copy.third_party.dopamine import checkpointer
 from agents.rainbow_copy.third_party.dopamine import iteration_statistics
 import hanabi_learning_environment.rl_env as rl_env
-
+from absl import logging
 import dqn_agent
 import rainbow_agent
 import rainbow_no_distributional_projections
 import rainbow_no_n_step_update
 import rainbow_no_prio_replay
 import rule_based_agent
-
+import utils
 LENIENT_SCORE = False
 
 
@@ -308,7 +308,40 @@ def parse_observations(observations, num_actions, obs_stacker):
   return current_player, legal_moves, observation_vector
 
 
-def run_one_episode(agent, environment, obs_stacker):
+class AverageReturnMetric(object):
+  def __init__(self, buffer_size=20):
+    self._buffer = np.zeros([buffer_size])
+    self.buffer_size = buffer_size
+    self.reset()
+
+  def __call__(self, _, reward):
+    """ Adds reward to buffer """
+    self._buffer = np.roll(self._buffer, 1)
+    self._buffer[0] = np.float32(reward)
+
+  def reset(self):
+    self._buffer = np.zeros([self.buffer_size])
+
+  def result(self):
+    def _result():
+      return np.sum(self._buffer)/self.buffer_size
+    result_value = tf.py_function(_result, [], tf.float32, name='metric_result_py_func')
+    if not tf.executing_eagerly():
+      return result_value.set_shape(())
+    return result_value
+
+  def tf_summaries(self, train_step=None):
+    """ Must return tensorflow op """
+    summaries = []
+    result = self.result()
+    summaries.append(tf.compat.v2.summary.scalar(
+      name='AverageReturn'+f'{train_step}',
+      data=result,
+      step=train_step))
+    return summaries
+
+
+def run_one_episode(agent, environment, obs_stacker, observers=None):
   """Runs the agent on a single game of Hanabi in self-play mode.
 
   Args:
@@ -364,11 +397,14 @@ def run_one_episode(agent, environment, obs_stacker):
   agent.end_episode(reward_since_last_action)
 
   tf.logging.info('EPISODE: %d %g', step_number, total_reward)
+  if observers is not None:
+    [observer(step_number, total_reward) for observer in observers]
+
   return step_number, total_reward
 
 
 def run_one_phase(agent, environment, obs_stacker, min_steps, statistics,
-                  run_mode_str):
+                  run_mode_str, observers=None):
   """Runs the agent/environment loop until a desired number of steps.
 
   Args:
@@ -390,7 +426,7 @@ def run_one_phase(agent, environment, obs_stacker, min_steps, statistics,
 
   while step_count < min_steps:
     episode_length, episode_return = run_one_episode(agent, environment,
-                                                     obs_stacker)
+                                                     obs_stacker, observers=observers)
     statistics.append({
         '{}_episode_lengths'.format(run_mode_str): episode_length,
         '{}_episode_returns'.format(run_mode_str): episode_return
@@ -407,7 +443,8 @@ def run_one_phase(agent, environment, obs_stacker, min_steps, statistics,
 def run_one_iteration(agent, environment, obs_stacker,
                       iteration, training_steps,
                       evaluate_every_n=100,
-                      num_evaluation_games=100):
+                      num_evaluation_games=100,
+                      observers=None):
   """Runs one iteration of agent/environment interaction.
 
   An iteration involves running several episodes until a certain number of
@@ -431,9 +468,8 @@ def run_one_iteration(agent, environment, obs_stacker,
 
   # First perform the training phase, during which the agent learns.
   agent.eval_mode = False
-  number_steps, sum_returns, num_episodes = (
-      run_one_phase(agent, environment, obs_stacker, training_steps, statistics,
-                    'train'))
+  number_steps, sum_returns, num_episodes = (run_one_phase(agent, environment, obs_stacker, training_steps, statistics,
+                    'train', observers=observers))
   time_delta = time.time() - start_time
   tf.logging.info('Average training steps per second: %.2f',
                   number_steps / time_delta)
@@ -441,6 +477,7 @@ def run_one_iteration(agent, environment, obs_stacker,
   average_return = sum_returns / num_episodes
   tf.logging.info('Average per episode return: %.2f', average_return)
   statistics.append({'average_return': average_return})
+  statistics.append({'env_steps': number_steps})
 
   # Also run an evaluation phase if desired.
   if evaluate_every_n is not None and iteration % evaluate_every_n == 0:
@@ -503,6 +540,37 @@ def checkpoint_experiment(experiment_checkpointer, agent, experiment_logger,
       experiment_checkpointer.save_checkpoint(iteration, agent_dictionary)
 
 
+def initialize_uninitialized_variables(session, var_list=None):
+  """Initialize any pending variables that are uninitialized."""
+  if var_list is None:
+    var_list = tf.compat.v1.global_variables() + tf.compat.v1.local_variables()
+  is_initialized = session.run(
+    [tf.compat.v1.is_variable_initialized(v) for v in var_list])
+  uninitialized_vars = []
+  for flag, v in zip(is_initialized, var_list):
+    if not flag:
+      uninitialized_vars.append(v)
+  if uninitialized_vars:
+    logging.info('uninitialized_vars:')
+    for v in uninitialized_vars:
+      logging.info(v)
+    session.run(tf.compat.v1.variables_initializer(uninitialized_vars))
+
+
+class EnvironmentSteps(object):
+  def __init__(self, name='EnvironmentSteps', dtype=tf.int64):
+    self.dtype = dtype
+    # self.environment_steps = utils.create_variable(initial_value=0, dtype=self.dtype, shape=(), name='environment_steps')
+    self.environment_steps = 0
+  def __call__(self, num_steps):
+    # self.environment_steps.assign_add(num_steps)
+    self.environment_steps += num_steps
+    return num_steps
+  def result(self):
+    #return tf.identity(self.environment_steps, name=self.name)
+    pass
+
+
 @gin.configurable
 def run_experiment(agent,
                    environment,
@@ -522,20 +590,60 @@ def run_experiment(agent,
     tf.logging.warning('num_iterations (%d) < start_iteration(%d)',
                        num_iterations, start_iteration)
     return
+  """ 
+  run_one_episode() updates the metrics
+  metrics compute tf.summaries
+  """
 
+  # -----------
+
+
+  # train_summary_writer = tf.compat.v2.summary.create_file_writer(checkpoint_dir+'_tensorboard/', flush_millis=1000)
+  # train_summary_writer.set_as_default()
+
+  # metric_avg_return = AverageReturnMetric()
+  # env_steps = EnvironmentSteps()
+
+  # observers = [metric_avg_return]
+  # global_step = tf.compat.v1.train.get_or_create_global_step()
+  # write graph to disk
+  # with tf.compat.v2.summary.record_if(lambda: tf.math.equal(global_step % 5, 0)):
+  #   summary_avg_return = tf.identity(metric_avg_return.tf_summaries(train_step=global_step))
+  #   with tf.Session() as sess:
+  #     initialize_uninitialized_variables(sess)
+  #     sess.run(train_summary_writer.init())
+      # -----------
+  tf.reset_default_graph()
+  sess = tf.Session()
   for iteration in range(start_iteration, num_iterations):
-    start_time = time.time()
-    statistics = run_one_iteration(agent, environment, obs_stacker, iteration,
-                                   training_steps)
-    tf.logging.info('Iteration %d took %d seconds', iteration,
-                    time.time() - start_time)
-    start_time = time.time()
-    log_experiment(experiment_logger, iteration, statistics,
-                   logging_file_prefix, log_every_n)
-    tf.logging.info('Logging iteration %d took %d seconds', iteration,
-                    time.time() - start_time)
-    start_time = time.time()
-    checkpoint_experiment(experiment_checkpointer, agent, experiment_logger,
-                          iteration, checkpoint_dir, checkpoint_every_n)
-    tf.logging.info('Checkpointing iteration %d took %d seconds', iteration,
-                    time.time() - start_time)
+    # # -----------
+    # global_step_val = sess.run(global_step)
+    # # -----------
+    # start_time = time.time()
+    statistics = run_one_iteration(agent, environment, obs_stacker, iteration, training_steps, observers=None)
+    # tf.logging.info('Iteration %d took %d seconds', iteration, time.time() - start_time)
+    # start_time = time.time()
+    log_experiment(experiment_logger, iteration, statistics, logging_file_prefix, log_every_n)
+    # tf.logging.info('Logging iteration %d took %d seconds', iteration, time.time() - start_time)
+
+    # start_time = time.time()
+    checkpoint_experiment(
+      experiment_checkpointer,
+      agent,
+      experiment_logger,
+      iteration,
+      checkpoint_dir,
+      checkpoint_every_n
+    )
+    summary_writer = tf.summary.FileWriter(checkpoint_dir + '/summary/')
+    summary = tf.Summary()
+    summary.value.add(tag='AverageReturn/EnvironmentSteps', simple_value=statistics['average_return'][0])
+    summary_writer.add_summary(summary, statistics['env_steps'][0])
+    summary_writer.flush()
+
+
+    # tf.logging.info('Checkpointing iteration %d took %d seconds', iteration, time.time() - start_time)
+    # # -----------
+    # _ = sess.run(summary_avg_return)  # The writing happens due to contextmanager 'summary.record_if()'
+    # # -----------
+
