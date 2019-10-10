@@ -87,7 +87,8 @@ RANKS = [5]
 NUM_PLAYERS = [4]
 HAND_SIZES = [2,3,4,5]
 MAX_INFORMATION_TOKENS = [3,2,1,8]
-MAX_LIFE_TOKENS = [2,3]
+# MAX_LIFE_TOKENS = [2,3]
+MAX_LIFE_TOKENS = [1]
 OBSERVATION_TYPE = 1  # pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value
 
 
@@ -423,6 +424,7 @@ def train_eval(
                 log=True,
             )
             sess.run(eval_summary_writer_flush_op)
+        tf.reset_default_graph()
 
 
 def main(_):
