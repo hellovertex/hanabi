@@ -513,7 +513,8 @@ def modifyReward(state, action):
     returns a modifed reward
 
     state: the current state
-    action: the action taken
+    action: the action taken# self.num_colors = game_config
+    pass
   '''
   reward = 0
   if(action.type() == pyhanabi.HanabiMoveType.DISCARD):
