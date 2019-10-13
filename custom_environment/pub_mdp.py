@@ -65,28 +65,50 @@ class PubMDP(object):
         else:
             last_action = self._get_last_non_deal_move(last_moves)  # pyhanabi.HanabiMove()
             if last_action.type == HanabiMoveType.PLAY:
-                # reduce card count by 1
+                # reduce card candidate count by 1
                 # if last copy was played, set corresponding hint_mask slots to 0
                 pass
 
     def compute_B0_belief(self):
         """ Computes initial public belief that only depends on card counts and hint mask. C.f. eq(12)
-        Can be used for baseline agents."""
+        Can be used for baseline agents as well as re-marginalization init"""
         return (self.candidate_counts * self.hint_mask).flatten()
 
-    def compute_V1_belief(self, obs):
+    def compute_V1_belief(self, obs, k=1):
         """ Computes re-marginalized V1 beliefs C.f. eq(13) """
-        if self.public_belief is None:
-            self.public_belief = self.compute_B0_belief()
+        # Compute basic belief B0
+        self.public_belief = self.compute_B0_belief()
+        # todo re-marginalization of V1
 
-        return 0
+        pass
 
-    def compute_BB_belief(self, V1, prob_last_action):
+        # return _loop_re_marginalization(k)
+
+    def compute_BB_belief(self, V1, prob_last_action, k=1):
         """ Computes re-marginalized Bayesian beliefs. C.f. eq(14) and eq(15)"""
-        return 0
+        # Compute basic bayesian belief
+        if self.public_belief is None:
+            self.public_belief = self.compute_B0_belief() * prob_last_action
 
-    def augment_observation(self, obs, prob_last_action=None, alpha=.01):
-        """ Ads public belief state s_bad to the vectorized observation obs and returns flattened network input vec
+        # Re-marginalize and save to self.public-belief
+        def _loop_re_marginalization(k):
+            """ Returns public believe at convergence C.f eq(10), eq(13) """
+            B_next = self.public_belief
+            for _ in range(k):
+                # iterate public_belief rows which is 20 iterations at most
+                for slot in self.public_belief:
+                    B_next[slot] = self.candidate_counts - np.sum(
+                        self.public_belief[np.arange(self.num_players * self.hand_size) != slot],
+                        # pick all other rows
+                        axis=0)  # sum beliefs of all other slots
+                self.public_belief = B_next * prob_last_action
+            return self.public_belief
+
+        return _loop_re_marginalization(k)
+
+
+    def augment_observation(self, obs, prob_last_action=None, alpha=.01, k=1):
+        """ Adds public belief state s_bad to the vectorized observation obs and returns flattened network input
         s_bad  = {public_belief, public_features}
         Where
             public_features = obs  [can be changed to more sophisticated observation later]
@@ -96,13 +118,16 @@ class PubMDP(object):
             obs: rl_env.step(a)['player_observations']['current_player']['vectorized_observation]
             prob_last_action: probability of the action taken by the last agent,
             used to compute likelihood of private features. Will be set to 1\num_actions on init
+            alpha: smoothness of interpolation between V1 and BB
+            k: iteration counter for re-marginalization (c.f. eq(10))
         Returns:
             obs_pub_mdp: vectorized observation including public beliefs and features
         """
-        self.update_candidates_and_hint_mask(obs)
+        self.update_candidates_and_hint_mask(obs)  # todo: do we update card_counts including hand_cards?
         V1 = self.compute_V1_belief(obs)
         BB = self.compute_BB_belief(V1, prob_last_action)
         V2 = (1-alpha)*BB + alpha*V1
+        self.public_belief = V2
         obs_pub_mdp = obs + V2
         return obs_pub_mdp
 
