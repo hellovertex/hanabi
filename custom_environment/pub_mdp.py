@@ -19,10 +19,11 @@ class PubMDP(object):
         self.num_players = game_config['players']
         self.hand_size = game_config['hand_size']
         # 0-1 vector of length (colors * ranks) containing public card counts
-        self.candidate_counts = np.tile([3,2,2,2,1][:self.num_ranks], self.num_colors)
+        self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
+        self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
         # public binary matrix, slot equals 1, if player could be holding card at given slot
         # i.e. hint_mask[i,j] == 1 <==> (i % hand_size)th card of (i\hand_size)th player equals card j
-        self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks))
+        self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
 
         # these will be initialized on env.reset() call
         self.private_features = None  # 0-1 vector of length (num_players * hand_size) * (colors * ranks)
@@ -32,9 +33,22 @@ class PubMDP(object):
 
     def reset(self):
         self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
-        self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks))
+        self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
+        self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
         self.private_features = None
         self.public_features = np.concatenate((self.candidate_counts, self.hint_mask.flatten()))
+
+    def get_cards_count_idx(self, history_item):
+        """ Returns for PLAY or DISCARD moves, the index of the card with respect to self.candidate_counts
+        :arg
+            history_item: a pyhanabi.HanabiHistoryItem containing the last non deal move
+        :returns
+            cards_count_idx: the index of the played/discarded card in self.candidate_counts
+        """
+        assert history_item.move().type() in [HanabiMoveType.PLAY, HanabiMoveType.DISCARD]
+        color = history_item.color()
+        rank = history_item.rank()
+        return (color * self.num_ranks) + rank
 
     @staticmethod
     def _get_last_non_deal_move(last_moves):
@@ -42,42 +56,58 @@ class PubMDP(object):
         Args:
             last_moves: [pyhanabi.HanabiHistoryItem()]
         Returns:
-             last_non_deal_move: pyhanabi.HanabiMove()
+             last_non_deal_move: pyhanabi.HanabiHistoryItem()
             """
         assert last_moves is not None
         assert isinstance(last_moves, list)
-        assert isinstance(last_moves[0], pyhanabi.HanabiMove)
+
+        if len(last_moves) > 0:
+            #print('hello', type(last_moves[0]))
+            #assert isinstance(last_moves[0], pyhanabi.HanabiHistoryItem)
+            pass
         i = 0
         last_move = None
         while True:
             if len(last_moves) <= i:
                 break
-            if last_moves[i].type() != HanabiMoveType.DEAL:
+            if last_moves[i].move().type() != HanabiMoveType.DEAL:
                 last_move = last_moves[i]
                 break
             i += 1
+
         return last_move
+
+    def reduce_card_candidate_count(self, index):
+        """  """
+        assert index in [i for i in range(len(self.candidate_counts))]
+        assert self.candidate_counts[index] > 0
+
+        self.candidate_counts[index] -= 1
 
     def update_candidates_and_hint_mask(self, obs):
         """ Update public card knowledge according to change induced by last move """
         assert isinstance(obs, dict)
         assert 'pyhanabi' in obs
         last_moves = obs['pyhanabi'].last_moves()  # list of pyhanabi.HanabiHistoryItem from most recent to oldest
-        if last_moves is None:
+        if not last_moves:
             pass
         else:
-            last_move = self._get_last_non_deal_move(last_moves)  # pyhanabi.HanabiMove()
-            if last_move.type == HanabiMoveType.PLAY:
+            # todo: check if deck is empty, in this case set the last index of self.hint_mask to 1
+
+            last_move = self._get_last_non_deal_move(last_moves)  # pyhanabi.HanabiHistoryItem()
+            if last_move.move().type() == HanabiMoveType.PLAY:
+                # reduce card candidate count of played card by 1
+                card_candidate_idx = self.get_cards_count_idx(last_move)
+                self.reduce_card_candidate_count(card_candidate_idx)
+                # if last copy was played, set corresponding hint_mask slots to 0
+                if self.candidate_counts[card_candidate_idx] == 0:
+                    self.hint_mask[:, card_candidate_idx] = 0
+            elif last_move.move().type() == HanabiMoveType.DISCARD:
                 # reduce card candidate count by 1
                 # if last copy was played, set corresponding hint_mask slots to 0
                 # todo
                 pass
-            elif last_move.type == HanabiMoveType.DISCARD:
-                # reduce card candidate count by 1
-                # if last copy was played, set corresponding hint_mask slots to 0
-                # todo
-                pass
-            elif last_move.type in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
+            elif last_move.move().type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
                 # update hint_mask
                 # todo
                 pass
@@ -87,7 +117,7 @@ class PubMDP(object):
     def compute_B0_belief(self):
         """ Computes initial public belief that only depends on card counts and hint mask. C.f. eq(12)
         Can be used for baseline agents as well as re-marginalization init"""
-        return (self.candidate_counts * self.hint_mask).flatten()
+        return (self.candidate_counts * self.hint_mask)
 
     def compute_belief_at_convergence(self, k=1):
         """ Computes re-marginalized V1 beliefs C.f. eq(13) """
@@ -100,12 +130,17 @@ class PubMDP(object):
             re_marginalized = belief_v1
             for _ in range(k):  # k << 10 suffices
                 # iterate public_belief rows which is 20 iterations at most
-                for slot in belief_v1:
-                    re_marginalized[slot] = self.candidate_counts - np.sum(
-                        belief_v1[np.arange(self.num_players * self.hand_size) != slot],  # pick all other rows
+                print('initial belief', belief_v1)
+                for i, slot in enumerate(belief_v1):
+                    # print(belief_v1[np.arange(self.num_players * self.hand_size) != i])
+                    re_marginalized[i] = self.candidate_counts - np.sum(
+                        belief_v1[(np.arange(self.num_players * self.hand_size) != i)],  # pick all other rows
                         axis=0)  # sum across other slots
-                belief_v1 = re_marginalized
-            return belief_v1
+                    print(i, self.candidate_counts - np.sum(
+                        belief_v1[(np.arange(self.num_players * self.hand_size) != i)],  # pick all other rows
+                        axis=0))
+                # belief_v1 = re_marginalized
+            return re_marginalized
 
         return _loop_re_marginalization(belief_b0, k)
 
@@ -122,9 +157,9 @@ class PubMDP(object):
             re_marginalized = bayesian_belief
             for _ in range(k):  # k << 10 suffices
                 # iterate public_belief rows which is 20 iterations at most
-                for slot in bayesian_belief:
-                    re_marginalized[slot] = self.candidate_counts - np.sum(
-                        bayesian_belief[np.arange(self.num_players * self.hand_size) != slot],
+                for i, slot in enumerate(bayesian_belief):
+                    re_marginalized[i] = self.candidate_counts - np.sum(
+                        bayesian_belief[np.arange(self.num_players * self.hand_size) != i],
                         # pick all other rows
                         axis=0) * prob_last_action  # todo: replace prob_last_action with vector
                 bayesian_belief = re_marginalized
@@ -132,7 +167,7 @@ class PubMDP(object):
 
         return _loop_re_marginalization(bayesian_belief_b0, k)
 
-    def augment_observation(self, obs, prob_last_action=None, alpha=.01, k=1):
+    def augment_observation(self, obs, prob_last_action=1/10, alpha=.01, k=1):
         """ Adds public belief state s_bad to the vectorized observation obs and returns flattened network input
         s_bad  = {public_belief, public_features}
         Where
@@ -148,10 +183,17 @@ class PubMDP(object):
         Returns:
             obs_pub_mdp: vectorized observation including public beliefs and features
         """
+        assert isinstance(obs, dict)
+        assert 'current_player_offset' in obs  # ensure to always have agent_observation, not full observation
         self.update_candidates_and_hint_mask(obs)  # todo: do we update card_counts including hand_cards?
         V1 = self.compute_belief_at_convergence()
         BB = self.compute_bayesian_belief(prob_last_action)
         V2 = (1-alpha) * BB + alpha * V1  # todo check if is vector of correct shape
-        obs_pub_mdp = np.concatenate(obs['vectorized_observation'], V2)
+        obs['V1_belief'] = V1
+        obs['BB'] = BB
+        obs['V2'] = V2
+        # print(V1)
+        # print(BB)
+        # obs['obs_pub_mdp_vectorized'] = np.concatenate(obs['vectorized'], V2)
 
-        return obs_pub_mdp
+        return obs
