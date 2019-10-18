@@ -84,6 +84,35 @@ class PubMDP(object):
 
         self.candidate_counts[index] -= 1
 
+    def get_abs_agent_idx(self, last_move):
+        """ Computes absolute agent position given target_offset and current_player_position,
+        i.e. (agent_position + target_offset) % num_players
+        Args:
+            last_move: pyhanabi.HanabiHistoryItem containing information on the action last taken
+        """
+        return (last_move.player() + last_move.move().target_offset()) % self.num_players
+
+    def get_hinted_information(self, last_move):
+        """ Returns color, rank, and agent_index for a given move of type REVEAL_XYZ
+        Args:
+            last_move: pyhanabi.HanabiHistoryItem containing information on the action last taken
+        Returns:
+            color, rank,  target_agent_idx, target_cards_idx: 0-based values,
+            color is None for REVEAL_RANK moves and rank is None for REVEAL_COLOR moves
+        """
+        # todo
+        assert last_move.type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]
+        target_cards_idx = last_move.card_info_revealed()
+        color = last_move.color()
+        rank = last_move.rank()
+        target_agent_idx = self.get_abs_agent_idx(last_move)
+
+        return color, rank, target_agent_idx, target_cards_idx
+
+    def _update_hint_mask(self, color, rank, index):
+        """ Updates the hint_mask """
+        pass
+
     def update_candidates_and_hint_mask(self, obs):
         """ Update public card knowledge according to change induced by last move """
         assert isinstance(obs, dict)
@@ -95,20 +124,22 @@ class PubMDP(object):
             # todo: check if deck is empty, in this case set the last index of self.hint_mask to 1
 
             last_move = self._get_last_non_deal_move(last_moves)  # pyhanabi.HanabiHistoryItem()
-            if last_move.move().type() == HanabiMoveType.PLAY:
+            if last_move.move().type() in [HanabiMoveType.PLAY, HanabiMoveType.DISCARD]:
                 # reduce card candidate count of played card by 1
                 card_candidate_idx = self.get_cards_count_idx(last_move)
                 self.reduce_card_candidate_count(card_candidate_idx)
                 # if last copy was played, set corresponding hint_mask slots to 0
                 if self.candidate_counts[card_candidate_idx] == 0:
                     self.hint_mask[:, card_candidate_idx] = 0
-            elif last_move.move().type() == HanabiMoveType.DISCARD:
-                # reduce card candidate count by 1
-                # if last copy was played, set corresponding hint_mask slots to 0
-                # todo
-                pass
             elif last_move.move().type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
+                color, rank, target_agent_idx, target_cards_idx = self.get_hinted_information(last_move)
                 # update hint_mask
+                self._update_hint_mask(color, rank, target_agent_idx)
+                # indices of hinted cards correspond to rows in hint_mask
+                # values of hint, e.g. REVEAL_COLOR: 0 (Red) correspond to columns of the matrix
+
+                # whenever a hint for a card is given to player a, when the corresponding card index in
+                # candidate_counts is 1, the cards hint_mask column can be set to 0 for all other players
                 # todo
                 pass
             else:
@@ -123,7 +154,7 @@ class PubMDP(object):
         """ Computes re-marginalized V1 beliefs C.f. eq(13) """
         # Compute basic belief B0
         belief_b0 = self.compute_B0_belief()
-
+        # todo timeit because it adds quadratic complexity despite low coefficient
         # Re-marginalize and save to self.public-belief
         def _loop_re_marginalization(belief_v1, k):
             """ Returns public believe at convergence C.f eq(10), eq(13) """
