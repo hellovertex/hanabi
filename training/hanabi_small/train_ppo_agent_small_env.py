@@ -64,7 +64,7 @@ sys.path.insert(0, 'lib')
 from hanabi_learning_environment import rl_env
 from training.tf_agents_lib import masked_networks, pyhanabi_env_wrapper
 
-flags.DEFINE_string('root_dir', os.getenv('UNDEFINED'),
+flags.DEFINE_string('root_dir', str(os.path.dirname(__file__)) + '/logs/hanabi_small/ppo/',
                     'Root directory for writing logs/summaries/checkpoints.')
 flags.DEFINE_string('master', '', 'master session')
 flags.DEFINE_string('env_name', 'Hanabi-Small', 'Name of an environment')
@@ -445,5 +445,5 @@ def main(_):
 
 
 if __name__ == '__main__':
-  flags.mark_flag_as_required('root_dir')
+  # flags.mark_flag_as_required('root_dir')
   app.run(main)

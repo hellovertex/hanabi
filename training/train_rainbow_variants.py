@@ -27,6 +27,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl import app
 from absl import flags
 
@@ -35,7 +37,7 @@ import agents.run_experiment as run_experiment
 
 
 flags.DEFINE_multi_string(
-    'gin_files', [],
+    'gin_files', [str(os.path.dirname(__file__)) + '/configs/hanabi_rainbow.gin'],
     'List of paths to gin configuration files (e.g.'
     '"configs/hanabi_rainbow.gin").')
 flags.DEFINE_multi_string(
@@ -43,7 +45,7 @@ flags.DEFINE_multi_string(
     'Gin bindings to override the values set in the config files '
     '(e.g. "DQNAgent.epsilon_train=0.1").')
 
-flags.DEFINE_string('base_dir', None,
+flags.DEFINE_string('base_dir', str(os.path.dirname(__file__)) + '/logs/Rainbow',
                     'Base directory to host all required sub-directories. '
                     'Path for logs and checkpoints')
 
@@ -91,6 +93,6 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
-    flags.mark_flag_as_required('base_dir')
-    flags.mark_flag_as_required('gin_files')
+    # flags.mark_flag_as_required('base_dir')
+    # flags.mark_flag_as_required('gin_files')
     app.run(main)
