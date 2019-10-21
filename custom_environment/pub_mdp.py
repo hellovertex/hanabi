@@ -14,6 +14,9 @@ class PubMDP(object):
     (https://arxiv.org/abs/1811.01458)"""
 
     def __init__(self, game_config):
+        """
+            See definition of augment_observation() at the bottom of this file to understand how this class works
+        """
         self.num_colors = game_config['colors']
         self.num_ranks = game_config['ranks']
         self.num_players = game_config['players']
@@ -24,6 +27,10 @@ class PubMDP(object):
         # public binary matrix, slot equals 1, if player could be holding card at given slot
         # i.e. hint_mask[i,j] == 1 <==> (i % hand_size)th card of (i\hand_size)th player equals card j
         self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
+        self.hint_mask[:, -1] = 0
+        # utils
+        self.util_mask_slots_hinted = list()  # maintains rows of self.hint_mask that have received a hint
+        self.deck_is_empty = False
         """
         e.g. for 2 players and 2 colors (5 ranks) at start of the game
         self.hint_mask = [[1 1 1 1 1 1 1 1 1 1 0]  # card 0 of player 0  --> HM[f[0]] 
@@ -43,19 +50,21 @@ class PubMDP(object):
         self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
         self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
         self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
-        self.private_features = None
+        self.hint_mask[:, -1] = 0
+        self.util_mask_slots_hinted = list()
         self.public_features = np.concatenate((self.candidate_counts, self.hint_mask.flatten()))
+        self.deck_is_empty = False
 
-    def get_cards_candidate_idx(self, history_item):
-        """ Returns for PLAY or DISCARD moves, the index of the card with respect to self.candidate_counts
+    def _get_idx_candidate_count(self, last_move):
+        """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
         :arg
-            history_item: a pyhanabi.HanabiHistoryItem containing the last non deal move
+            last_move: a pyhanabi.HanabiHistoryItem containing the last non deal move
         :returns
             cards_count_idx: the index of the played/discarded card in self.candidate_counts
         """
-        assert history_item.move().type() in [HanabiMoveType.PLAY, HanabiMoveType.DISCARD]
-        color = history_item.color()
-        rank = history_item.rank()
+        assert last_move.move().type() in [HanabiMoveType.PLAY, HanabiMoveType.DISCARD]
+        color = last_move.color()
+        rank = last_move.rank()
         assert ((color * self.num_ranks) + rank) < len(self.candidate_counts)
         return (color * self.num_ranks) + rank
 
@@ -86,14 +95,18 @@ class PubMDP(object):
 
         return last_move
 
-    def reduce_card_candidate_count(self, index):
-        """  """
-        assert index in [i for i in range(len(self.candidate_counts))]
-        # print("self.candidate_counts = ", self.candidate_counts)
-        # print("index is ", index)
-        assert self.candidate_counts[index] > 0
+    def reduce_card_candidate_count(self, last_move):
+        """
+        When a card has been played or discarded, decrement in self.candidate_counts
+        :returns card_candidate_idx: the index of the played/discarded card w.r.t. self.candidate_counts
+         """
+        card_candidate_idx = self._get_idx_candidate_count(last_move)
+        assert card_candidate_idx in [i for i in range(len(self.candidate_counts))]
+        assert self.candidate_counts[card_candidate_idx] > 0
 
-        self.candidate_counts[index] -= 1
+        self.candidate_counts[card_candidate_idx] -= 1
+
+        return card_candidate_idx
 
     def get_abs_agent_idx(self, last_move):
         """ Computes absolute agent position given target_offset and current_player_position,
@@ -103,15 +116,14 @@ class PubMDP(object):
         """
         return (last_move.player() + last_move.move().target_offset()) % self.num_players
 
-    def get_hinted_information(self, last_move):
+    def _get_info_reveal_move(self, last_move):
         """ Returns color, rank, and agent_index for a given move of type REVEAL_XYZ
         Args:
             last_move: pyhanabi.HanabiHistoryItem containing information on the action last taken
         Returns:
             color, rank,  target_agent_idx, target_cards_idx: 0-based values,
-            color is None for REVEAL_RANK moves and rank is None for REVEAL_COLOR moves
+            color is None or -1 for REVEAL_RANK moves and rank is None or -1 for REVEAL_COLOR moves
         """
-        # todo
         assert last_move.move().type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]
         target_cards_idx = last_move.card_info_revealed()
         color = last_move.move().color()
@@ -120,52 +132,115 @@ class PubMDP(object):
 
         return color, rank, target_agent_idx, target_cards_idx
 
-    def _update_hint_mask(self, color, rank, agent_index, cards_revealed):
-        """ Updates the hint_mask
-         Args:
+    def _update_hint_mask(self, last_move):
+        """
+        Updates the hint_mask given last_move
+
+        Args fetched from self._get_info_reveal_move(last_move):
              color: 0-indexed color corresponding to ["R", "Y", "G", "W", "B"]
              rank: 0-indexed rank
              agent_index: absolute position of agent
              cards_revealed: indices of cards touched by a clue, e.g. [0,2,3]
-         """
-        # on REVEAL_COLOR, set the corresponding indices to 1, and 0 otherwise for rows corresponding to cards_revealed
-        self.hand_size * agent_index
-        #
-        #
-        pass
+        ---------------------------------------------------------------------
+        e.g. for an initial hintmask
+        self.hint_mask = [[1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 0.]
+                          [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 0.]
+                          [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 0.]
+                          [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 0.]]
+        and REVEAL_COLOR: 0 to player 0, e.g.
+            color, rank, agent_idx, cards_revealed = 0, -1, 0, [0,1]
 
+        the function would update self.hint_mask to
+            [[1. 1. 1. 1. 1. 0. 0. 0. 0. 0. 0.]
+             [1. 1. 1. 1. 1. 0. 0. 0. 0. 0. 0.]
+             [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+             [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]]
+
+        When REVEAL_COLOR: 1 however, the result will be
+             [[0. 0. 0. 0. 0. 1. 1. 1. 1. 1. 0.]
+              [0. 0. 0. 0. 0. 1. 1. 1. 1. 1. 0.]
+              [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+              [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]]
+        ----------------------------------------------------
+        Similarly, when target is player 1, the results will be
+            [[1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+             [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+             [1. 1. 1. 1. 1. 0. 0. 0. 0. 0. 0.]
+             [1. 1. 1. 1. 1. 0. 0. 0. 0. 0. 0.]]
+        and
+            [[1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+             [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+             [0. 1. 0. 0. 0. 0. 1. 0. 0. 0. 0.]
+             [0. 1. 0. 0. 0. 0. 1. 0. 0. 0. 0.]]
+        for REVEAL_COLOR: 0 and REVEAL_RANK: 1 respectively.
+         """
+        move_type = last_move.move().type()
+        assert move_type in [HanabiMoveType.REVEAL_RANK, HanabiMoveType.REVEAL_COLOR]
+        color, rank, target_agent_idx, target_cards_idx = self._get_info_reveal_move(last_move)
+
+        # Slots are rows in self.hint_mask corresponding to the cards touched by a REVEAL_XYZ move
+        slots = [target_agent_idx * self.hand_size + slot for slot in target_cards_idx]
+
+        # set all other touched slots to 0, unless they have been hinted already
+        mask_untouched = [i for i in slots if i not in self.util_mask_slots_hinted]
+        self.hint_mask[mask_untouched] = 0
+
+        # add rows that were hinted
+        [self.util_mask_slots_hinted.append(slot) for slot in slots]
+
+        if move_type == HanabiMoveType.REVEAL_COLOR:
+            col_idx = color * self.num_ranks
+            self.hint_mask[slots, col_idx:col_idx + self.num_ranks] = 1
+        elif move_type == HanabiMoveType.REVEAL_RANK:
+            cols = [rank + self.num_ranks * c for c in range(self.num_colors)]
+            for rank in cols:
+                self.hint_mask[slots, rank] = 1
+        else:
+            raise ValueError
+
+    def _reset_slot_hint_mask(self, last_move):
+        """ After a card has been played, its corresponding row in the hint_mask must be reset """
+        row = last_move.move().card_index()
+        if row in self.util_mask_slots_hinted:  # todo check if this notably decreases performance
+            self.util_mask_slots_hinted.remove(row)
+        self.hint_mask[row, :] = 1
+        self.hint_mask[:, self.candidate_counts == 0] = 0  # set to 0 for impossible cards (all copies played)
+
+    # LVL 1
     def update_candidates_and_hint_mask(self, obs):
-        """ Update public card knowledge according to change induced by last move """
+        """ Update public card knowledge according to change induced by last move, More specifically
+         For PLAY and DISCARD moves:
+            - reduce card candidate count by 1
+            - if last copy was played, set corresponding self.hint_mask columns to 0
+            - reset hint_mask for corresponding card slot
+         For REVEAL_COLOR and REVEAL_RANK moves
+            - update self.hint_mask
+         For DEAL moves:
+            - skip
+         """
         assert isinstance(obs, dict)
         assert 'pyhanabi' in obs
-        last_moves = obs['pyhanabi'].last_moves()  # list of pyhanabi.HanabiHistoryItem from most recent to oldest
-        if not last_moves:
-            # on game_initialization, do nothing
-            pass
-        else:
-            # todo: check if deck is empty, in this case set the last index of self.hint_mask to 1
 
+        last_moves = obs['pyhanabi'].last_moves()  # list of pyhanabi.HanabiHistoryItem from most recent to oldest
+
+        if last_moves:  # is False on Initialization, i.e. when last_moves is empty, i.e. when last_moves is False
             last_move = self._get_last_non_deal_move(last_moves)  # pyhanabi.HanabiHistoryItem()
+            # PLAY and DISCARD moves
             if last_move.move().type() in [HanabiMoveType.PLAY, HanabiMoveType.DISCARD]:
-                # reduce card candidate count of played card by 1
-                card_candidate_idx = self.get_cards_candidate_idx(last_move)
-                self.reduce_card_candidate_count(card_candidate_idx)
-                # if last copy was played, set corresponding hint_mask slots to 0
+                # Reduce card candidate count by 1 and if last copy was played, set corresponding hint_mask columns to 0
+                card_candidate_idx = self.reduce_card_candidate_count(last_move)
                 if self.candidate_counts[card_candidate_idx] == 0:
                     self.hint_mask[:, card_candidate_idx] = 0
-            elif last_move.move().type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
-                color, rank, target_agent_idx, target_cards_idx = self.get_hinted_information(last_move)
-                # update hint_mask
-                self._update_hint_mask(color, rank, target_agent_idx, target_cards_idx)
-                # indices of hinted cards correspond to rows in hint_mask
-                # values of hint, e.g. REVEAL_COLOR: 0 (Red) correspond to columns of the matrix
+                self._reset_slot_hint_mask(last_move)
 
-                # whenever a hint for a card is given to player a, when the corresponding card index in
-                # candidate_counts is 1, the cards hint_mask column can be set to 0 for all other players
-                # todo
-                pass
+            # REVEAL_COLOR and REVEAL_RANK moves
+            elif last_move.move().type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
+                self._update_hint_mask(last_move)
             else:
                 raise ValueError
+
+        if self.deck_is_empty:
+            self.hint_mask[:, -1] = 1
 
     def compute_B0_belief(self):
         """ Computes initial public belief that only depends on card counts and hint mask. C.f. eq(12)
@@ -201,7 +276,7 @@ class PubMDP(object):
                         axis=0)  # sum across other slots
                     # print(i, re_marginalized[i])
                 # belief_v1 = re_marginalized
-            print(re_marginalized)
+            # print(re_marginalized)
             return re_marginalized
 
         return _loop_re_marginalization(belief_b0, k)
@@ -216,7 +291,7 @@ class PubMDP(object):
         # Re-marginalize and save to self.public-belief
         def _loop_re_marginalization(bayesian_belief, k):
             """ Returns public believe at convergence C.f eq(10), eq(13) """
-            re_marginalized = bayesian_belief
+            re_marginalized = np.copy(bayesian_belief)
             for _ in range(k):  # k << 10 suffices
                 # iterate public_belief rows which is 20 iterations at most
                 for i, slot in enumerate(bayesian_belief):
@@ -229,9 +304,14 @@ class PubMDP(object):
 
         return _loop_re_marginalization(bayesian_belief_b0, k)
 
+    # LVL 0
     def augment_observation(self, obs, prob_last_action=1/10, alpha=.01, k=1):
-        """ Adds public belief state s_bad to the vectorized observation obs and returns flattened network input
-        s_bad  = {public_belief, public_features}
+        """
+        Adds public belief state 's_bad' to a vectorized observation 'obs' gotten from an environment
+        Returns the augmented binary observation vector (ready to use NN input)
+
+        s_bad  = {public_features, public_belief}
+
         Where
             public_features = obs  [can be changed to more sophisticated observation later]
         and
@@ -247,8 +327,12 @@ class PubMDP(object):
         """
         assert isinstance(obs, dict)
         assert 'current_player_offset' in obs  # ensure to always have agent_observation, not full observation
+
+        self.deck_is_empty = True if obs['deck_size'] <= 0 else False
+
         self.update_candidates_and_hint_mask(obs)  # todo: do we update card_counts including hand_cards?
         V1 = self.compute_belief_at_convergence()
+        # todo sample likelihood of private features
         BB = self.compute_bayesian_belief(prob_last_action)
         V2 = (1-alpha) * BB + alpha * V1  # todo check if is vector of correct shape
         obs['V1_belief'] = V1

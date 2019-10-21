@@ -37,9 +37,10 @@ class Runner(object):
       while not done:
         for agent_id, agent in enumerate(agents):
           observation = observations['player_observations'][agent_id]
-          augmented_observation = self.pub_mdp.augment_observation(observation)
+
           action = agent.act(observation)
           if observation['current_player'] == agent_id:
+            augmented_observation = self.pub_mdp.augment_observation(observation)
             # print(augmented_observation)
             assert action is not None
             current_player_action = action
@@ -51,6 +52,7 @@ class Runner(object):
         #                                    current_player_action))
         observations, reward, done, unused_info = self.environment.step(
             current_player_action)
+
         episode_reward += reward
       rewards.append(episode_reward)
 
@@ -85,7 +87,7 @@ class PrintDebugTest(ABCTest):
 
     def run(self):
         self.runner.run()
-
+# todo implement seeded tests to compare to precomputed results
 test = PrintDebugTest()
 test.run()
 
@@ -100,9 +102,24 @@ beliefs = np.array([[3,2,2,2,1,3,2,2,2,1],
 
 re_marginalized = np.copy(beliefs)
 for i, slot in enumerate(beliefs):
-    print('initial belief', beliefs)
-    print(np.sum(beliefs[(np.arange(num_players * hand_size) != i)], axis=0))
-    print(re_marginalized[i])
+    #print('initial belief', beliefs)
+    #print(np.sum(beliefs[(np.arange(num_players * hand_size) != i)], axis=0))
+    #print(re_marginalized[i])
     re_marginalized[i] = np.sum(beliefs[(np.arange(num_players * hand_size) != i)], axis=0)
-    print(i, re_marginalized[i])
+    #print(i, re_marginalized[i])
+row_mask = [0 * hand_size + slot for slot in [0, 2, 3]]
+print(f're_marginalized = \n{re_marginalized}')
+re_marginalized[not row_mask] = 0
+print(f're_marginalized with row mask = \n{re_marginalized}')
+counts = np.array([3, 2, 2, 2, 0, 3, 2, 2, 2, 1])
+mask = counts==0
+print(mask)
+re_marginalized[:, counts == 0] = 10000
+print(f're_marginalized with impossible mask = \n{re_marginalized}')
+# print([i for i in range(4) if i not in [0,2,3]])
+#col_mask = [0,2]
+#for r in col_mask:
+#    re_marginalized[row_mask, r] = 1
+# print(re_marginalized[row_mask, 0:3])
+#print(f're_marginalized with row and col mask= \n{re_marginalized}')
 """
