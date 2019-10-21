@@ -56,7 +56,7 @@ from hanabi_learning_environment import rl_env
 from training.tf_agents_lib import masked_networks, pyhanabi_env_wrapper
 
 
-flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
+flags.DEFINE_string('root_dir', str(os.path.dirname(__file__)) + '/logs/REINFORCE/',
                     'Root directory for writing logs/summaries/checkpoints.')
 #flags.DEFINE_integer('num_iterations', 10000000,
 #                     'Total number train/eval iterations to perform.')
@@ -303,5 +303,5 @@ def main(_):
 
 
 if __name__ == '__main__':
-  flags.mark_flag_as_required('root_dir')
+  # flags.mark_flag_as_required('root_dir')
   app.run(main)

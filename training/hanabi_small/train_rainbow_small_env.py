@@ -3,9 +3,10 @@ import agents.run_experiment as run_experiment
 import hanabi_learning_environment.rl_env as rl_env
 from agents.rainbow_copy.third_party.dopamine import logger
 from agents.rainbow_copy import rainbow_agent
+import os
 
 flags.DEFINE_multi_string(
-    'gin_files', [],
+    'gin_files', [str(os.path.dirname(__file__)) + '/configs/hanabi_rainbow.gin'],
     'List of paths to gin configuration files (e.g.'
     '"configs/hanabi_rainbow.gin").')
 flags.DEFINE_multi_string(
@@ -17,7 +18,7 @@ flags.DEFINE_string('game_type', 'Hanabi-Small',
                     'One of {Hanabi-Full, Hanabi-Small, ...} c.f. hanabi-learning-environment')
 flags.DEFINE_integer('num_players', 4,
                      'Number of players')
-flags.DEFINE_string('root_dir', None,
+flags.DEFINE_string('root_dir', str(os.path.dirname(__file__)) + '/logs/Rainbow',
                     'Base directory to host all required sub-directories. '
                     'Path for logs and checkpoints')
 FLAGS = flags.FLAGS
@@ -52,5 +53,5 @@ def main(_):
 
 
 if __name__ == 'main':
-    flags.mark_flag_as_required('root_dir')
+    # flags.mark_flag_as_required('root_dir')
     app.run(main)
