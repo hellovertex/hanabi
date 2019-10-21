@@ -3,6 +3,7 @@ import numpy as np
 from hanabi_learning_environment import rl_env
 from agents.simple_agent import SimpleAgent
 from custom_environment.pub_mdp import  PubMDP
+import os
 """
  (1) Generate observations using rl_env_example.py Runner()
  (2) Init PubMDP on top of it
@@ -87,6 +88,7 @@ class PrintDebugTest(ABCTest):
 
 test = PrintDebugTest()
 test.run()
+
 """
 num_players = 2
 hand_size = 2
