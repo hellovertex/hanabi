@@ -1,3 +1,5 @@
+import numpy as np
+
 from hanabi_learning_environment import rl_env
 from agents.simple_agent import SimpleAgent
 from custom_environment.pub_mdp import  PubMDP
@@ -58,6 +60,7 @@ class Runner(object):
 
 class ABCTest(object):
     def __init__(self, config=None):
+        self.config = config
         if config is None:
             self.config = {  # config for Hanabi-Small
                 "colors": 2,
@@ -84,3 +87,20 @@ class PrintDebugTest(ABCTest):
 
 test = PrintDebugTest()
 test.run()
+"""
+num_players = 2
+hand_size = 2
+candidate_counts = [3,2,2,2,1,3,2,2,2,1]
+beliefs = np.array([[3,2,2,2,1,3,2,2,2,1],
+ [3,2,2,2,1,3,2,2,2,1],
+ [3,2,2,2,1,3,2,2,2,1],
+ [3,2,2,2,1,3,2,2,2,1]])
+
+re_marginalized = np.copy(beliefs)
+for i, slot in enumerate(beliefs):
+    print('initial belief', beliefs)
+    print(np.sum(beliefs[(np.arange(num_players * hand_size) != i)], axis=0))
+    print(re_marginalized[i])
+    re_marginalized[i] = np.sum(beliefs[(np.arange(num_players * hand_size) != i)], axis=0)
+    print(i, re_marginalized[i])
+"""

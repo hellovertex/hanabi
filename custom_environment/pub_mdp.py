@@ -24,9 +24,17 @@ class PubMDP(object):
         # public binary matrix, slot equals 1, if player could be holding card at given slot
         # i.e. hint_mask[i,j] == 1 <==> (i % hand_size)th card of (i\hand_size)th player equals card j
         self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
+        """
+        e.g. for 2 players and 2 colors (5 ranks) at start of the game
+        self.hint_mask = [[1 1 1 1 1 1 1 1 1 1 0]  # card 0 of player 0  --> HM[f[0]] 
+                          [1 1 1 1 1 1 1 1 1 1 0]  # card 1 of player 0  --> HM[f[1]]
+                          [1 1 1 1 1 1 1 1 1 1 0]  # card 0 of player 1  --> HM[f[2]]
+                          [1 1 1 1 1 1 1 1 1 1 0]  # card 1 of player 1  --> HM[f[3]]
+        ] 
+        """
 
         # these will be initialized on env.reset() call
-        self.private_features = None  # 0-1 vector of length (num_players * hand_size) * (colors * ranks)
+        # correct? self.private_features = None  # 0-1 vector of length (num_players * hand_size) * (colors * ranks)
         self.public_features = np.concatenate(  # Card-counts and hint-mask
             (self.candidate_counts, self.hint_mask.flatten())
         )
@@ -38,7 +46,7 @@ class PubMDP(object):
         self.private_features = None
         self.public_features = np.concatenate((self.candidate_counts, self.hint_mask.flatten()))
 
-    def get_cards_count_idx(self, history_item):
+    def get_cards_candidate_idx(self, history_item):
         """ Returns for PLAY or DISCARD moves, the index of the card with respect to self.candidate_counts
         :arg
             history_item: a pyhanabi.HanabiHistoryItem containing the last non deal move
@@ -48,6 +56,7 @@ class PubMDP(object):
         assert history_item.move().type() in [HanabiMoveType.PLAY, HanabiMoveType.DISCARD]
         color = history_item.color()
         rank = history_item.rank()
+        assert ((color * self.num_ranks) + rank) < len(self.candidate_counts)
         return (color * self.num_ranks) + rank
 
     @staticmethod
@@ -80,6 +89,8 @@ class PubMDP(object):
     def reduce_card_candidate_count(self, index):
         """  """
         assert index in [i for i in range(len(self.candidate_counts))]
+        # print("self.candidate_counts = ", self.candidate_counts)
+        # print("index is ", index)
         assert self.candidate_counts[index] > 0
 
         self.candidate_counts[index] -= 1
@@ -101,16 +112,26 @@ class PubMDP(object):
             color is None for REVEAL_RANK moves and rank is None for REVEAL_COLOR moves
         """
         # todo
-        assert last_move.type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]
+        assert last_move.move().type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]
         target_cards_idx = last_move.card_info_revealed()
-        color = last_move.color()
-        rank = last_move.rank()
+        color = last_move.move().color()
+        rank = last_move.move().rank()
         target_agent_idx = self.get_abs_agent_idx(last_move)
 
         return color, rank, target_agent_idx, target_cards_idx
 
-    def _update_hint_mask(self, color, rank, index):
-        """ Updates the hint_mask """
+    def _update_hint_mask(self, color, rank, agent_index, cards_revealed):
+        """ Updates the hint_mask
+         Args:
+             color: 0-indexed color corresponding to ["R", "Y", "G", "W", "B"]
+             rank: 0-indexed rank
+             agent_index: absolute position of agent
+             cards_revealed: indices of cards touched by a clue, e.g. [0,2,3]
+         """
+        # on REVEAL_COLOR, set the corresponding indices to 1, and 0 otherwise for rows corresponding to cards_revealed
+        self.hand_size * agent_index
+        #
+        #
         pass
 
     def update_candidates_and_hint_mask(self, obs):
@@ -119,6 +140,7 @@ class PubMDP(object):
         assert 'pyhanabi' in obs
         last_moves = obs['pyhanabi'].last_moves()  # list of pyhanabi.HanabiHistoryItem from most recent to oldest
         if not last_moves:
+            # on game_initialization, do nothing
             pass
         else:
             # todo: check if deck is empty, in this case set the last index of self.hint_mask to 1
@@ -126,7 +148,7 @@ class PubMDP(object):
             last_move = self._get_last_non_deal_move(last_moves)  # pyhanabi.HanabiHistoryItem()
             if last_move.move().type() in [HanabiMoveType.PLAY, HanabiMoveType.DISCARD]:
                 # reduce card candidate count of played card by 1
-                card_candidate_idx = self.get_cards_count_idx(last_move)
+                card_candidate_idx = self.get_cards_candidate_idx(last_move)
                 self.reduce_card_candidate_count(card_candidate_idx)
                 # if last copy was played, set corresponding hint_mask slots to 0
                 if self.candidate_counts[card_candidate_idx] == 0:
@@ -134,7 +156,7 @@ class PubMDP(object):
             elif last_move.move().type() in [HanabiMoveType.REVEAL_COLOR, HanabiMoveType.REVEAL_RANK]:
                 color, rank, target_agent_idx, target_cards_idx = self.get_hinted_information(last_move)
                 # update hint_mask
-                self._update_hint_mask(color, rank, target_agent_idx)
+                self._update_hint_mask(color, rank, target_agent_idx, target_cards_idx)
                 # indices of hinted cards correspond to rows in hint_mask
                 # values of hint, e.g. REVEAL_COLOR: 0 (Red) correspond to columns of the matrix
 
@@ -148,6 +170,14 @@ class PubMDP(object):
     def compute_B0_belief(self):
         """ Computes initial public belief that only depends on card counts and hint mask. C.f. eq(12)
         Can be used for baseline agents as well as re-marginalization init"""
+        """
+        e.g. for 2 players and 2 colors (5 ranks) at start of the game
+        initial belief B0 [[3. 2. 2. 2. 1. 3. 2. 2. 2. 1. 0.]  # corresponds to card 0 of player 0 --> B(f[0])
+                        [3. 2. 2. 2. 1. 3. 2. 2. 2. 1. 0.]  # corresponds to card 1 of player 0 --> B(f[1])
+                        [3. 2. 2. 2. 1. 3. 2. 2. 2. 1. 0.]  # corresponds to card 0 of player 1 --> B(f[2])
+                        [3. 2. 2. 2. 1. 3. 2. 2. 2. 1. 0.]] # corresponds to card 1 of player 1 --> B(f[3])
+
+        """
         return (self.candidate_counts * self.hint_mask)
 
     def compute_belief_at_convergence(self, k=1):
@@ -156,21 +186,22 @@ class PubMDP(object):
         belief_b0 = self.compute_B0_belief()
         # todo timeit because it adds quadratic complexity despite low coefficient
         # Re-marginalize and save to self.public-belief
+
         def _loop_re_marginalization(belief_v1, k):
             """ Returns public believe at convergence C.f eq(10), eq(13) """
-            re_marginalized = belief_v1
-            for _ in range(k):  # k << 10 suffices
+            # re_marginalized = np.copy(belief_v1)
+            re_marginalized = np.zeros((self.num_players*self.hand_size, self.num_colors*self.num_ranks + 1))
+            for _ in range(k):  # k << 10 suffices for until I improved implementation
                 # iterate public_belief rows which is 20 iterations at most
-                print('initial belief', belief_v1)
+
                 for i, slot in enumerate(belief_v1):
-                    # print(belief_v1[np.arange(self.num_players * self.hand_size) != i])
+                    # print('initial belief', belief_v1)
                     re_marginalized[i] = self.candidate_counts - np.sum(
                         belief_v1[(np.arange(self.num_players * self.hand_size) != i)],  # pick all other rows
                         axis=0)  # sum across other slots
-                    print(i, self.candidate_counts - np.sum(
-                        belief_v1[(np.arange(self.num_players * self.hand_size) != i)],  # pick all other rows
-                        axis=0))
+                    # print(i, re_marginalized[i])
                 # belief_v1 = re_marginalized
+            print(re_marginalized)
             return re_marginalized
 
         return _loop_re_marginalization(belief_b0, k)
