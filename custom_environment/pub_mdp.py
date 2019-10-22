@@ -7,6 +7,17 @@ MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 COLOR_CHAR = ["R", "Y", "G", "W", "B"]  # consistent with hanabi_lib/util.cc
 
 
+class NNstub(object):
+    """ Neural Network stub for the public policy, until we decided on an architecture"""
+
+    @staticmethod
+    def feedforward(observation):
+        """
+        Returns action probabilities given observation as input
+        """
+        return .1
+
+
 class PubMDP(object):
     """ Sits on top of the hanabi-learning-environment and is responsible for computation of beliefs (-updates) that
     are used to augment an agents observation to match the state definition of Pub-MDPs
@@ -21,9 +32,11 @@ class PubMDP(object):
         self.num_ranks = game_config['ranks']
         self.num_players = game_config['players']
         self.hand_size = game_config['hand_size']
+        # C(f)
         # 0-1 vector of length (colors * ranks) containing public card counts
         self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
         self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
+        # HM
         # public binary matrix, slot equals 1, if player could be holding card at given slot
         # i.e. hint_mask[i,j] == 1 <==> (i % hand_size)th card of (i\hand_size)th player equals card j
         self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
@@ -45,6 +58,12 @@ class PubMDP(object):
         self.public_features = np.concatenate(  # Card-counts and hint-mask
             (self.candidate_counts, self.hint_mask.flatten())
         )
+
+        self.public_policy = NNstub()
+        self.B0 = None
+        self.BB = None
+        self.V1 = None
+        self.V2 = None
 
     def reset(self):
         self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
@@ -283,10 +302,32 @@ class PubMDP(object):
 
         # return _loop_re_marginalization(k)
 
-    def compute_bayesian_belief(self, prob_last_action, k=1):
+    def compute_likelihood_private_features(self, obs):
+        """ Given an observed action, it computes its probability using the public policy.
+         This action in turn determines the likelihood of
+         """
+        # todo compute likelihood matrix self.L([f[i]) with num_agents x (length num_colors * num_ranks) by:
+        # todo 1. in observed cards, replace the ones of previously acting agent by your own (unknown)
+        # todo 2. feedforward all possible f_a and store the probability of action that equals last taken
+        # todo 3. Since you cannot feedforward all possible f_a you need to sample your f_a from B
+        # todo 4. multiply the results of 2. with self.LL to compute the result
+
+        # 0. Define f_a: Get common observed hands of you and acting agent and add placeholder for your hand
+        # 1. Sample consistent hands from self.V1 if self.BB is None and from self.BB otherwise for your hand
+        # ll = 0
+        # Loop
+        #   replace placeholders in f_a by sample
+        #   feedforward f_a and for each store probability p of the action actually taken
+        #   ll += self.LL(f[i]) * a
+        # ll \= num_samples
+        return .1
+
+    # LVL 2
+    def compute_bayesian_belief(self, observation, k=1):
         """ Computes re-marginalized Bayesian beliefs. C.f. eq(14) and eq(15)"""
         # Compute basic bayesian belief
-        bayesian_belief_b0 = self.compute_B0_belief() * prob_last_action  # todo: replace prob_last_action with vector
+        ll = self.compute_likelihood_private_features(observation)
+        bayesian_belief_b0 = self.compute_B0_belief() * ll
 
         # Re-marginalize and save to self.public-belief
         def _loop_re_marginalization(bayesian_belief, k):
@@ -298,14 +339,14 @@ class PubMDP(object):
                     re_marginalized[i] = self.candidate_counts - np.sum(
                         bayesian_belief[np.arange(self.num_players * self.hand_size) != i],
                         # pick all other rows
-                        axis=0) * prob_last_action  # todo: replace prob_last_action with vector
+                        axis=0) * ll
                 bayesian_belief = re_marginalized
             return bayesian_belief
 
         return _loop_re_marginalization(bayesian_belief_b0, k)
 
     # LVL 0
-    def augment_observation(self, obs, prob_last_action=1/10, alpha=.01, k=1):
+    def augment_observation(self, obs, alpha=.01, k=1):
         """
         Adds public belief state 's_bad' to a vectorized observation 'obs' gotten from an environment
         Returns the augmented binary observation vector (ready to use NN input)
@@ -318,7 +359,6 @@ class PubMDP(object):
             public_belief = (1-alpha)BB + alpha(V1), c.f. eq(12)-eq(15)
         Args:
             obs: rl_env.step(a)['player_observations']['current_player']
-            prob_last_action: probability of the action taken by the last agent,
             used to compute likelihood of private features. Will be set to 1\num_actions on init
             alpha: smoothness of interpolation between V1 and BB
             k: iteration counter for re-marginalization (c.f. eq(10))
@@ -330,16 +370,25 @@ class PubMDP(object):
 
         self.deck_is_empty = True if obs['deck_size'] <= 0 else False
 
-        self.update_candidates_and_hint_mask(obs)  # todo: do we update card_counts including hand_cards?
-        V1 = self.compute_belief_at_convergence()
-        # todo sample likelihood of private features
-        BB = self.compute_bayesian_belief(prob_last_action)
-        V2 = (1-alpha) * BB + alpha * V1  # todo check if is vector of correct shape
-        obs['V1_belief'] = V1
-        obs['BB'] = BB
-        obs['V2'] = V2
+        self.update_candidates_and_hint_mask(obs)
+        self.V1 = self.compute_belief_at_convergence()
+        self.BB = self.compute_bayesian_belief(obs)
+        self.V2 = (1-alpha) * self.BB + alpha * self.V1  # todo check if is vector of correct shape
+        obs['V1_belief'] = self.V1
+        obs['BB'] = self.BB
+        obs['V2'] = self.V2
         # print(V1)
         # print(BB)
         # obs['obs_pub_mdp_vectorized'] = np.concatenate(obs['vectorized'], V2)
 
         return obs
+
+
+class BADAgent(object):
+    def __init__(self, game_config, pub_mdp_params=None):
+        self.pub_mdp = PubMDP(game_config)
+
+    def act(self, observation):
+        obs = self.pub_mdp.augment_observation(observation)
+        action = 'action computed by forwardpass using new obs'
+        return action
