@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import rv_discrete
 
 from hanabi_learning_environment import pyhanabi as pyhanabi
 from hanabi_learning_environment.pyhanabi import color_char_to_idx
@@ -9,7 +10,8 @@ COLOR_CHAR = ["R", "Y", "G", "W", "B"]  # consistent with hanabi_lib/util.cc
 
 class NNstub(object):
     """ Neural Network stub for the public policy, until we decided on an architecture"""
-
+    # This NNs weights change during decentralized execution phase, so we have to find a way to
+    # make the agents observers of the weights (i.e. the public policy)
     @staticmethod
     def feedforward(observation):
         """
@@ -274,20 +276,18 @@ class PubMDP(object):
         """
         return (self.candidate_counts * self.hint_mask)
 
-    def compute_belief_at_convergence(self, k=1):
+    def compute_belief_at_convergence(self, belief_b0, k=1):
         """ Computes re-marginalized V1 beliefs C.f. eq(13) """
-        # Compute basic belief B0
-        belief_b0 = self.compute_B0_belief()
+
         # todo timeit because it adds quadratic complexity despite low coefficient
         # Re-marginalize and save to self.public-belief
-
         def _loop_re_marginalization(belief_v1, k):
             """ Returns public believe at convergence C.f eq(10), eq(13) """
             # re_marginalized = np.copy(belief_v1)
             re_marginalized = np.zeros((self.num_players*self.hand_size, self.num_colors*self.num_ranks + 1))
             for _ in range(k):  # k << 10 suffices for until I improved implementation
                 # iterate public_belief rows which is 20 iterations at most
-
+                belief_v1 = np.copy(re_marginalized)
                 for i, slot in enumerate(belief_v1):
                     # print('initial belief', belief_v1)
                     re_marginalized[i] = self.candidate_counts - np.sum(
@@ -302,24 +302,61 @@ class PubMDP(object):
 
         # return _loop_re_marginalization(k)
 
+    def private_features_are_consistent(self, samples):
+        """
+        Samples are taken from the posterior belief, B0 or V1, over the private features
+        E.g.
+        samples = [[5. 7. 8. ... 0. 5. 0.]  # 3000 samples for first card of first player
+                   [0. 4. 6. ... 7. 0. 8.]  # 3000 samples for second card of first player
+                   [2. 0. 8. ... 2. 2. 5.]
+                   [3. 7. 8. ... 1. 5. 1.]]  # 3000 samples for last card of last player
+
+        where the entries are numbers between 0 and (colors * ranks).
+
+        A sample (column) is called consistent, iff
+        i) The cards sampled are available according to self.candidate_counts  (not all copies already played)
+        ii) The cards sampled are possible according to self.hint_mask (card is possible given history of hints)
+        """
+        # store indices of consistent sampled by their column index
+        consistent_samples = list()
+        # Check consistent with card counts
+        for sample in range(samples.shape[1]):
+
+            pass
+
+    def sample_consistent_private_features_from_public_belief(
+            self, num_samples=3000, distr_priv_featurs='V1', common_knowledge_seed=123):
+        """
+        In order to compute the bayesian beliefs (c.f. eq. 14, eq. 15), we need to have likelihood samples of
+        the private features. These are computed using samples from the public belief (c.f. eq. 8).
+        This method returns n samples of private features, that are ensured to be consistent with the deck.
+        """
+        # We provide the option of sampling private features from either B0 or V1 by setting distr_priv_features
+        # sample from the public belief (either self.B0) or (self.V1)
+        assert distr_priv_featurs in ['B0', 'V1']
+        belief = getattr(self, distr_priv_featurs)  # either self.V1 or self.B0
+        sampled = np.zeros(shape=(self.num_players * self.hand_size, num_samples))
+        for i_row, row in enumerate(belief):
+            # compute card indices for  belief[i_row, :]
+            x_i = np.array([card_index for card_index in range(self.num_ranks * self.num_colors)])
+            # and the probabilities of the corresponding cards
+            px_i = np.array(belief[i_row, :] / np.sum(belief[i_row, :]))[:-1]
+            sampled[i_row, ] = rv_discrete(values=((x_i, px_i)), seed=common_knowledge_seed).rvs(size=num_samples)
+        print("SAMPLING WORKS:", sampled)
+        # sampled 3000 hands, now check if they are consistent
+        # sampled matrix row corresponds to 3000 samples for one slot, with total slots=num_player*hand_size
+
+
     def compute_likelihood_private_features(self, obs):
         """ Given an observed action, it computes its probability using the public policy.
          This action in turn determines the likelihood of
-         """
-        # todo compute likelihood matrix self.L([f[i]) with num_agents x (length num_colors * num_ranks) by:
-        # todo 1. in observed cards, replace the ones of previously acting agent by your own (unknown)
-        # todo 2. feedforward all possible f_a and store the probability of action that equals last taken
-        # todo 3. Since you cannot feedforward all possible f_a you need to sample your f_a from B
-        # todo 4. multiply the results of 2. with self.LL to compute the result
+        """
+        # Generate 3000 consistent samples
+        # feedforward all 3000 samples through network and store set of {(f,prob(pi(f))}
+        #    for those f that couldve generated the last action
+        # compute product of {(prob(pi(f)} for the numerator for corresponding f[i]
+        # compute sum(one hot f[i]s) for all f[i]
 
-        # 0. Define f_a: Get common observed hands of you and acting agent and add placeholder for your hand
-        # 1. Sample consistent hands from self.V1 if self.BB is None and from self.BB otherwise for your hand
-        # ll = 0
-        # Loop
-        #   replace placeholders in f_a by sample
-        #   feedforward f_a and for each store probability p of the action actually taken
-        #   ll += self.LL(f[i]) * a
-        # ll \= num_samples
         return .1
 
     # LVL 2
@@ -371,14 +408,16 @@ class PubMDP(object):
         self.deck_is_empty = True if obs['deck_size'] <= 0 else False
 
         self.update_candidates_and_hint_mask(obs)
-        self.V1 = self.compute_belief_at_convergence()
+        self.B0 = self.compute_B0_belief()
+        self.V1 = self.compute_belief_at_convergence(self.B0, k=1)
         self.BB = self.compute_bayesian_belief(obs)
         self.V2 = (1-alpha) * self.BB + alpha * self.V1  # todo check if is vector of correct shape
         obs['V1_belief'] = self.V1
         obs['BB'] = self.BB
         obs['V2'] = self.V2
-        # print(V1)
-        # print(BB)
+        print(self.V1)
+        print(self.BB)
+        self.sample_consistent_private_features_from_public_belief()
         # obs['obs_pub_mdp_vectorized'] = np.concatenate(obs['vectorized'], V2)
 
         return obs

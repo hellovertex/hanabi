@@ -88,8 +88,8 @@ class PrintDebugTest(ABCTest):
     def run(self):
         self.runner.run()
 # todo implement seeded tests to compare to precomputed results
-test = PrintDebugTest()
-test.run()
+#test = PrintDebugTest()
+#test.run()
 
 """
 num_players = 2
@@ -123,3 +123,38 @@ print(f're_marginalized with impossible mask = \n{re_marginalized}')
 # print(re_marginalized[row_mask, 0:3])
 #print(f're_marginalized with row and col mask= \n{re_marginalized}')
 """
+
+"""
+from scipy.stats import rv_discrete
+x = np.array([[3,2,2,2,1,3,2,2,2,1]])
+px = np.array(x/np.sum(x))
+num_ranks = 5
+num_colors = 2
+B = np.array([[3,2,2,2,1,3,2,2,2,1],
+              [3,2,2,2,1,3,2,2,2,1],
+              [3,2,2,2,1,3,2,2,2,1],
+              [3,2,2,2,1,3,2,2,2,1],])
+pB = np.array(B/np.sum(x, axis=1))
+valB = np.array([[i for j in range(num_colors) for i in range(num_ranks)]])
+
+for i_row, row in enumerate(B):
+    x_i, px_i = B[i_row,:], np.array(B[i_row,:]/np.sum(B[i_row,:]))
+    sample = rv_discrete(values=((x_i, px_i))).rvs(size=30)
+    print(sample)
+# print(valB)
+"""
+candidate_count = np.array([3,2,2,2,1,3,2,2,2,1])
+samples = np.array([
+    [5, 7, 8, 0, 5, 0],
+    [2, 4, 6, 7, 0, 8],
+    [2, 0, 8, 2, 2, 5],
+    [2, 7, 8, 1, 5, 1]]
+)
+
+sample = samples[0,]
+cp = candidate_count[sample] - 1
+print(cp)
+if cp.any() < 0:
+    print('not nice')
+else:
+    print('nice')
