@@ -319,10 +319,22 @@ class PubMDP(object):
         """
         # store indices of consistent sampled by their column index
         consistent_samples = list()
-        # Check consistent with card counts
-        for sample in range(samples.shape[1]):
+        # i) Check consistent with card counts
+        for sample in range(samples.shape[1]):  # todo export this loop using Cython
+            # Create vector of card counts by 0-padding the bincount of the sampled cards
+            sample_card_counts = np.bincount(sample)
+            pad_width = (0, len(self.candidate_counts) - len(sample_card_counts))  # pad with zeros
+            padded_counts = np.pad(sample_card_counts, pad_width=pad_width, mode='constant')
+            # Subtract sampled cards from candidate counts
+            reduced_counts = self.candidate_counts - padded_counts
+            # Check if any of the card counts would go below 0 applying the sample
+            if reduced_counts[reduced_counts < 0]:  # is False, only if the given array is empty, i.e no vals < 0
+                continue
+            # if not, the sample is consistent with regard to i)
+            else:
+                consistent_samples.append(sample)
+        # ii)
 
-            pass
 
     def sample_consistent_private_features_from_public_belief(
             self, num_samples=3000, distr_priv_featurs='V1', common_knowledge_seed=123):
@@ -336,9 +348,9 @@ class PubMDP(object):
         assert distr_priv_featurs in ['B0', 'V1']
         belief = getattr(self, distr_priv_featurs)  # either self.V1 or self.B0
         sampled = np.zeros(shape=(self.num_players * self.hand_size, num_samples))
+        # compute card indices for
+        x_i = np.array([card_index for card_index in range(self.num_ranks * self.num_colors)])
         for i_row, row in enumerate(belief):
-            # compute card indices for  belief[i_row, :]
-            x_i = np.array([card_index for card_index in range(self.num_ranks * self.num_colors)])
             # and the probabilities of the corresponding cards
             px_i = np.array(belief[i_row, :] / np.sum(belief[i_row, :]))[:-1]
             sampled[i_row, ] = rv_discrete(values=((x_i, px_i)), seed=common_knowledge_seed).rvs(size=num_samples)

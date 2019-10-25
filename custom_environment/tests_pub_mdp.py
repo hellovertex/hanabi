@@ -143,18 +143,25 @@ for i_row, row in enumerate(B):
     print(sample)
 # print(valB)
 """
+"""
 candidate_count = np.array([3,2,2,2,1,3,2,2,2,1])
 samples = np.array([
     [5, 7, 8, 0, 5, 0],
     [2, 4, 6, 7, 0, 8],
-    [2, 0, 8, 2, 2, 5],
+    [0, 0, 8, 2, 2, 5],
     [2, 7, 8, 1, 5, 1]]
 )
 
-sample = samples[0,]
-cp = candidate_count[sample] - 1
-print(cp)
-if cp.any() < 0:
-    print('not nice')
+sample = samples[:,0]
+c = np.bincount(sample)
+pad_width = (0, len(candidate_count) - len(c))
+c = np.pad(c,pad_width=pad_width,mode='constant')
+print(np.pad(c,pad_width=pad_width,mode='constant'))
+print(candidate_count-c)
+arr = candidate_count-c
+
+if arr[arr < 0]:
+    print('ASD:OIJA:SDJ')
 else:
     print('nice')
+"""
