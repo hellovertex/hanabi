@@ -1,9 +1,12 @@
 import numpy as np
+from scipy.stats import rv_discrete
 
 from hanabi_learning_environment import rl_env
 from agents.simple_agent import SimpleAgent
 from custom_environment.pub_mdp import  PubMDP
 import os
+import timeit
+import time
 """
  (1) Generate observations using rl_env_example.py Runner()
  (2) Init PubMDP on top of it
@@ -165,3 +168,94 @@ if arr[arr < 0]:
 else:
     print('nice')
 """
+"""
+arr = np.tile([3,2,2,2,1], (4,2))
+et0 = time.time()
+def enum_time():
+    return [(i, slot) for i, slot in enumerate(arr)]
+et1 = time.time()
+
+et = et1 -et0
+
+nt0 = time.time()
+def ndenum_time():
+    return [(i, slot) for i,slot in np.ndenumerate(arr)]
+nt1 = time.time()
+nt = nt1 - nt0
+print(f'ndenum was {et/nt} times faster')
+
+A = np.arange(3).reshape(3,1)
+B = np.arange(3).reshape(1,3)
+it = np.nditer([A,B,None])
+for x,y,z in it: z[...] = x + y
+print(it.operands[2])
+
+Z = np.ones(10)
+I = np.random.randint(0,len(Z),20)
+np.add.at(Z, I, 1)
+print(I)
+print(Z)
+"""
+"""
+
+start = time.time()
+# have 20k samples, now iterate cols
+for idx in range(sampled.shape[1]):
+    sample = sampled[:, idx]
+    sample_card_counts = np.bincount(sample, minlength=len(candidate_counts))
+    reduced_counts = candidate_counts - sample_card_counts
+    if reduced_counts[reduced_counts < 0].size == 0:
+        pass
+    else:
+        continue  # start next iteration, as this sample was inconsistent
+    for shape, val in np.ndenumerate(sample):
+        if hint_mask[shape[0], val] == 0:
+            continue
+    # if we reach this code, the sample is consistent
+    consistent_samples.append(idx)
+    end = time.time()
+tp = end - start
+"""
+
+"""
+# generate a 4 by 20000 matrix and time for loop and numpy it
+x = np.array([card_index for card_index in range(5 * 2)])
+B = np.array([[3,2,2,2,1,3,2,2,2,1],
+              [3,2,2,2,1,3,2,2,2,1],
+              [3,2,2,2,1,3,2,2,2,1],
+              [3,2,2,2,1,3,2,2,2,1],])
+hint_mask = np.array([[1,1,1,1,1,1,1,1,1,1],
+                      [1,1,1,1,1,1,1,1,1,1],
+                      [1,1,1,1,1,1,1,1,1,1],
+                      [1,1,1,1,1,1,1,1,1,1]])
+candidate_counts = np.array([3,2,2,2,1,3,2,2,2,1])
+px = B / np.sum(B, axis=1, keepdims=True)
+num_samples = 20000
+sampled = np.zeros(shape=(4, num_samples), dtype=np.int)
+consistent_samples = list()
+start = time.time()
+for (i_row, _), row in np.ndenumerate(B):
+    sampled[i_row,] = rv_discrete(values=(x, px[i_row, :])).rvs(size=num_samples)
+
+idx = 0
+for sample in sampled.T:
+    sample_card_counts = np.bincount(sample, minlength=len(candidate_counts))
+    reduced_counts = candidate_counts - sample_card_counts
+    if reduced_counts[reduced_counts < 0].size == 0:
+        pass
+    else:
+        continue
+    for shape, val in np.ndenumerate(sample):
+        if hint_mask[shape[0], val] == 0:
+            continue
+    consistent_samples.append(idx)
+    if len(consistent_samples)==3000:
+        break
+    idx += 1
+print(len(sampled[:,consistent_samples].T))
+end = time.time()
+tn = end - start
+#print(f'coliteration was {tp/tn} times faster')
+print(f' took {tn*1000} milliseconds')
+"""
+# Assume i am having the forwar pass results, then we need to compute numerator and denom.

@@ -274,27 +274,26 @@ class PubMDP(object):
                         [3. 2. 2. 2. 1. 3. 2. 2. 2. 1. 0.]] # corresponds to card 1 of player 1 --> B(f[3])
 
         """
-        return (self.candidate_counts * self.hint_mask)
+        return self.candidate_counts * self.hint_mask
 
     def compute_belief_at_convergence(self, belief_b0, k=1):
         """ Computes re-marginalized V1 beliefs C.f. eq(13) """
-
-        # todo timeit because it adds quadratic complexity despite low coefficient
         # Re-marginalize and save to self.public-belief
         def _loop_re_marginalization(belief_v1, k):
             """ Returns public believe at convergence C.f eq(10), eq(13) """
+            assert isinstance(belief_v1, np.ndarray)
             # re_marginalized = np.copy(belief_v1)
             re_marginalized = np.zeros((self.num_players*self.hand_size, self.num_colors*self.num_ranks + 1))
             for _ in range(k):  # k << 10 suffices for until I improved implementation
                 # iterate public_belief rows which is 20 iterations at most
-                belief_v1 = np.copy(re_marginalized)
-                for i, slot in enumerate(belief_v1):
+                # for i, slot in enumerate(belief_v1):
+                for (i, _), slot in np.ndenumerate(belief_v1):  # todo remove this loop
                     # print('initial belief', belief_v1)
                     re_marginalized[i] = self.candidate_counts - np.sum(
                         belief_v1[(np.arange(self.num_players * self.hand_size) != i)],  # pick all other rows
                         axis=0)  # sum across other slots
                     # print(i, re_marginalized[i])
-                # belief_v1 = re_marginalized
+                belief_v1 = np.copy(re_marginalized)
             # print(re_marginalized)
             return re_marginalized
 
@@ -302,42 +301,45 @@ class PubMDP(object):
 
         # return _loop_re_marginalization(k)
 
-    def private_features_are_consistent(self, samples):
+    def _remove_inconsistent_samples(self, samples, num_consistent_samples_to_return=3000):
         """
-        Samples are taken from the posterior belief, B0 or V1, over the private features
-        E.g.
-        samples = [[5. 7. 8. ... 0. 5. 0.]  # 3000 samples for first card of first player
-                   [0. 4. 6. ... 7. 0. 8.]  # 3000 samples for second card of first player
-                   [2. 0. 8. ... 2. 2. 5.]
-                   [3. 7. 8. ... 1. 5. 1.]]  # 3000 samples for last card of last player
+                Samples are taken from the posterior belief, B0 or V1, over the private features
+                E.g.
+                samples = [[5. 7. 8. ... 0. 5. 0.]  # 3000 samples for first card of first player
+                           [0. 4. 6. ... 7. 0. 8.]  # 3000 samples for second card of first player
+                           [2. 0. 8. ... 2. 2. 5.]
+                           [3. 7. 8. ... 1. 5. 1.]]  # 3000 samples for last card of last player
 
-        where the entries are numbers between 0 and (colors * ranks).
+                where the entries are card_numbers between 0 and (colors * ranks) and rows correspond to slots.
 
-        A sample (column) is called consistent, iff
-        i) The cards sampled are available according to self.candidate_counts  (not all copies already played)
-        ii) The cards sampled are possible according to self.hint_mask (card is possible given history of hints)
-        """
+                A sample (column) is called consistent, iff the following conditions hold:
+                i) The cards sampled are available according to self.candidate_counts  (not all copies already played)
+                ii) The cards sampled are possible according to self.hint_mask (card is possible given history of hints)
+                """
         # store indices of consistent sampled by their column index
         consistent_samples = list()
-        # i) Check consistent with card counts
-        for sample in range(samples.shape[1]):  # todo export this loop using Cython
-            # Create vector of card counts by 0-padding the bincount of the sampled cards
-            sample_card_counts = np.bincount(sample)
-            pad_width = (0, len(self.candidate_counts) - len(sample_card_counts))  # pad with zeros
-            padded_counts = np.pad(sample_card_counts, pad_width=pad_width, mode='constant')
-            # Subtract sampled cards from candidate counts
-            reduced_counts = self.candidate_counts - padded_counts
-            # Check if any of the card counts would go below 0 applying the sample
-            if reduced_counts[reduced_counts < 0]:  # is False, only if the given array is empty, i.e no vals < 0
-                continue
-            # if not, the sample is consistent with regard to i)
+        idx = 0
+        # currently this loop takes ~70 to 160 ms to run for 20k samples. todo remove this loop
+        for sample in samples.T:  # transposing is fastest, as it just changes the np.strides
+            sample_card_counts = np.bincount(sample, minlength=len(self.candidate_counts))
+            reduced_counts = self.candidate_counts - sample_card_counts
+            # i) check sample consistent with candidate count
+            if reduced_counts[reduced_counts < 0].size == 0:
+                pass
             else:
-                consistent_samples.append(sample)
-        # ii)
+                continue
+            # ii) check sample consistent with hint_mask
+            for shape, val in np.ndenumerate(sample):
+                if self.hint_mask[shape[0], val] == 0:
+                    continue
+            # if this code is reached, the sample is consistent
+            consistent_samples.append(idx)
+            if len(consistent_samples) == num_consistent_samples_to_return:
+                break
+            idx += 1
+        return samples[:, consistent_samples]
 
-
-    def sample_consistent_private_features_from_public_belief(
-            self, num_samples=3000, distr_priv_featurs='V1', common_knowledge_seed=123):
+    def sample_consistent_private_features_from_public_belief(self, num_samples=3000, distr_priv_features='V1'):
         """
         In order to compute the bayesian beliefs (c.f. eq. 14, eq. 15), we need to have likelihood samples of
         the private features. These are computed using samples from the public belief (c.f. eq. 8).
@@ -345,18 +347,20 @@ class PubMDP(object):
         """
         # We provide the option of sampling private features from either B0 or V1 by setting distr_priv_features
         # sample from the public belief (either self.B0) or (self.V1)
-        assert distr_priv_featurs in ['B0', 'V1']
-        belief = getattr(self, distr_priv_featurs)  # either self.V1 or self.B0
-        sampled = np.zeros(shape=(self.num_players * self.hand_size, num_samples))
-        # compute card indices for
+        assert distr_priv_features in ['B0', 'V1']
+        belief = getattr(self, distr_priv_features)  # either self.V1 or self.B0
+        sampled = np.zeros(shape=(self.num_players * self.hand_size, num_samples), dtype=np.int)
+
+        # compute card indices
         x_i = np.array([card_index for card_index in range(self.num_ranks * self.num_colors)])
-        for i_row, row in enumerate(belief):
-            # and the probabilities of the corresponding cards
-            px_i = np.array(belief[i_row, :] / np.sum(belief[i_row, :]))[:-1]
-            sampled[i_row, ] = rv_discrete(values=((x_i, px_i)), seed=common_knowledge_seed).rvs(size=num_samples)
-        print("SAMPLING WORKS:", sampled)
-        # sampled 3000 hands, now check if they are consistent
-        # sampled matrix row corresponds to 3000 samples for one slot, with total slots=num_player*hand_size
+        # and their probabilities per slot per player
+        px = belief / np.sum(belief, axis=1, keepdims=True)
+        # sample hands from the resulting distribution
+        for (i_row, _), row in np.ndenumerate(belief):  # todo remove this loop
+            sampled[i_row, ] = rv_discrete(values=(x_i, px[i_row, :-1])).rvs(size=num_samples)
+
+        # For now we just compute a fixed number of samples and take the first 3000 consistent ones
+        consistent_samples = self._remove_inconsistent_samples(sampled, num_consistent_samples_to_return=3000)
 
 
     def compute_likelihood_private_features(self, obs):
@@ -364,8 +368,11 @@ class PubMDP(object):
          This action in turn determines the likelihood of
         """
         # Generate 3000 consistent samples
+        samples = self.sample_consistent_private_features_from_public_belief(num_samples=3000)
+
         # feedforward all 3000 samples through network and store set of {(f,prob(pi(f))}
         #    for those f that couldve generated the last action
+
         # compute product of {(prob(pi(f)} for the numerator for corresponding f[i]
         # compute sum(one hot f[i]s) for all f[i]
 
