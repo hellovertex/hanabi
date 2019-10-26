@@ -4,6 +4,7 @@ from scipy.stats import rv_discrete
 from hanabi_learning_environment import rl_env
 from agents.simple_agent import SimpleAgent
 from custom_environment.pub_mdp import  PubMDP
+from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
 import os
 import timeit
 import time
@@ -25,6 +26,7 @@ class Runner(object):
     self.agent_config = flags['game_config']
     #self.environment = rl_env.HanabiEnv(flags['game_config'])
     self.environment = PubMDP(flags['game_config'])
+    self.wrapped_env = PubMDPWrapper(self.environment)
     self.agent_class = SimpleAgent
     #self.pub_mdp = PubMDP(flags['game_config'])
 
@@ -37,14 +39,14 @@ class Runner(object):
                 for _ in range(self.flags['players'])]
       done = False
       episode_reward = 0
-
+      print(self.wrapped_env.time_step_spec())
       while not done:
         for agent_id, agent in enumerate(agents):
           observation = observations['player_observations'][agent_id]
 
           action = agent.act(observation)
           if observation['current_player'] == agent_id:
-            # augmented_observation = self.pub_mdp.augment_observation(observation)
+            # print(observations['s_bad'])
             # print(augmented_observation)
             assert action is not None
             current_player_action = action
@@ -259,4 +261,3 @@ tn = end - start
 #print(f'coliteration was {tp/tn} times faster')
 print(f' took {tn*1000} milliseconds')
 """
-# Assume i am having the forwar pass results, then we need to compute numerator and denom.

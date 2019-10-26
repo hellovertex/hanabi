@@ -33,12 +33,13 @@ class PubMDP(object):
     c.f. 'Bayesian action decoder for deep multi-agent reinforcement learning' (Foerster et al.)
     (https://arxiv.org/abs/1811.01458)"""
 
-    def __init__(self, game_config, public_policy=None):
+    def __init__(self, game_config, public_policy=None, alpha=.1):
         """
             See definition of augment_observation() at the bottom of this file to understand how this class works
         """
         assert isinstance(game_config, dict)
         self.env = rl_env.HanabiEnv(game_config)
+        self.alpha = alpha
         self.num_colors = game_config['colors']
         self.num_ranks = game_config['ranks']
         self.num_players = game_config['players']
@@ -73,6 +74,7 @@ class PubMDP(object):
         self.BB = None
         self.V1 = None
         self.V2 = None
+        self._episode_ended = False
 
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
@@ -226,7 +228,7 @@ class PubMDP(object):
         self.hint_mask[:, self.candidate_counts == 0] = 0  # set to 0 for impossible cards (all copies played)
 
     # LVL 1
-    def update_candidates_and_hint_mask(self, obs):
+    def update_candidates_and_hint_mask(self, last_moves):
         """ Update public card knowledge given last move, More specifically
          For PLAY and DISCARD moves:
             - reduce card candidate count by 1
@@ -238,10 +240,6 @@ class PubMDP(object):
             - skip
         Does nothing if there are no last_moves.
          """
-        assert isinstance(obs, dict)
-        assert 'pyhanabi' in obs
-
-        last_moves = obs['pyhanabi'].last_moves()  # list of pyhanabi.HanabiHistoryItem from most recent to oldest
 
         if last_moves:  # is False on Initialization, i.e. when last_moves is empty, i.e. when last_moves is False
             last_move = self._get_last_non_deal_move(last_moves)  # pyhanabi.HanabiHistoryItem()
@@ -361,10 +359,11 @@ class PubMDP(object):
         # For now we just compute a fixed number of samples and take the first 3000 consistent ones
         return self._remove_inconsistent_samples(sampled, num_consistent_samples_to_return=3000)
 
-    def compute_likelihood_private_features(self, obs):
+    def compute_likelihood_private_features(self, last_moves):
         """ Given an observed action, it computes its probability using the public policy.
          This action in turn determines the likelihood of
         """
+        # todo handle empty last_moves
         # Generate 3000 consistent samples
         samples = self.sample_consistent_private_features_from_public_belief(num_samples=3000)
 
@@ -377,10 +376,10 @@ class PubMDP(object):
         return .1
 
     # LVL 2
-    def compute_bayesian_belief(self, observation, k=1):
+    def compute_bayesian_belief(self, last_moves, k=1):
         """ Computes re-marginalized Bayesian beliefs. C.f. eq(14) and eq(15)"""
         # Compute basic bayesian belief
-        ll = self.compute_likelihood_private_features(observation)
+        ll = self.compute_likelihood_private_features(last_moves)
         bayesian_belief_b0 = self.compute_B0_belief() * ll
 
         # Re-marginalize and save to self.public-belief
@@ -399,45 +398,31 @@ class PubMDP(object):
 
         return _loop_re_marginalization(bayesian_belief_b0, k)
 
-    # LVL 0
-    def augment_observation(self, obs, alpha=.01, k=1):
-        """
-        Adds public belief state 's_bad' to a vectorized observation 'obs' gotten from an environment
-        Returns the augmented binary observation vector (ready to use NN input)
+    @staticmethod
+    def get_last_moves_from_obs(observations):
+        """ observations contains all the hands of all the players """
 
-        s_bad  = {public_features, public_belief}
+        current_player = observations['current_player']
+        obs = observations['player_observations'][current_player]
+        return obs['pyhanabi'].last_moves()  # list of pyhanabi.HanabiHistoryItem from most recent to oldest
 
-        Where
-            public_features = obs  [can be changed to more sophisticated observation later]
-        and
-            public_belief = (1-alpha)BB + alpha(V1), c.f. eq(12)-eq(15)
-        Args:
-            obs: rl_env.step(a)['player_observations']['current_player']
-            used to compute likelihood of private features. Will be set to 1\num_actions on init
-            alpha: smoothness of interpolation between V1 and BB
-            k: iteration counter for re-marginalization (c.f. eq(10))
-        Returns:
-            obs_pub_mdp: vectorized observation including public beliefs and features
-        """
-        assert isinstance(obs, dict)
-        assert 'current_player_offset' in obs  # ensure to always have agent_observation, not full observation
+    def compute_public_state(self, observations, k=1):
+        """ Computes public belief state s_bad shared by all agents"""
 
-        self.deck_is_empty = True if obs['deck_size'] <= 0 else False
-
-        self.update_candidates_and_hint_mask(obs)
+        last_moves = self.get_last_moves_from_obs(observations)  # may be empty
+        self.update_candidates_and_hint_mask(last_moves)
         self.B0 = self.compute_B0_belief()
         self.V1 = self.compute_belief_at_convergence(self.B0, k=1)
-        self.BB = self.compute_bayesian_belief(obs)
-        self.V2 = (1-alpha) * self.BB + alpha * self.V1  # todo check if is vector of correct shape
-        obs['V1_belief'] = self.V1
-        obs['BB'] = self.BB
-        obs['V2'] = self.V2
-        # print(self.V1)
-        # print(self.BB)
-        self.sample_consistent_private_features_from_public_belief()
-        # obs['obs_pub_mdp_vectorized'] = np.concatenate(obs['vectorized'], V2)
-
-        return obs
+        self.BB = self.compute_bayesian_belief(last_moves)
+        self.V2 = (1 - self.alpha) * self.BB + self.alpha * self.V1  # todo check if is vector of correct shape
+        self.public_features = np.concatenate(  # Card-counts and hint-mask
+            (self.candidate_counts, self.hint_mask.flatten())
+        )
+        return {'B0': self.B0,
+                'V1': self.V1,
+                'BB': self.BB,
+                'V2': self.V2,
+                'f_pub': self.public_features}
 
     def reset(self):
         """
@@ -455,12 +440,32 @@ class PubMDP(object):
         self.BB = None
         self.V1 = None
         self.V2 = None
+        self._episode_ended = False
+        obs = self.env.reset()
+        current_player = obs['current_player']
+        obs['s_bad'] = self.compute_public_state(obs)
 
-        return self.augment_observation(self.env.reset())
+        return obs
 
     def step(self, action):
         """ Returns observation + updated public belief state """
-        return self.augment_observation(self.env.step(action))
+        #if self._episode_ended:
+        #    return self.reset()
+
+        observations, reward, done, info = self.env.step(action)
+        #if done:
+        #    self._episode_ended = True
+
+        current_player = observations['current_player']
+        obs_current_player = observations['player_observations'][current_player]
+        deck_size = obs_current_player['deck_size']
+        self.deck_is_empty = True if deck_size <= 0 else False
+
+        # append public belief state at top level of observations
+        observations['s_bad'] = self.compute_public_state(observations)
+        # todo add augmented observations for agents, i.e. vectorized encoding scheme
+
+        return observations, reward, done, info
 
 
 class BADAgent(object):
