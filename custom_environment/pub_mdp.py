@@ -1,17 +1,24 @@
 import numpy as np
 from scipy.stats import rv_discrete
 
-from hanabi_learning_environment import pyhanabi as pyhanabi
+from hanabi_learning_environment import pyhanabi as pyhanabi, rl_env
 from hanabi_learning_environment.pyhanabi import color_char_to_idx
 from hanabi_learning_environment.pyhanabi import HanabiMoveType
 MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 COLOR_CHAR = ["R", "Y", "G", "W", "B"]  # consistent with hanabi_lib/util.cc
 
 
-class NNstub(object):
+class PublicPolicyStub(object):
     """ Neural Network stub for the public policy, until we decided on an architecture"""
     # This NNs weights change during decentralized execution phase, so we have to find a way to
     # make the agents observers of the weights (i.e. the public policy)
+
+    def set_policy_weights(self):
+        """ This is the interface stub by which the learner updates the public policy params """
+        # 1. update policy weights
+        # 2.
+        pass
+
     @staticmethod
     def feedforward(observation):
         """
@@ -26,20 +33,20 @@ class PubMDP(object):
     c.f. 'Bayesian action decoder for deep multi-agent reinforcement learning' (Foerster et al.)
     (https://arxiv.org/abs/1811.01458)"""
 
-    def __init__(self, game_config):
+    def __init__(self, game_config, public_policy=None):
         """
             See definition of augment_observation() at the bottom of this file to understand how this class works
         """
+        assert isinstance(game_config, dict)
+        self.env = rl_env.HanabiEnv(game_config)
         self.num_colors = game_config['colors']
         self.num_ranks = game_config['ranks']
         self.num_players = game_config['players']
         self.hand_size = game_config['hand_size']
-        # C(f)
-        # 0-1 vector of length (colors * ranks) containing public card counts
+        # C(f): 0-1 vector of length (colors * ranks) containing public card counts
         self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
         self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
-        # HM
-        # public binary matrix, slot equals 1, if player could be holding card at given slot
+        # HM: binary matrix, slot equals 1, if player could be holding card at given slot
         # i.e. hint_mask[i,j] == 1 <==> (i % hand_size)th card of (i\hand_size)th player equals card j
         self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
         self.hint_mask[:, -1] = 0
@@ -60,21 +67,12 @@ class PubMDP(object):
         self.public_features = np.concatenate(  # Card-counts and hint-mask
             (self.candidate_counts, self.hint_mask.flatten())
         )
-
-        self.public_policy = NNstub()
+        # re-loads public policy, in case the weights have changed
+        self.public_policy = public_policy
         self.B0 = None
         self.BB = None
         self.V1 = None
         self.V2 = None
-
-    def reset(self):
-        self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
-        self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
-        self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
-        self.hint_mask[:, -1] = 0
-        self.util_mask_slots_hinted = list()
-        self.public_features = np.concatenate((self.candidate_counts, self.hint_mask.flatten()))
-        self.deck_is_empty = False
 
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
@@ -229,7 +227,7 @@ class PubMDP(object):
 
     # LVL 1
     def update_candidates_and_hint_mask(self, obs):
-        """ Update public card knowledge according to change induced by last move, More specifically
+        """ Update public card knowledge given last move, More specifically
          For PLAY and DISCARD moves:
             - reduce card candidate count by 1
             - if last copy was played, set corresponding self.hint_mask columns to 0
@@ -238,6 +236,7 @@ class PubMDP(object):
             - update self.hint_mask
          For DEAL moves:
             - skip
+        Does nothing if there are no last_moves.
          """
         assert isinstance(obs, dict)
         assert 'pyhanabi' in obs
@@ -265,8 +264,8 @@ class PubMDP(object):
 
     def compute_B0_belief(self):
         """ Computes initial public belief that only depends on card counts and hint mask. C.f. eq(12)
-        Can be used for baseline agents as well as re-marginalization init"""
-        """
+        Can be used for baseline agents as well as re-marginalization initialization
+
         e.g. for 2 players and 2 colors (5 ranks) at start of the game
         initial belief B0 [[3. 2. 2. 2. 1. 3. 2. 2. 2. 1. 0.]  # corresponds to card 0 of player 0 --> B(f[0])
                         [3. 2. 2. 2. 1. 3. 2. 2. 2. 1. 0.]  # corresponds to card 1 of player 0 --> B(f[1])
@@ -274,7 +273,7 @@ class PubMDP(object):
                         [3. 2. 2. 2. 1. 3. 2. 2. 2. 1. 0.]] # corresponds to card 1 of player 1 --> B(f[3])
 
         """
-        return self.candidate_counts * self.hint_mask
+        return self.candidate_counts * self.hint_mask  # broadcasts self.candidate_counts to rows of self.hint_mask
 
     def compute_belief_at_convergence(self, belief_b0, k=1):
         """ Computes re-marginalized V1 beliefs C.f. eq(13) """
@@ -324,7 +323,7 @@ class PubMDP(object):
             sample_card_counts = np.bincount(sample, minlength=len(self.candidate_counts))
             reduced_counts = self.candidate_counts - sample_card_counts
             # i) check sample consistent with candidate count
-            if reduced_counts[reduced_counts < 0].size == 0:
+            if not reduced_counts[reduced_counts < 0].size:
                 pass
             else:
                 continue
@@ -356,12 +355,11 @@ class PubMDP(object):
         # and their probabilities per slot per player
         px = belief / np.sum(belief, axis=1, keepdims=True)
         # sample hands from the resulting distribution
-        for (i_row, _), row in np.ndenumerate(belief):  # todo remove this loop
+        for (i_row, _), row in np.ndenumerate(belief):  # todo remove this loop, i.e. sample multivariate
             sampled[i_row, ] = rv_discrete(values=(x_i, px[i_row, :-1])).rvs(size=num_samples)
 
         # For now we just compute a fixed number of samples and take the first 3000 consistent ones
-        consistent_samples = self._remove_inconsistent_samples(sampled, num_consistent_samples_to_return=3000)
-
+        return self._remove_inconsistent_samples(sampled, num_consistent_samples_to_return=3000)
 
     def compute_likelihood_private_features(self, obs):
         """ Given an observed action, it computes its probability using the public policy.
@@ -434,19 +432,76 @@ class PubMDP(object):
         obs['V1_belief'] = self.V1
         obs['BB'] = self.BB
         obs['V2'] = self.V2
-        print(self.V1)
-        print(self.BB)
+        # print(self.V1)
+        # print(self.BB)
         self.sample_consistent_private_features_from_public_belief()
         # obs['obs_pub_mdp_vectorized'] = np.concatenate(obs['vectorized'], V2)
 
         return obs
 
+    def reset(self):
+        """
+        Returns initial HLE observation + initial public belief state, i.e.
+        calls self.env.reset() and augments the resulting observation
+        """
+        self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
+        self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
+        self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
+        self.hint_mask[:, -1] = 0
+        self.util_mask_slots_hinted = list()
+        self.public_features = np.concatenate((self.candidate_counts, self.hint_mask.flatten()))
+        self.deck_is_empty = False
+        self.B0 = None
+        self.BB = None
+        self.V1 = None
+        self.V2 = None
+
+        return self.augment_observation(self.env.reset())
+
+    def step(self, action):
+        """ Returns observation + updated public belief state """
+        return self.augment_observation(self.env.step(action))
+
 
 class BADAgent(object):
-    def __init__(self, game_config, pub_mdp_params=None):
-        self.pub_mdp = PubMDP(game_config)
+    def __init__(self, policy):
+        """ C.f. tf_agents """
+        self.policy = policy
 
     def act(self, observation):
-        obs = self.pub_mdp.augment_observation(observation)
-        action = 'action computed by forwardpass using new obs'
+        """ observation is expected to be augmented already, i.e. returned from the pubmdp"""
+        action = 'action computed by greedy softmax readout of forwardpass using new obs'
         return action
+
+class Learner(object):
+    """ This guy must be made callable with trajectories generated by BADAgent()s
+    and update weights of PublicPolicy neural net. The PublicPolicy will be used by the PubMDP on its init()
+    and by the BADAgent on its init()
+    So the weight update must be blocking, check tf_agents to see how they did it.
+    """
+    def __init__(self, network):
+        self.network = network
+    pass
+
+""" If we wrap the whole pubmdp using tf agents, 
+are we then able to refresh the public policy upon wrapped_env.reset()?
+Probably yes, which would be great!
+
+learner updates NN_theta
+    NN_theta is shared by learner and envs
+env resets using new NN_theta
+
+==> PubMDP must provide step() and reset() methods
+
+
+# todo: implement step() and reset() inside PubMDP
+# todo: implement tf_env wrapper for PubMDP
+# todo: check how to make neural net weight updates blocking using tf_agents
+
+
+public_policy = PublicPolicyStub()  # shared by learner and env and agent
+learner = Learner(public_policy)
+env = PubMDP(game_config={}, public_policy=public_policy)
+agent = BADAgent(public_policy)
+
+"""

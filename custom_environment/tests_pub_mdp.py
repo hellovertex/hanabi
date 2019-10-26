@@ -23,9 +23,10 @@ class Runner(object):
     """Initialize runner."""
     self.flags = flags
     self.agent_config = flags['game_config']
-    self.environment = rl_env.HanabiEnv(flags['game_config'])
+    #self.environment = rl_env.HanabiEnv(flags['game_config'])
+    self.environment = PubMDP(flags['game_config'])
     self.agent_class = SimpleAgent
-    self.pub_mdp = PubMDP(flags['game_config'])
+    #self.pub_mdp = PubMDP(flags['game_config'])
 
   def run(self):
     """Run episodes."""
@@ -43,7 +44,7 @@ class Runner(object):
 
           action = agent.act(observation)
           if observation['current_player'] == agent_id:
-            augmented_observation = self.pub_mdp.augment_observation(observation)
+            # augmented_observation = self.pub_mdp.augment_observation(observation)
             # print(augmented_observation)
             assert action is not None
             current_player_action = action
@@ -91,8 +92,8 @@ class PrintDebugTest(ABCTest):
     def run(self):
         self.runner.run()
 # todo implement seeded tests to compare to precomputed results
-#test = PrintDebugTest()
-#test.run()
+test = PrintDebugTest()
+test.run()
 
 """
 num_players = 2
