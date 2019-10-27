@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.stats import rv_discrete
-
+from tf_agents.trajectories.policy_step import CommonFields
+from tf_agents.trajectories.time_step import TimeStep, StepType
 from hanabi_learning_environment import pyhanabi as pyhanabi, rl_env
 from hanabi_learning_environment.pyhanabi import color_char_to_idx
 from hanabi_learning_environment.pyhanabi import HanabiMoveType
@@ -75,7 +76,8 @@ class PubMDP(object):
         self.V1 = None
         self.V2 = None
         self._episode_ended = False
-
+        self.last_time_step = None
+        self.last_state = None
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
         :arg
@@ -359,27 +361,51 @@ class PubMDP(object):
         # For now we just compute a fixed number of samples and take the first 3000 consistent ones
         return self._remove_inconsistent_samples(sampled, num_consistent_samples_to_return=3000)
 
-    def compute_likelihood_private_features(self, last_moves):
+    def compute_likelihood_private_features(self, last_moves, seed=123):
         """ Given an observed action, it computes its probability using the public policy.
          This action in turn determines the likelihood of
         """
-        # todo handle empty last_moves
-        # Generate 3000 consistent samples
+        # todo on first turn, do something meaningful :D
+        if not last_moves:
+            return  # something meaningful
+        # Otherwise, generate 3000 consistent samples
         samples = self.sample_consistent_private_features_from_public_belief(num_samples=3000)
+        print('samples')
+        print(samples)
+        # and get the last action
+        last_action = self._get_last_non_deal_move(last_moves)
+        suitable_private_features = list()
+        private_features_that_lead_to_different_action = list()
+        """ The following requires vectorized public belief state, which is missing in this version """
+        # todo this does not work without vectorized public beliefs
+        for sample in samples.T:
+            if not self.last_time_step is None:
+                last_obs = self.last_time_step['obs']['state']
+                last_state = self.last_state  # currently a dict, is assumed to be a vectorized obj once we have encodign
+                # given last_obs and last_state, create sampled_obs where we incorporate sampled priv features
+                sampled_obs = 'This must consistent of HLEvectorized + self.last_stateVECtroized ' \
+                              'where observed cards have been replaced with samples'
 
-        # feedforward all 3000 samples through network and store set of {(f,prob(pi(f))}
-        #    for those f that couldve generated the last action
-
-        # compute product of {(prob(pi(f)} for the numerator for corresponding f[i]
-        # compute sum(one hot f[i]s) for all f[i]
-
+                step_type = self.last_time_step['step_type']
+                reward = self.last_time_step['reward']
+                discount = self.last_time_step['discount']
+                timestep = TimeStep(step_type, reward, discount, sampled_obs)
+                # compute forward passes using ts
+                # assume that action has been sampled using the public seed
+                policy_step = self.public_policy.action(timestep, seed=seed)
+                action = policy_step.action
+                log_prob = getattr(policy_step.info, CommonFields.LOG_PROBABILITY)  # maybe xD
+                if action == last_action:
+                    # can compute the likelihood on the fly, without lists
+                    suitable_private_features.append(log_prob)
+                # todo compute the actual values for the likelihood matrix, which is easy once the encoding is given
         return .1
 
     # LVL 2
     def compute_bayesian_belief(self, last_moves, k=1):
         """ Computes re-marginalized Bayesian beliefs. C.f. eq(14) and eq(15)"""
         # Compute basic bayesian belief
-        ll = self.compute_likelihood_private_features(last_moves)
+        ll = self.compute_likelihood_private_features(last_moves)  # uses self.last_time_step
         bayesian_belief_b0 = self.compute_B0_belief() * ll
 
         # Re-marginalize and save to self.public-belief
@@ -441,10 +467,11 @@ class PubMDP(object):
         self.V1 = None
         self.V2 = None
         self._episode_ended = False
+        self.last_time_step = None
         obs = self.env.reset()
         current_player = obs['current_player']
         obs['s_bad'] = self.compute_public_state(obs)
-
+        self.last_state = obs['s_bad']
         return obs
 
     def step(self, action):
@@ -463,6 +490,7 @@ class PubMDP(object):
 
         # append public belief state at top level of observations
         observations['s_bad'] = self.compute_public_state(observations)
+        self.last_state = observations['s_bad']
         # todo add augmented observations for agents, i.e. vectorized encoding scheme
 
         return observations, reward, done, info
