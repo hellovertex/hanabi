@@ -84,7 +84,7 @@ FLAGS = flags.FLAGS
 # I sorted them a little bit, in order to get the most interesting results earlier
 COLORS = [2,3]
 RANKS = [5]
-NUM_PLAYERS = [4]
+NUM_PLAYERS = [2,4]
 HAND_SIZES = [2,3,4,5]
 MAX_INFORMATION_TOKENS = [3,2,1,8]
 # MAX_LIFE_TOKENS = [2,3]
