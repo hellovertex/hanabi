@@ -64,9 +64,9 @@ def load_hle(game_config):
     return None
 
 
-def load_hanabi_pub_mdp(game_config, policy_net=None):
+def load_hanabi_pub_mdp(game_config, public_policy=None):
     assert isinstance(game_config, dict)
-    env = PubMDP(game_config, policy_net)
+    env = PubMDP(game_config, public_policy)
     if env is not None:
         return PubMDPWrapper(env)
     return None
@@ -87,7 +87,7 @@ def get_obs_spec_action_spec_from_game_config(game_config):
      """
     gc_tf_env = tf_py_environment.TFPyEnvironment(
         parallel_py_environment.ParallelPyEnvironment(
-            [lambda: load_hanabi_pub_mdp(game_config, policy_net=None)] * 1)
+            [lambda: load_hanabi_pub_mdp(game_config, public_policy=None)] * 1)
     )  # we create parallel environment just to make sure it is 1:1 identical with the one really used
 
     return gc_tf_env.time_step_spec(), gc_tf_env.observation_spec(), gc_tf_env.action_spec()
@@ -133,13 +133,6 @@ def train_eval(
         game_config,
         tf_master='',
         random_seed=0,
-        # TODO(b/127576522): rename to policy_fc_layers.
-        actor_fc_layers=(150, 75),
-        value_fc_layers=(150, 75),
-        actor_fc_layers_rnn=(150,),
-        value_fc_layers_rnn=(150,),
-        use_rnns=False,
-        # Params for collect
         num_environment_steps=int(3e06),
         collect_episodes_per_iteration=90,
         num_parallel_environments=30,
@@ -213,9 +206,13 @@ def train_eval(
         # ################################################ #
         # --------------- Load Environments -------------- #
         # ################################################ #
+        """ Note: We create environments using agent_BADs collect policy because this is in fact the public policy.
+         The train_op is currently agent.train() but will be replaced using learner.train(actor_net)
+         where actor_net is used by the collect (public) policies of the BAD agents
+         """
         tf_env = tf_py_environment.TFPyEnvironment(
             parallel_py_environment.ParallelPyEnvironment(
-                [lambda: load_hanabi_pub_mdp(DEFAULT_CONFIG, actor_net)]
+                [lambda: load_hanabi_pub_mdp(DEFAULT_CONFIG, public_policy=agent_BAD.collect_policy)]
                 * PARAMS['num_parallel_environments'])
         )
         # this will be a normal HLE without a public agent, as
@@ -372,7 +369,6 @@ def train_eval(
 def main(_):
     tf.compat.v1.enable_resource_variables()
     if tf.executing_eagerly():
-        # self.skipTest('b/123777119')  # Secondary bug: ('b/123775375')
         return
     # loop over game params to create different configs
     logging.set_verbosity(logging.INFO)
@@ -387,7 +383,7 @@ def main(_):
         num_epochs=FLAGS.num_epochs,
         collect_episodes_per_iteration=FLAGS.collect_episodes_per_iteration,
         num_eval_episodes=FLAGS.num_eval_episodes,
-        use_rnns=FLAGS.use_rnns)
+        )
 
 if __name__ == '__main__':
     app.run(main)

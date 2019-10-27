@@ -55,7 +55,9 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
         # (48, ) int64
         #print(mask_valid_actions.shape, mask_valid_actions.dtype)
-        return TimeStep(StepType.FIRST, reward, discount, obs)
+        timestep = TimeStep(StepType.FIRST, reward, discount, obs)
+        self.pub_mdp.last_time_step = timestep
+        return timestep
 
     def _step(self, action):
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTuple obj"""
@@ -81,6 +83,11 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         else:
             step_type = StepType.MID
 
+        self.pub_mdp.last_time_step = {'step_type': step_type,
+                                       'reward': reward,
+                                       'discount': discount,
+                                       'obs': {'state': observation['pyhanabi'], 'mask': mask_valid_actions}
+                                        }  # obs pyhanabi will be replaced by augmented vectorized observation
         return TimeStep(step_type, reward, discount, obs)
 
     def observation_spec(self):
