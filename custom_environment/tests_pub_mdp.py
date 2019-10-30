@@ -46,7 +46,7 @@ class Runner(object):
 
           action = agent.act(observation)
           if observation['current_player'] == agent_id:
-            # print(observations['s_bad'])
+            print(observations['s_bad'])
             # print(augmented_observation)
             assert action is not None
             current_player_action = action
