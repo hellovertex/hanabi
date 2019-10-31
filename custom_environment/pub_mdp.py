@@ -9,25 +9,6 @@ MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 COLOR_CHAR = ["R", "Y", "G", "W", "B"]  # consistent with hanabi_lib/util.cc
 
 
-class PublicPolicyStub(object):
-    """ Neural Network stub for the public policy, until we decided on an architecture"""
-    # This NNs weights change during decentralized execution phase, so we have to find a way to
-    # make the agents observers of the weights (i.e. the public policy)
-
-    def set_policy_weights(self):
-        """ This is the interface stub by which the learner updates the public policy params """
-        # 1. update policy weights
-        # 2.
-        pass
-
-    @staticmethod
-    def feedforward(observation):
-        """
-        Returns action probabilities given observation as input
-        """
-        return .1
-
-
 class PubMDP(object):
     """ Sits on top of the hanabi-learning-environment and is responsible for computation of beliefs (-updates) that
     are used to augment an agents observation to match the state definition of Pub-MDPs
@@ -45,12 +26,14 @@ class PubMDP(object):
         self.num_ranks = game_config['ranks']
         self.num_players = game_config['players']
         self.hand_size = game_config['hand_size']
+        self.num_slots = self.num_players * self.hand_size
+        self.num_cards = self.num_colors * self.num_ranks + 1  # add 1 for None-card in last round
         # C(f): 0-1 vector of length (colors * ranks) containing public card counts
         self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
         self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
         # HM: binary matrix, slot equals 1, if player could be holding card at given slot
         # i.e. hint_mask[i,j] == 1 <==> (i % hand_size)th card of (i\hand_size)th player equals card j
-        self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
+        self.hint_mask = np.ones((self.num_slots, self.num_cards))
         self.hint_mask[:, -1] = 0
         # utils
         self.util_mask_slots_hinted = list()  # maintains rows of self.hint_mask that have received a hint
@@ -71,13 +54,14 @@ class PubMDP(object):
         )
         # re-loads public policy, in case the weights have changed
         self.public_policy = public_policy
-        self.B0 = None
+        self.B_0 = None
         self.BB = None
         self.V1 = None
         self.V2 = None
         self._episode_ended = False
         self.last_time_step = None
         self.last_state = None
+
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
         :arg
@@ -218,7 +202,6 @@ class PubMDP(object):
             cols = [rank + self.num_ranks * c for c in range(self.num_colors)]
             for rank in cols:
                 self.hint_mask[slots, rank] = 1
-        # todo add 1 at the end for last turn
         else:
             raise ValueError
 
@@ -260,9 +243,6 @@ class PubMDP(object):
             else:
                 raise ValueError
 
-        if self.deck_is_empty:
-            self.hint_mask[:, -1] = 1
-
     def compute_B0_belief(self):
         """ Computes initial public belief that only depends on card counts and hint mask. C.f. eq(12)
         Can be used for baseline agents as well as re-marginalization initialization
@@ -279,30 +259,24 @@ class PubMDP(object):
         # return B0  # broadcasts self.candidate_counts to rows of self.hint_mask
         return B0_normalized  # broadcasts self.candidate_counts to rows of self.hint_mask
 
-    def compute_belief_at_convergence(self, belief_b0, k=5):
+    def compute_belief_at_convergence(self, B_0, k=5):
         """ Computes re-marginalized V1 beliefs C.f. eq(13) """
         # Re-marginalize and save to self.public-belief
-        def _loop_re_marginalization(belief_v1, k):
-            """ Returns public believe at convergence C.f eq(10), eq(13) """
-            assert isinstance(belief_v1, np.ndarray)
-            # re_marginalized = np.copy(belief_v1)
-            re_marginalized = np.zeros((self.num_players*self.hand_size, self.num_colors*self.num_ranks + 1))
-            for _ in range(k):  # k << 10 suffices for until I improved implementation
-                # iterate public_belief rows which is 20 iterations at most
-                # for i, slot in enumerate(belief_v1):
-                for (i, _), slot in np.ndenumerate(belief_v1):  # todo remove this loop
-                    # print('initial belief', belief_v1)
-                    re_marginalized[i] = self.candidate_counts - np.sum(
-                        belief_v1[(np.arange(self.num_players * self.hand_size) != i)],  # pick all other rows
-                        axis=0)  # sum across other slots
-                    # print(i, re_marginalized[i])
-                belief_v1 = re_marginalized / np.sum(re_marginalized, axis=1, keepdims=True)
-            # print(re_marginalized)
-            return belief_v1
+        assert isinstance(B_0, np.ndarray)
+        B_k = np.copy(B_0)
+        B_kplus1 = np.zeros((self.num_players*self.hand_size, self.num_colors*self.num_ranks + 1))
+        num_slots = B_k.shape[0]
+        for _ in range(k):  # k << 10 suffices for until I improved implementation
+            # iterate public_belief rows which is 20 iterations at most
+            # for i, slot in enumerate(belief_v1):
+            for i in range(num_slots):  # todo remove this loop
+                B_kplus1[i] = self.candidate_counts - np.sum(
+                    B_k[(np.arange(self.num_players * self.hand_size) != i)],  # pick all other rows
+                    axis=0)  # sum across other slots
+            B_k = B_kplus1 / np.sum(B_kplus1, axis=1, keepdims=True) * self.hint_mask
 
-        return _loop_re_marginalization(belief_b0, k)
-
-        # return _loop_re_marginalization(k)
+        # print(re_marginalized)
+        return B_k
 
     def _remove_inconsistent_samples(self, samples, num_consistent_samples_to_return=3000):
         """
@@ -369,13 +343,10 @@ class PubMDP(object):
         """ Given an observed action, it computes its probability using the public policy.
          This action in turn determines the likelihood of
         """
-        # todo on first turn, do something meaningful :D
-        if not last_moves:
-            return .1  # something meaningful
+        assert last_moves  # raise Error when last_moves is empty, because then there is no action yet
         # Otherwise, generate 3000 consistent samples
         samples = self.sample_consistent_private_features_from_public_belief(num_samples=3000)
-        print('samples')
-        print(samples)
+
         # and get the last action
         last_action = self._get_last_non_deal_move(last_moves)
         suitable_private_features = list()
@@ -410,23 +381,18 @@ class PubMDP(object):
         """ Computes re-marginalized Bayesian beliefs. C.f. eq(14) and eq(15)"""
         # Compute basic bayesian belief
         ll = self.compute_likelihood_private_features(last_moves)  # uses self.last_time_step
-        bayesian_belief_b0 = self.compute_B0_belief() * ll  # elementwise
+        BB_k = self.B_0 * ll  # elementwise
+        BB_kplus1 = np.zeros((self.num_players*self.hand_size, self.num_colors*self.num_ranks + 1))
 
-        # Re-marginalize and save to self.public-belief
-        def _loop_re_marginalization(bayesian_belief, k):
-            """ Returns public believe at convergence C.f eq(10), eq(13) """
-            re_marginalized = np.zeros((self.num_players*self.hand_size, self.num_colors*self.num_ranks + 1))
-            for _ in range(k):  # k << 10 suffices
-                # iterate public_belief rows which is 20 iterations at most
-                for i, slot in enumerate(bayesian_belief):
-                    re_marginalized[i] = self.candidate_counts - np.sum(
-                        bayesian_belief[np.arange(self.num_players * self.hand_size) != i],
-                        # pick all other rows
-                        axis=0) * ll
-                bayesian_belief = re_marginalized / np.sum(re_marginalized, axis=1, keepdims=True)
-            return bayesian_belief
+        for _ in range(k):  # k << 10 suffices
+            # iterate public_belief rows which is 20 iterations at most
+            for i in range(self.num_slots):
+                BB_kplus1[i] = self.candidate_counts - np.sum(
+                    BB_k[np.arange(self.num_players * self.hand_size) != i],axis=0) * self.hint_mask * ll
+            BB_k = BB_kplus1 / np.sum(BB_kplus1, axis=1, keepdims=True)
 
-        return _loop_re_marginalization(bayesian_belief_b0, k)
+        return BB_k
+
 
     @staticmethod
     def get_last_moves_from_obs(observations):
@@ -436,19 +402,31 @@ class PubMDP(object):
         obs = observations['player_observations'][current_player]
         return obs['pyhanabi'].last_moves()  # list of pyhanabi.HanabiHistoryItem from most recent to oldest
 
+    def uniform_likelihood(self):
+        """ Returns uniform probabilities for likelihood of private features.
+        These are used to initialize the bayesian belief on the first turn"""
+        unnormalized = np.ones((self.num_slots, self.num_cards))
+        return unnormalized / np.sum(unnormalized, axis=1, keepdims=True)
+
+    #LVL 0
     def compute_public_state(self, observations, k=1):
         """ Computes public belief state s_bad shared by all agents"""
-
+        if self.deck_is_empty:
+            self.hint_mask[observations['current_player']:, -1] = 1
         last_moves = self.get_last_moves_from_obs(observations)  # may be empty
         self.update_candidates_and_hint_mask(last_moves)
-        self.B0 = self.compute_B0_belief()
-        self.V1 = self.compute_belief_at_convergence(self.B0, k=1)
-        self.BB = self.compute_bayesian_belief(last_moves)
-        self.V2 = (1 - self.alpha) * self.BB + self.alpha * self.V1  # todo check if is vector of correct shape
+        self.B_0 = self.compute_B0_belief()
+        if not last_moves:
+            self.V1 = self.B_0
+            self.BB = self.B_0 * self.uniform_likelihood()  # on first turn, there was no action
+        else:
+            self.V1 = self.compute_belief_at_convergence(self.B_0)
+            self.BB = self.compute_bayesian_belief(last_moves)
+        self.V2 = (1 - self.alpha) * self.BB + self.alpha * self.V1
         self.public_features = np.concatenate(  # Card-counts and hint-mask
             (self.candidate_counts, self.hint_mask.flatten())
         )
-        return {'B0': self.B0,
+        return {'B0': self.B_0,
                 'V1': self.V1,
                 'BB': self.BB,
                 'V2': self.V2,
@@ -466,7 +444,7 @@ class PubMDP(object):
         self.util_mask_slots_hinted = list()
         self.public_features = np.concatenate((self.candidate_counts, self.hint_mask.flatten()))
         self.deck_is_empty = False
-        self.B0 = None
+        self.B_0 = None
         self.BB = None
         self.V1 = None
         self.V2 = None
@@ -520,26 +498,3 @@ class Learner(object):
     def __init__(self, network):
         self.network = network
     pass
-
-""" If we wrap the whole pubmdp using tf agents, 
-are we then able to refresh the public policy upon wrapped_env.reset()?
-Probably yes, which would be great!
-
-learner updates NN_theta
-    NN_theta is shared by learner and envs
-env resets using new NN_theta
-
-==> PubMDP must provide step() and reset() methods
-
-
-# todo: implement step() and reset() inside PubMDP
-# todo: implement tf_env wrapper for PubMDP
-# todo: check how to make neural net weight updates blocking using tf_agents
-
-
-public_policy = PublicPolicyStub()  # shared by learner and env and agent
-learner = Learner(public_policy)
-env = PubMDP(game_config={}, public_policy=public_policy)
-agent = BADAgent(public_policy)
-
-"""
