@@ -61,6 +61,8 @@ class PubMDP(object):
         self._episode_ended = False
         self.last_time_step = None
         self.last_state = None
+        bits_per_card = self.num_colors * self.num_ranks
+        self.len_private_observation = (self.num_players - 1) * self.hand_size * bits_per_card + self.num_players
 
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
@@ -388,7 +390,7 @@ class PubMDP(object):
             # iterate public_belief rows which is 20 iterations at most
             for i in range(self.num_slots):
                 BB_kplus1[i] = self.candidate_counts - np.sum(
-                    BB_k[np.arange(self.num_players * self.hand_size) != i],axis=0) * self.hint_mask * ll
+                    BB_k[np.arange(self.num_players * self.hand_size) != i],axis=0) * self.hint_mask[i,:] * ll
             BB_k = BB_kplus1 / np.sum(BB_kplus1, axis=1, keepdims=True)
 
         return BB_k
@@ -408,6 +410,23 @@ class PubMDP(object):
         unnormalized = np.ones((self.num_slots, self.num_cards))
         return unnormalized / np.sum(unnormalized, axis=1, keepdims=True)
 
+    def get_vectorized(self):
+        """ Returns vectorized public state, i.e. V2 and public features """
+
+    def vectorized_observation_shape(self):
+        """ Computes shape of vectorized public state, i.e. HLE state + public belief """
+        pass # return self.vectorized.shape
+
+    def get_observed_hands_vectorized(self, observations):
+        """ get the portion of the vectorized hle observation that contains the observed hands
+         It has length equal to self.len_private_observation
+
+         Luckily for us, the observed hands are always encoded first, so we just have to get the first
+         self.len_private_observations bits from
+         """
+        cur_pid = observations['current_player']
+        return observations['player_observations'][cur_pid]['vectorized'][:self.len_private_observation]
+
     #LVL 0
     def compute_public_state(self, observations, k=1):
         """ Computes public belief state s_bad shared by all agents"""
@@ -426,11 +445,14 @@ class PubMDP(object):
         self.public_features = np.concatenate(  # Card-counts and hint-mask
             (self.candidate_counts, self.hint_mask.flatten())
         )
+        s_bad = np.append(self.public_features, self.V2.flatten())
+
         return {'B0': self.B_0,
                 'V1': self.V1,
                 'BB': self.BB,
                 'V2': self.V2,
-                'f_pub': self.public_features}
+                'f_pub': self.public_features,
+                'vectorized': s_bad}
 
     def reset(self):
         """
@@ -451,31 +473,51 @@ class PubMDP(object):
         self._episode_ended = False
         self.last_time_step = None
         obs = self.env.reset()
-        current_player = obs['current_player']
-        obs['s_bad'] = self.compute_public_state(obs)
-        self.last_state = obs['s_bad']
-        return obs
+
+        return self._make_observation_all_players(obs)
 
     def step(self, action):
         """ Returns observation + updated public belief state """
-        #if self._episode_ended:
-        #    return self.reset()
-
         observations, reward, done, info = self.env.step(action)
-        #if done:
-        #    self._episode_ended = True
 
+        # Determine if it is the final round
         current_player = observations['current_player']
         obs_current_player = observations['player_observations'][current_player]
         deck_size = obs_current_player['deck_size']
         self.deck_is_empty = True if deck_size <= 0 else False
 
-        # append public belief state at top level of observations
-        observations['s_bad'] = self.compute_public_state(observations)
-        self.last_state = observations['s_bad']
-        # todo add augmented observations for agents, i.e. vectorized encoding scheme
+        # augment total state observation and agents observations
+        augmented_observations = self._make_observation_all_players(observations)
 
-        return observations, reward, done, info
+        return augmented_observations, reward, done, info
+
+    def vectorized_observation_shape(self):
+        """ returns the shape of a vectorized augmented observation as seen by an agent """
+        len_hle_observation = self.env.vectorized_observation_shape()
+        len_private_features = self.len_private_observation
+        len_own_hand = self.hand_size * self.num_colors * self.num_ranks
+        len_public_features = len(self.public_features) + self.num_players * self.hand_size * self.num_colors * self.num_ranks
+        pass
+
+    def _make_observation_all_players(self, hle_observations):
+        """ Takes HLE observations and augments them by public state. """
+        # pid = hle_observations['current_player']
+        public_belief_state = self.compute_public_state(hle_observations)
+
+        # for each agent, the observations consists of:
+        # hle_observation + public belief state + private features
+        # the private features are contained in the hle_observations however
+        # so we only add zeros our own hand to the public belief state and append to hle_observation
+        for player_dict in hle_observations['player_observations']:
+            aug_obs = np.append(np.zeros((self.hand_size * self.num_colors * self.num_ranks, )),  # own hand
+                                self.get_observed_hands_vectorized(hle_observations))  # private features
+            aug_obs = np.append(public_belief_state['vectorized'], aug_obs)  # public features
+            player_dict['vectorized'] = np.append(aug_obs, player_dict['vectorized'])  # hle observation
+
+        hle_observations['s_bad'] = public_belief_state
+        self.last_state = public_belief_state
+
+        return hle_observations
 
 
 class BADAgent(object):
