@@ -1,13 +1,17 @@
 import numpy as np
 from scipy.stats import rv_discrete
+from tf_agents.agents.ppo import ppo_policy
+from tf_agents.environments import tf_py_environment, parallel_py_environment
 
 from hanabi_learning_environment import rl_env
 from agents.simple_agent import SimpleAgent
-from custom_environment.pub_mdp import  PubMDP
+from custom_environment.pub_mdp import PubMDP
 from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
+from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork, MaskedValueNetwork
 import os
 import timeit
 import time
+
 """
  (1) Generate observations using rl_env_example.py Runner()
  (2) Init PubMDP on top of it
@@ -15,56 +19,119 @@ import time
  (4) Check if candidates and hint_mask is being updated correctly
  (5) Check V1 and BB computations
  """
+def load_hanabi_pub_mdp(game_config, public_policy=None):
+    assert isinstance(game_config, dict)
+    env = PubMDP(game_config, public_policy)
+    if env is not None:
+        return PubMDPWrapper(env)
+    return None
 
+def get_obs_spec_action_spec_from_game_config(game_config):
+    """
+    Returns observation_spec and action_spec required by tf_agents.network
+     Creates a pub mdp just to read out the observation spec and action spec for given game-config.
+     These will be used to create the actor_net, as its input_spec and output_spec.
+     The environment created here will not be used.
+
+     Args:
+         game_config: Used to create HanabiEnv object
+     Returns:
+         time_step_spec(), observation_spec(), action_spec()
+     for wrapped tf_environment
+     """
+    gc_tf_env = tf_py_environment.TFPyEnvironment(
+        parallel_py_environment.ParallelPyEnvironment(
+            [lambda: load_hanabi_pub_mdp(game_config, public_policy=None)] * 1)
+    )  # we create parallel environment just to make sure it is 1:1 identical with the one really used
+
+    return gc_tf_env.time_step_spec(), gc_tf_env.observation_spec(), gc_tf_env.action_spec()
 
 class Runner(object):
-  """Runner class."""
+    """Runner class."""
 
-  def __init__(self, flags):
-    """Initialize runner."""
-    self.flags = flags
-    self.agent_config = flags['game_config']
-    #self.environment = rl_env.HanabiEnv(flags['game_config'])
-    self.environment = PubMDP(flags['game_config'])
-    self.wrapped_env = PubMDPWrapper(self.environment)
-    self.agent_class = SimpleAgent
-    #self.pub_mdp = PubMDP(flags['game_config'])
+    def __init__(self, flags):
+        """Initialize runner."""
+        self.flags = flags
+        self.agent_config = flags['game_config']
+        # self.environment = rl_env.HanabiEnv(flags['game_config'])
+        self.environment = PubMDP(flags['game_config'])
+        self.wrapped_env = PubMDPWrapper(self.environment)
+        self.agent_class = SimpleAgent
+        # self.pub_mdp = PubMDP(flags['game_config'])
 
-  def run(self):
-    """Run episodes."""
-    rewards = []
-    for episode in range(self.flags['num_episodes']):
-      observations = self.environment.reset()
-      agents = [self.agent_class(self.agent_config)
-                for _ in range(self.flags['players'])]
-      done = False
-      episode_reward = 0
-      print(self.wrapped_env.time_step_spec())
-      while not done:
-        for agent_id, agent in enumerate(agents):
-          observation = observations['player_observations'][agent_id]
+    def run(self):
+        """Run episodes."""
+        rewards = []
+        for episode in range(self.flags['num_episodes']):
+            observations = self.environment.reset()
+            agents = [self.agent_class(self.agent_config)
+                      for _ in range(self.flags['players'])]
+            done = False
+            episode_reward = 0
+            # print(self.wrapped_env.time_step_spec())
+            # print(f'new vec obs  shape{self.wrapped_env.vectorized_observation_shape()}')
+            # print(f'observation_spec() = {self.wrapped_env.observation_spec()}')
+            while not done:
+                for agent_id, agent in enumerate(agents):
+                    print(observations)
+                    observation = observations['player_observations'][agent_id]
 
-          action = agent.act(observation)
-          if observation['current_player'] == agent_id:
-            print(observations['s_bad']['vectorized'])
-            # print(augmented_observation)
-            assert action is not None
-            current_player_action = action
+                    action = agent.act(observation)
+                    if observation['current_player'] == agent_id:
+                        # print(observations['s_bad']['vectorized'])
+                        # print(observation['vectorized'])
+                        # print(augmented_observation)
+                        assert action is not None
+                        current_player_action = action
 
-          else:
-            assert action is None
-        # Make an environment step.
-        #print('Agent: {} action: {}'.format(observation['current_player'],
-        #                                    current_player_action))
-        observations, reward, done, unused_info = self.environment.step(
-            current_player_action)
+                    else:
+                        assert action is None
+                # Make an environment step.
+                # print('Agent: {} action: {}'.format(observation['current_player'],
+                #                                    current_player_action))
+                observations, reward, done, unused_info = self.environment.step(
+                    current_player_action)
 
-        episode_reward += reward
-      rewards.append(episode_reward)
+                episode_reward += reward
+            rewards.append(episode_reward)
 
-      #print('Running episode: %d' % episode)
-      #print('Max Reward: %.3f' % max(rewards))
-    return rewards
+            # print('Running episode: %d' % episode)
+            # print('Max Reward: %.3f' % max(rewards))
+        return rewards
+
+
+class RunnerTfAgents(object):
+    """Runner class."""
+
+    def __init__(self, flags):
+        """Initialize runner."""
+        self.flags = flags
+        self.agent_config = flags['game_config']
+        # self.environment = rl_env.HanabiEnv(flags['game_config'])
+        time_spec, observation_spec, action_spec = get_obs_spec_action_spec_from_game_config(self.agent_config)
+        actor_network = MaskedActorDistributionNetwork(observation_spec, action_spec, fc_layer_params=(384, 384))
+        policy = ppo_policy.PPOPolicy(time_spec, action_spec, actor_network)
+        self.environment = PubMDP(flags['game_config'], public_policy=policy)
+        self.wrapped_env = PubMDPWrapper(self.environment)
+        self.agent_class = SimpleAgent
+        # self.pub_mdp = PubMDP(flags['game_config'])
+
+    def run(self):
+        """Run episodes."""
+        rewards = []
+        print(f'OBS SPEC IS{self.wrapped_env.observation_spec()}')
+        observations = self.wrapped_env.reset()
+        print()
+        for k in range(2):
+            mask = observations.observation['mask']
+            for i in range(10):
+                if mask[i] == 0:
+                    first_legal_action = i
+                    break
+            # for this we need a graph
+            observations = self.wrapped_env.step(first_legal_action)
+
+        return rewards
 
 
 class ABCTest(object):
@@ -93,8 +160,22 @@ class PrintDebugTest(ABCTest):
 
     def run(self):
         self.runner.run()
+
+
 # todo implement seeded tests to compare to precomputed results
-test = PrintDebugTest()
+
+class TestWrapper(ABCTest):
+    def __init__(self, runner, config=None):
+        super(TestWrapper, self).__init__(config)
+        self.runner = runner(self.flags)
+
+    def run(self):
+        self.runner.run()
+
+
+# test = PrintDebugTest()
+# test.run()
+test = TestWrapper(RunnerTfAgents)
 test.run()
 
 """

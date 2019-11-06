@@ -22,7 +22,8 @@ from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
 from hanabi_learning_environment import rl_env
 from training.hanabi_small.train_ppo_custom_env import get_metrics_eval, get_writers_train_eval
 from training.tf_agents_lib import pyhanabi_env_wrapper
-from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork, MaskedValueNetwork
+from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork, MaskedValueNetwork, \
+    MaskedValueEvalNetwork
 from training.tf_agents_lib.pyhanabi_env_wrapper import PyhanabiEnvWrapper
 
 FLAGS = flags.FLAGS
@@ -210,14 +211,19 @@ def train_eval(
          The train_op is currently agent.train() but will be replaced using learner.train(actor_net)
          where actor_net is used by the collect (public) policies of the BAD agents
          """
+        env_policy = py_tf_policy.PyTFPolicy(agent_BAD.collect_policy, seed=123)
+        # todo this blows up the value network
         tf_env = tf_py_environment.TFPyEnvironment(
             parallel_py_environment.ParallelPyEnvironment(
-                [lambda: load_hanabi_pub_mdp(DEFAULT_CONFIG, public_policy=agent_BAD.collect_policy)]
+                [lambda: load_hanabi_pub_mdp(DEFAULT_CONFIG, public_policy=env_policy)]
                 * PARAMS['num_parallel_environments'])
         )
         # this will be a normal HLE without a public agent, as
         eval_py_env = parallel_py_environment.ParallelPyEnvironment(
-            [lambda: load_hle(game_config)] * num_parallel_environments)
+            # [lambda: load_hle(game_config)] * num_parallel_environments
+            [lambda: load_hanabi_pub_mdp(DEFAULT_CONFIG, public_policy=env_policy)]
+            * PARAMS['num_parallel_environments']
+        )
 
         # ################################################ #
         # ---------------- Create Metrics ---------------- #

@@ -49,8 +49,9 @@ class PubMDP(object):
 
         # these will be initialized on env.reset() call
         # correct? self.private_features = None  # 0-1 vector of length (num_players * hand_size) * (colors * ranks)
+        hint_mask_flattened = self.hint_mask.flatten()
         self.public_features = np.concatenate(  # Card-counts and hint-mask
-            (self.candidate_counts, self.hint_mask.flatten())
+            (self.candidate_counts, hint_mask_flattened)
         )
         # re-loads public policy, in case the weights have changed
         self.public_policy = public_policy
@@ -60,10 +61,15 @@ class PubMDP(object):
         self.V2 = None
         self._episode_ended = False
         self.last_time_step = None
-        self.last_state = None
-        bits_per_card = self.num_colors * self.num_ranks
-        self.len_private_observation = (self.num_players - 1) * self.hand_size * bits_per_card + self.num_players
 
+        self.bits_per_card = self.num_colors * self.num_ranks
+        #self.len_private_observation = (self.num_players - 1) * self.hand_size * self.bits_per_card + self.num_players
+        #self.len_own_hand_vectorized = self.hand_size * self.bits_per_card
+        # bits per player are set at the end of encoded handcards
+        self.debug_utils_counter = 0
+        self.len_public_features = len(hint_mask_flattened) + len(self.candidate_counts)
+        self.len_s_bad = self.len_public_features + len(hint_mask_flattened)
+        # print(f'INSIDE INIT, WE DETERMINED LEN_PUB_FEATURES = {self.len_public_features}')
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
         :arg
@@ -347,36 +353,49 @@ class PubMDP(object):
         """
         assert last_moves  # raise Error when last_moves is empty, because then there is no action yet
         # Otherwise, generate 3000 consistent samples
+
         samples = self.sample_consistent_private_features_from_public_belief(num_samples=3000)
 
+        self.debug_utils_counter += 1
         # and get the last action
         last_action = self._get_last_non_deal_move(last_moves)
         suitable_private_features = list()
         private_features_that_lead_to_different_action = list()
-        """ The following requires vectorized public belief state, which is missing in this version """
-        # todo this does not work without vectorized public beliefs
-        for sample in samples.T:
-            if not self.last_time_step is None:
-                last_obs = self.last_time_step['obs']['state']
-                last_state = self.last_state  # currently a dict, is assumed to be a vectorized obj once we have encodign
-                # given last_obs and last_state, create sampled_obs where we incorporate sampled priv features
-                sampled_obs = 'This must consistent of HLEvectorized + self.last_stateVECtroized ' \
-                              'where observed cards have been replaced with samples'
 
-                step_type = self.last_time_step['step_type']
-                reward = self.last_time_step['reward']
-                discount = self.last_time_step['discount']
-                timestep = TimeStep(step_type, reward, discount, sampled_obs)
-                # compute forward passes using ts
-                # assume that action has been sampled using the public seed
-                policy_step = self.public_policy.action(timestep, seed=seed)
-                action = policy_step.action
-                log_prob = getattr(policy_step.info, CommonFields.LOG_PROBABILITY)  # maybe xD
-                if action == last_action:
-                    # can compute the likelihood on the fly, without lists
-                    suitable_private_features.append(log_prob)
-                # todo compute the actual values for the likelihood matrix, which is easy once the encoding is given
+        for sample in samples.T:  # todo remove this loop (Cython || C++)
+            if not self.last_time_step is None:
+                if not self.public_policy is None:
+                    cnum = 0
+                    sampled_obs = self.last_time_step.observation['state']
+                    for card in sample:
+                        sampled_obs[cnum*self.bits_per_card:cnum*self.bits_per_card+self.bits_per_card] = self.abs_cnum_to_one_hot(card)
+                        cnum += 1
+                    obs = {'state': self.last_time_step.observation['state'],  # sampled_obs
+                           'mask': self.last_time_step.observation['mask']}
+
+                    # replace 0s until self.len_own_hand_vectorized with encoded sample
+                    step_type = self.last_time_step.step_type
+                    reward = self.last_time_step.reward
+                    discount = self.last_time_step.discount
+                    timestep = TimeStep(step_type, reward, discount, obs)
+                    # compute forward passes using ts
+                    # assume that action has been sampled using the public seed
+                    # print(f'timestep after replacement = {timestep}')
+                    policy_step = self.public_policy.action(self.last_time_step)
+                    action = policy_step.action
+                    log_prob = getattr(policy_step.info, CommonFields.LOG_PROBABILITY)  # maybe xD
+                    # print(f'logprob is {log_prob}')
+                    if action == last_action:
+                        # can compute the likelihood on the fly, without lists
+                        suitable_private_features.append(log_prob)
+                    # todo compute the actual values for the likelihood matrix, which is easy once the encoding is given
+
         return .1
+
+    def abs_cnum_to_one_hot(self, cnum):
+        one_hot_enc = np.zeros((self.bits_per_card, ))
+        one_hot_enc[cnum] = 1
+        return one_hot_enc
 
     # LVL 2
     def compute_bayesian_belief(self, last_moves, k=1):
@@ -395,7 +414,6 @@ class PubMDP(object):
 
         return BB_k
 
-
     @staticmethod
     def get_last_moves_from_obs(observations):
         """ observations contains all the hands of all the players """
@@ -413,10 +431,7 @@ class PubMDP(object):
     def get_vectorized(self):
         """ Returns vectorized public state, i.e. V2 and public features """
 
-    def vectorized_observation_shape(self):
-        """ Computes shape of vectorized public state, i.e. HLE state + public belief """
-        pass # return self.vectorized.shape
-
+    # LVL 2
     def get_observed_hands_vectorized(self, observations):
         """ get the portion of the vectorized hle observation that contains the observed hands
          It has length equal to self.len_private_observation
@@ -427,7 +442,6 @@ class PubMDP(object):
         cur_pid = observations['current_player']
         return observations['player_observations'][cur_pid]['vectorized'][:self.len_private_observation]
 
-    #LVL 0
     def compute_public_state(self, observations, k=1):
         """ Computes public belief state s_bad shared by all agents"""
         if self.deck_is_empty:
@@ -445,8 +459,9 @@ class PubMDP(object):
         self.public_features = np.concatenate(  # Card-counts and hint-mask
             (self.candidate_counts, self.hint_mask.flatten())
         )
-        s_bad = np.append(self.public_features, self.V2.flatten())
 
+        s_bad = np.append(self.public_features, self.V2.flatten())
+        # print(f'len inside compute public state = {len(self.public_features), len(self.V2.flatten())}')
         return {'B0': self.B_0,
                 'V1': self.V1,
                 'BB': self.BB,
@@ -454,6 +469,7 @@ class PubMDP(object):
                 'f_pub': self.public_features,
                 'vectorized': s_bad}
 
+    # LVL 0
     def reset(self):
         """
         Returns initial HLE observation + initial public belief state, i.e.
@@ -472,6 +488,7 @@ class PubMDP(object):
         self.V2 = None
         self._episode_ended = False
         self.last_time_step = None
+        self.debug_utils_counter = 0
         obs = self.env.reset()
 
         return self._make_observation_all_players(obs)
@@ -492,51 +509,42 @@ class PubMDP(object):
         return augmented_observations, reward, done, info
 
     def vectorized_observation_shape(self):
-        """ returns the shape of a vectorized augmented observation as seen by an agent """
-        len_hle_observation = self.env.vectorized_observation_shape()
-        len_private_features = self.len_private_observation
-        len_own_hand = self.hand_size * self.num_colors * self.num_ranks
-        len_public_features = len(self.public_features) + self.num_players * self.hand_size * self.num_colors * self.num_ranks
-        pass
+        """ Returns the shape of a vectorized augmented observation as seen by an agent
+        Equals observations_spec in case of wrapping it with tf agents
+        """
+        len_hle_observation = self.env.vectorized_observation_shape()[0]
+        #print(f'len hle obs inside vecshapefn = {len_hle_observation}')
+        #print(f'lens_bad obs inside vecshapefn = {self.len_s_bad}')
+        return (len_hle_observation + self.len_s_bad, )  # currently 214
 
+    # LVL 1
     def _make_observation_all_players(self, hle_observations):
         """ Takes HLE observations and augments them by public state. """
         # pid = hle_observations['current_player']
         public_belief_state = self.compute_public_state(hle_observations)
-
+        s_bad_vectorized = public_belief_state['vectorized']  # self.public_features, self.V2.flatten()
+        # len(self.public_features) ==
         # for each agent, the observations consists of:
         # hle_observation + public belief state + private features
         # the private features are contained in the hle_observations however
         # so we only add zeros our own hand to the public belief state and append to hle_observation
+
+
         for player_dict in hle_observations['player_observations']:
-            aug_obs = np.append(np.zeros((self.hand_size * self.num_colors * self.num_ranks, )),  # own hand
-                                self.get_observed_hands_vectorized(hle_observations))  # private features
-            aug_obs = np.append(public_belief_state['vectorized'], aug_obs)  # public features
-            player_dict['vectorized'] = np.append(aug_obs, player_dict['vectorized'])  # hle observation
+            """ 
+            Appends to each players vectorized HLE observation, the public state s_bad={f_pub, B}.
+            The private features need not explicitly be included, because they are present in the HLE observationa
+            already. When reconstructing them for likelihood sampling, we just need to compute the bit versions of 
+            the sampled cards. 
+            """
+
+            # append vectorized s_bad to hle observation
+            #print(f'len hle obs inside make_obs_all_players = {len( player_dict["vectorized"])}')
+            #print(f'len(s_bad_vectorized) = {len(s_bad_vectorized)}')
+            #print(f's_bad_vectorized = {s_bad_vectorized}')
+            player_dict['vectorized'] = np.append(s_bad_vectorized, player_dict['vectorized'])
+
 
         hle_observations['s_bad'] = public_belief_state
-        self.last_state = public_belief_state
-
         return hle_observations
 
-
-class BADAgent(object):
-    def __init__(self, policy):
-        """ C.f. tf_agents """
-        self.policy = policy
-
-    def act(self, observation):
-        """ observation is expected to be augmented already, i.e. returned from the pubmdp"""
-        action = 'action computed by greedy softmax readout of forwardpass using new obs'
-        return action
-
-
-class Learner(object):
-    """ This guy must be made callable with trajectories generated by BADAgent()s
-    and update weights of PublicPolicy neural net. The PublicPolicy will be used by the PubMDP on its init()
-    and by the BADAgent on its init()
-    So the weight update must be blocking, check tf_agents to see how they did it.
-    """
-    def __init__(self, network):
-        self.network = network
-    pass

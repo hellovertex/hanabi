@@ -4,7 +4,7 @@ from tf_agents.specs.array_spec import BoundedArraySpec, ArraySpec
 import numpy as np
 
 discount = np.asarray(.999, dtype=np.float32)
-dtype_vectorized = 'uint8'
+dtype_vectorized = 'float'
 
 
 class PubMDPWrapper(PyEnvironmentBaseWrapper):
@@ -19,15 +19,15 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
-        return getattr(self._env, name)
+        return getattr(self.pub_mdp, name)
 
     @property
     def batched(self):
-        return getattr(self._env, 'batched', False)
+        return getattr(self.pub_mdp, 'batched', False)
 
     @property
     def batch_size(self):
-        return getattr(self._env, 'batch_size', None)
+        return getattr(self.pub_mdp, 'batch_size', None)
 
     def get_mask_legal_moves(self, observation):
         """ Given an observation,
@@ -35,6 +35,7 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
 
         legal_moves_as_int = observation['legal_moves_as_int']
         mask = np.full(self.pub_mdp.env.num_moves(), np.finfo(np.float32).min)
+
         mask[legal_moves_as_int] = 0
 
         return mask.astype(np.float32)
@@ -45,7 +46,6 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         self._episode_ended = False
         observations = self.pub_mdp.reset()
         observation = observations['player_observations'][observations['current_player']]
-
         # reward is 0 on reset
         reward = np.asarray(0, dtype=np.float32)
 
@@ -53,10 +53,14 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
+
         # (48, ) int64
         #print(mask_valid_actions.shape, mask_valid_actions.dtype)
         timestep = TimeStep(StepType.FIRST, reward, discount, obs)
         self.pub_mdp.last_time_step = timestep
+        # print(f'timestep from resetting = {timestep}')
+        # print(f'timesteps obs from resetting = {timestep.observation["state"].shape}')
+        #print(f'obs spec {self.observation_spec()}')
         return timestep
 
     def _step(self, action):
@@ -70,25 +74,25 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         action = int(action)
         observations, reward, done, info = self.pub_mdp.step(action)
         observation = observations['player_observations'][observations['current_player']]
+        # print(f'observation inside step function = {observation}')
 
         reward = np.asarray(reward, dtype=np.float32)
 
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
+        # print(f'observation state inside step function = {obs["state"]}')
+        # print(f'observation state inside step function = {obs["state"].shape}')
 
         if done:
             self._episode_ended = True
             step_type = StepType.LAST
         else:
             step_type = StepType.MID
-
-        self.pub_mdp.last_time_step = {'step_type': step_type,
-                                       'reward': reward,
-                                       'discount': discount,
-                                       'obs': {'state': observation['pyhanabi'], 'mask': mask_valid_actions}
-                                        }  # obs pyhanabi will be replaced by augmented vectorized observation
-        return TimeStep(step_type, reward, discount, obs)
+        timestep = TimeStep(step_type, reward, discount, obs)
+        self.pub_mdp.last_time_step = timestep
+        # print(f'timestep from stepping = {timestep}')
+        return timestep
 
     def observation_spec(self):
         """Returns:
@@ -97,10 +101,10 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         # i.e. ('_shape', '_dtype', '_name', '_minimum', '_maximum')
 
         state_spec = BoundedArraySpec(
-            shape=self.pub_mdp.env.vectorized_observation_shape(),
+            shape=self.pub_mdp.vectorized_observation_shape(),
             dtype=dtype_vectorized,
             minimum=0,
-            maximum=1,
+            maximum=3,
             name='state'
         )
         mask_spec = ArraySpec(

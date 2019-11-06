@@ -64,8 +64,8 @@ class MaskedValueNetwork(ValueNetwork):
         super().__init__(input_tensor_spec['state'], fc_layer_params=fc_layer_params)
 
     def call(self, observation, step_type=None, network_state=()):
-        return super().call(observation['state'], step_type, network_state)
-        # return super().call(observation, step_type, network_state)
+        #return super().call(observation['state'], step_type, network_state)
+        return super().call(observation, step_type, network_state)
 
     def __call__(self, inputs, *args, **kwargs):
         return super(Network, self).__call__(inputs, *args, **kwargs)
