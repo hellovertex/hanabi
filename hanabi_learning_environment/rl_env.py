@@ -118,6 +118,11 @@ class StorageRewardMetrics(object):
         num_cards_played = len(self.state.discard_pile) + sum(fireworks.values())    
         """
         # commpute starting pace
+
+    def reset(self):
+        self._num_hints_given = 0
+        self.history = list()
+
     @property
     def efficiency(self):
         return self._efficiency
@@ -334,6 +339,8 @@ class HanabiEnv(Environment):
 
         obs = self._make_observation_all_players()
         obs["current_player"] = self.state.cur_player()
+        self.reward_metrics.reset()
+
         return obs
 
     def vectorized_observation_shape(self):
