@@ -212,10 +212,10 @@ def train_eval(
          where actor_net is used by the collect (public) policies of the BAD agents
          """
         env_policy = py_tf_policy.PyTFPolicy(agent_BAD.collect_policy, seed=123)
-        # todo this blows up the value network
+        # todo this blows up the value network, maybe pass tf sess and exec eagerly
         tf_env = tf_py_environment.TFPyEnvironment(
             parallel_py_environment.ParallelPyEnvironment(
-                [lambda: load_hanabi_pub_mdp(DEFAULT_CONFIG, public_policy=env_policy)]
+                [lambda: load_hanabi_pub_mdp(DEFAULT_CONFIG, public_policy=agent_BAD.collect_policy)]
                 * PARAMS['num_parallel_environments'])
         )
         # this will be a normal HLE without a public agent, as

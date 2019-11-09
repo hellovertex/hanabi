@@ -15,7 +15,7 @@ class PubMDP(object):
     c.f. 'Bayesian action decoder for deep multi-agent reinforcement learning' (Foerster et al.)
     (https://arxiv.org/abs/1811.01458)"""
 
-    def __init__(self, game_config, public_policy=None, alpha=.1):
+    def __init__(self, game_config, public_policy=None, alpha=.1, tf_sess=None):
         """
             See definition of augment_observation() at the bottom of this file to understand how this class works
         """
@@ -70,6 +70,7 @@ class PubMDP(object):
         self.len_public_features = len(hint_mask_flattened) + len(self.candidate_counts)
         self.len_s_bad = self.len_public_features + len(hint_mask_flattened)
         # print(f'INSIDE INIT, WE DETERMINED LEN_PUB_FEATURES = {self.len_public_features}')
+        self.tf_sess = tf_sess
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
         :arg
@@ -381,6 +382,7 @@ class PubMDP(object):
                     # compute forward passes using ts
                     # assume that action has been sampled using the public seed
                     # print(f'timestep after replacement = {timestep}')
+                    # todo maybe enable eager mode for tf
                     policy_step = self.public_policy.action(self.last_time_step)
                     action = policy_step.action
                     log_prob = getattr(policy_step.info, CommonFields.LOG_PROBABILITY)  # maybe xD
