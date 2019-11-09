@@ -574,7 +574,7 @@ class HanabiEnv(Environment):
         if reward is None:
             reward = self.state.score() - last_score
 
-        info = {}
+        info = {}  # todo add default reward here for comparison
 
         return (observation, reward, done, info)
 
