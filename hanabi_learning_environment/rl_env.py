@@ -34,6 +34,7 @@ MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 
 USE_CUSTOM_REWARD = True
 CUSTOM_REWARD = .1
+PENALTY_LAST_HINT_TOKEN_USED = 2.5
 COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
 REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
 REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
@@ -80,27 +81,35 @@ class Environment(object):
 
 # @gin.configurable
 class StorageRewardMetrics(object):
-    def __init__(self, game_config, custom_reward=CUSTOM_REWARD, penalty_last_hint_token_used=2.5, history_len=2):
+    def __init__(self, extended_game_config, history_len=2):
         # Game-type related stats
-        self.config = game_config
-        self.num_players = game_config['num_players']
-        self.num_ranks = game_config['ranks']
-        self.num_colors = game_config['colors']
-        self.hand_size = game_config['hand_size']
+        self.config = extended_game_config
+        self.num_players = self.config['players']
+        self.num_ranks = self.config['ranks']
+        self.num_colors = self.config['colors']
+        self.hand_size = self.config['hand_size']
         self.total_cards_in_deck = np.sum(np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors))
+
+        # Custom Reward params
+        self._custom_reward = CUSTOM_REWARD
+        self.penalty_last_hint_token_used = PENALTY_LAST_HINT_TOKEN_USED
+        """ custom settings may be optionally overwritten by extending game_config """
+        if 'custom_reward' in self.config:
+            self._custom_reward = self.config['custom_reward']
+        if 'penalty_last_hint_token' in self.config:
+            self.penalty_last_hint_token_used = self.config['penalty_last_hint_token']
 
         # Game-metric-utils
         starting_pace = self.total_cards_in_deck - (self.hand_size - 1) * self.num_players
         starting_pace -= 5 * self.num_colors
         min_efficiency_numerator = 5 * self.num_colors
-        self.history_len = history_len
+        self.history_len = history_len  # todo remove
         self.history = list()  # stores last hints [may have some (PLAY or DISCARD) actions in between]
 
         # Game metrics
         self._efficiency = None
-        self._custom_reward = custom_reward
         self._num_hints_given = 0
-        self.penalty_last_hint_token_used = penalty_last_hint_token_used
+
         """
         deck_size = None
         num_players = None
@@ -140,7 +149,7 @@ class StorageRewardMetrics(object):
         """
         assert action.type() in [REVEAL_COLOR, REVEAL_RANK]
         if len(self.history) < self.history_len:
-            self.history.append(action)
+            self.history.append((action, vectorized_obs))
         else:
             self.history = self.history[1:]  # remove earliest hint
             self.history.append((action, vectorized_obs))
@@ -153,12 +162,12 @@ class StorageRewardMetrics(object):
             vectorized observed state when current hint was given
         relative to acting player.
 
-        When self.history is empty, 1 is returned.
+        When self.history is empty, 0 is returned.
         Args:
              vectorized_obs: vectorized observation as returned by pyhanabi.ObservationEncoder
              len_vectorized_obs: length of vectorized observation. Used for normalization
         Returns:
-            hamming_distance: an integer value between 1 and len(vectorized_observation)
+            hamming_distance: an integer value between 0 and 1
          """
 
         if len(self.history) == 0:
@@ -169,8 +178,8 @@ class StorageRewardMetrics(object):
             # in order for the hamming distance to not be too large, we normalize with 1/len
             hamming_distance = np.count_nonzero(last_vectorized_obs != new_vectorized_obs)
             # todo: exclude certain bits for comparison, e.g. those not contributing to entropy
+            # todo: compute modified hamming_distance
             return hamming_distance / len_vectorized_obs
-
 
 
 class HanabiEnv(Environment):
@@ -213,6 +222,9 @@ class HanabiEnv(Environment):
         self.observation_encoder = pyhanabi.ObservationEncoder(
             self.game, pyhanabi.ObservationEncoderType.CANONICAL)
         self.players = self.game.num_players()
+
+        # in case the game_config did not contain hand_size because it was meant to be defaulted
+        config['hand_size'] = self.game.hand_size()
         self.reward_metrics = StorageRewardMetrics(config)
 
     def reset(self):
@@ -467,18 +479,22 @@ class HanabiEnv(Environment):
 
             # For hint moves, change the default reward
             if action.type() in [REVEAL_COLOR, REVEAL_RANK]:
+                reward = 0
                 # Update reward_metric utils
                 self.reward_metrics.num_hints_given += 1  # used to compute efficiency later
 
+                # observation info
                 cur_player = self.state.cur_player()
                 obs_cur_player = self.state.observation(cur_player)
                 observed_cards_cur_player = obs_cur_player.observed_hands()
                 vectorized = self.observation_encoder.encode(obs_cur_player)
 
+                # action info
                 target_offset = action.target_offset()
                 target_hand = observed_cards_cur_player[target_offset]
-                cards_touched = list()
+                cards_touched = list()  # list of pyhanabi.HanabiMove objects containing hinted cards
 
+                # get hinted cards
                 if action.type() == REVEAL_COLOR:
                     color_hinted = action.color()
                     for card in target_hand:
@@ -494,13 +510,14 @@ class HanabiEnv(Environment):
 
                 is_playable = False
                 is_last_copy = False
-                # if hinted card is playable, set reward to CUSTOM_REWARD
+                # if one hinted card is playable, set reward to CUSTOM_REWARD
                 for card in cards_touched:
                     if card.rank() == fireworks[card.color()]:
                         reward = self.reward_metrics.custom_reward
                         is_playable = True
                         break
-                # if hinted card is last copy, set reward to CUSTOM_REWARD
+
+                # if one hinted card is last copy, set reward to CUSTOM_REWARD
                 for card in cards_touched:
                     card_copies_total = COPIES_PER_CARD[str(card.rank())]
                     card_copies_discarded = 0
@@ -515,15 +532,18 @@ class HanabiEnv(Environment):
                         break
 
                 # compute "efficiency" as factor for reward
-                # todo if efficiency is used, how do we initialize it?
+                # todo if efficiency is used, how do we initialize it?, Zero division prohibits using it atm
 
                 # compute penalty for last hint token used
                 hint_penalty = self.reward_metrics.penalty_last_hint_token_used - self.reward_metrics.num_hints_given
                 reward *= hint_penalty
 
                 # compute Hamming distance between last two given hints
-                hamming_distance = self.reward_metrics.compute_hamming_distance(vectorized)
-                reward += hamming_distance
+                hamming_distance = self.reward_metrics.compute_hamming_distance(vectorized, self.vectorized_observation_shape()[0])
+
+                # in case the hint was no 'play' or 'save' hint, the reward will still be 0
+                if reward != 0:
+                    reward += hamming_distance
 
                 # update last action in reward storage
                 self.reward_metrics.update_history(action, vectorized)  # used for next hamming distance
@@ -542,7 +562,8 @@ class HanabiEnv(Environment):
 
         observation = self._make_observation_all_players()
         done = self.state.is_terminal()
-        # Reward is score differential. May be large and negative at game end.
+
+        # if reward was not modified, default to standard reward
         if reward is None:
             reward = self.state.score() - last_score
 

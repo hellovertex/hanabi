@@ -82,14 +82,16 @@ flags.DEFINE_boolean('use_rnns', False,
 FLAGS = flags.FLAGS
 
 # I sorted them a little bit, in order to get the most interesting results earlier
-COLORS = [2,3]
+COLORS = [2]
 RANKS = [5]
-NUM_PLAYERS = [2,4]
-HAND_SIZES = [2,3,4,5]
-MAX_INFORMATION_TOKENS = [3,2,1,8]
+NUM_PLAYERS = [2]
+HAND_SIZES = [2]
+MAX_INFORMATION_TOKENS = [3]
 # MAX_LIFE_TOKENS = [2,3]
-MAX_LIFE_TOKENS = [1]
+MAX_LIFE_TOKENS = [1, 2]
 OBSERVATION_TYPE = 1  # pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value
+CUSTOM_REWARDS = [.1, .5]
+PENALTIES_LAST_HINT_TOKEN = [3., 2.5, 2.9]
 
 
 def load_hanabi_env(game_config):
@@ -441,28 +443,33 @@ def main(_):
                 for hand_size in HAND_SIZES:
                     for max_information_tokens in MAX_INFORMATION_TOKENS:
                         for max_life_tokens in MAX_LIFE_TOKENS:  # 2 * 1 * 1 * 4 * 4 * 2 = 64 total iterations
-                            config = {
-                                "colors": colors,
-                                "ranks": ranks,
-                                "players": num_players,
-                                "hand_size": hand_size,
-                                "max_information_tokens": max_information_tokens,
-                                "max_life_tokens": max_life_tokens,
-                                "observation_type": OBSERVATION_TYPE}
+                            for custom_reward in CUSTOM_REWARDS:
+                                for penalty in PENALTIES_LAST_HINT_TOKEN:
+                                    config = {
+                                        "colors": colors,
+                                        "ranks": ranks,
+                                        "players": num_players,
+                                        "hand_size": hand_size,
+                                        "max_information_tokens": max_information_tokens,
+                                        "max_life_tokens": max_life_tokens,
+                                        "observation_type": OBSERVATION_TYPE,
+                                        "custom_reward": custom_reward,
+                                        "penalty_last_hint_token": penalty
+                                    }
 
-                            train_eval(
-                                root_dir=FLAGS.root_dir,
-                                summary_dir=FLAGS.summary_dir,
-                                game_config=config,
-                                tf_master=FLAGS.master,
-                                replay_buffer_capacity=FLAGS.replay_buffer_capacity,
-                                env_load_fn=load_hanabi_env,
-                                num_environment_steps=FLAGS.num_environment_steps,
-                                num_parallel_environments=FLAGS.num_parallel_environments,
-                                num_epochs=FLAGS.num_epochs,
-                                collect_episodes_per_iteration=FLAGS.collect_episodes_per_iteration,
-                                num_eval_episodes=FLAGS.num_eval_episodes,
-                                use_rnns=FLAGS.use_rnns)
+                                    train_eval(
+                                        root_dir=FLAGS.root_dir,
+                                        summary_dir=FLAGS.summary_dir,
+                                        game_config=config,
+                                        tf_master=FLAGS.master,
+                                        replay_buffer_capacity=FLAGS.replay_buffer_capacity,
+                                        env_load_fn=load_hanabi_env,
+                                        num_environment_steps=FLAGS.num_environment_steps,
+                                        num_parallel_environments=FLAGS.num_parallel_environments,
+                                        num_epochs=FLAGS.num_epochs,
+                                        collect_episodes_per_iteration=FLAGS.collect_episodes_per_iteration,
+                                        num_eval_episodes=FLAGS.num_eval_episodes,
+                                        use_rnns=FLAGS.use_rnns)
 
 
 if __name__ == '__main__':
