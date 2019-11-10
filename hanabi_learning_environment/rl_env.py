@@ -34,7 +34,7 @@ MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 
 USE_CUSTOM_REWARD = True
 CUSTOM_REWARD = .1
-PENALTY_LAST_HINT_TOKEN_USED = 2.5
+PENALTY_LAST_HINT_TOKEN_USED = .5
 COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
 REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
 REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
@@ -92,12 +92,12 @@ class StorageRewardMetrics(object):
 
         # Custom Reward params
         self._custom_reward = CUSTOM_REWARD
-        self.penalty_last_hint_token_used = PENALTY_LAST_HINT_TOKEN_USED
+        self._penalty_last_hint_token_used = PENALTY_LAST_HINT_TOKEN_USED
         """ custom settings may be optionally overwritten by extending game_config """
         if 'custom_reward' in self.config:
             self._custom_reward = self.config['custom_reward']
         if 'penalty_last_hint_token' in self.config:
-            self.penalty_last_hint_token_used = self.config['penalty_last_hint_token']
+            self._penalty_last_hint_token_used = self.config['penalty_last_hint_token']
 
         # Game-metric-utils
         starting_pace = self.total_cards_in_deck - (self.hand_size - 1) * self.num_players
@@ -122,6 +122,10 @@ class StorageRewardMetrics(object):
     def reset(self):
         self._num_hints_given = 0
         self.history = list()
+
+    @property
+    def penalty_last_hint_token_used(self):
+        return self._penalty_last_hint_token_used
 
     @property
     def efficiency(self):
@@ -542,7 +546,7 @@ class HanabiEnv(Environment):
                 # todo if efficiency is used, how do we initialize it?, Zero division prohibits using it atm
 
                 # compute penalty for last hint token used
-                hint_penalty = self.reward_metrics.penalty_last_hint_token_used - self.reward_metrics.num_hints_given
+                hint_penalty = self.state.information_tokens() - self.reward_metrics.penalty_last_hint_token_used
                 reward *= hint_penalty
 
                 # compute Hamming distance between last two given hints

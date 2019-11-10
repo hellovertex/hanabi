@@ -53,6 +53,8 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
 # own imports
+from custom_environment.custom_metric import PyScoreMetric
+
 sys.path.insert(0, 'lib')
 from hanabi_learning_environment import rl_env
 from training.tf_agents_lib import masked_networks, pyhanabi_env_wrapper
@@ -152,6 +154,10 @@ def get_metrics_eval(num_parallel_environments, num_eval_episodes):
             AverageEpisodeLengthMetric,
             metric_args={'buffer_size': num_eval_episodes},
             batch_size=num_parallel_environments),
+        batched_py_metric.BatchedPyMetric(
+            PyScoreMetric,
+            metric_args={'buffer_size': num_eval_episodes},
+            batch_size=num_parallel_environments)
     ]
     return eval_metrics
 
