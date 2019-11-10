@@ -86,14 +86,14 @@ FLAGS = flags.FLAGS
 # I sorted them a little bit, in order to get the most interesting results earlier
 COLORS = [2]
 RANKS = [5]
-NUM_PLAYERS = [2]
+NUM_PLAYERS = [2, 4]
 HAND_SIZES = [2]
 MAX_INFORMATION_TOKENS = [3]
 # MAX_LIFE_TOKENS = [2,3]
 MAX_LIFE_TOKENS = [1, 2]
 OBSERVATION_TYPE = 1  # pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value
 CUSTOM_REWARDS = [.1, .5]
-PENALTIES_LAST_HINT_TOKEN = [3., 2.5, 2.9]
+PENALTIES_LAST_HINT_TOKEN = [0, .1, .5]
 
 
 def load_hanabi_env(game_config):
@@ -225,6 +225,7 @@ def train_eval(
         summarize_grads_and_vars=False,
         eval_metrics_callback=None
         ):
+    tf.reset_default_graph()
     """A simple train and eval for PPO."""
     if root_dir is None:
         raise AttributeError('train_eval requires a root_dir.')
