@@ -488,6 +488,8 @@ def main(_):
                                         use_rnns=FLAGS.use_rnns,
                                     eval_py_env=eval_py_env,
                                     tf_env=tf_env)
+                                    del eval_py_env
+                                    del tf_env
 
 
 if __name__ == '__main__':

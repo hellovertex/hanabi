@@ -1,6 +1,7 @@
-from tf_agents.metrics import py_metrics
+from tf_agents.metrics import py_metrics, tf_py_metric
 from tf_agents.utils import numpy_storage
 from collections import namedtuple
+import tensorflow as tf
 import numpy as np
 
 """ 
@@ -57,6 +58,15 @@ class PyScoreMetric(py_metrics.StreamingMetric):
         is_last = np.where(trajectory.is_last())
         self.add_to_buffer(episode_score[is_last])
 
+
+class TfScoreMetric(tf_py_metric.TFPyMetric):
+  """Metric to compute the average return."""
+
+  def __init__(self, name='PyScoreMetric', dtype=tf.float32, buffer_size=10):
+    py_metric = py_metrics.AverageReturnMetric(buffer_size=buffer_size)
+
+    super(TfScoreMetric, self).__init__(
+        py_metric=py_metric, name=name, dtype=dtype)
 
 next_step_type = np.array([1, 1, 2, 1, 1, 2, 1, 0, 0, 1, 1, 1, 2, 1, 1, 1, 0])
 print(np.where(next_step_type == 0))
