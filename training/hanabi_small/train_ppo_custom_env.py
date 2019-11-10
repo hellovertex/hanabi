@@ -53,7 +53,7 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
 # own imports
-from custom_environment.custom_metric import PyScoreMetric
+from custom_environment.custom_metric import PyScoreMetric, TfScoreMetric
 
 sys.path.insert(0, 'lib')
 from hanabi_learning_environment import rl_env
@@ -122,6 +122,12 @@ def format_dir(dir, game_config):
     tmp = os.path.join(tmp, third_lvl)
     tmp = os.path.join(tmp, fourth_lvl)
     formatted_summary_dir = os.path.join(tmp, fifth_lvl)
+    if 'custom_reward' in game_config:
+        custom_reward = f'custom_reward={game_config["custom_reward"]}'
+        formatted_summary_dir = os.path.join(formatted_summary_dir, custom_reward)
+    if 'penalty_last_hint_token' in game_config:
+        penalty = f'penalty={game_config["penalty_last_hint_token"]}'
+        formatted_summary_dir = os.path.join(formatted_summary_dir, penalty)
 
     return formatted_summary_dir
 
@@ -172,6 +178,7 @@ def get_metrics_train_and_step():
     train_metrics = step_metrics + [
         tf_metrics.AverageReturnMetric(),
         tf_metrics.AverageEpisodeLengthMetric(),
+        TfScoreMetric()
     ]
 
     return train_metrics, step_metrics, environment_steps_count
@@ -218,12 +225,14 @@ def train_eval(
         train_checkpoint_interval=2000,
         policy_checkpoint_interval=1000,
         rb_checkpoint_interval=4000,
-        log_interval=50,
-        summary_interval=50,
+        log_interval=500,
+        summary_interval=500,
         summaries_flush_secs=1,
         debug_summaries=False,
         summarize_grads_and_vars=False,
-        eval_metrics_callback=None
+        eval_metrics_callback=None,
+        eval_py_env=None,
+        tf_env=None
         ):
     tf.reset_default_graph()
     """A simple train and eval for PPO."""
@@ -245,15 +254,7 @@ def train_eval(
     with tf.compat.v2.summary.record_if(lambda: tf.math.equal(global_step % summary_interval, 0)):
         tf.compat.v1.set_random_seed(random_seed)
 
-    # ################################################ #
-    # --------------- Load Environments -------------- #
-    # ################################################ #
-        eval_py_env = parallel_py_environment.ParallelPyEnvironment(
-            [lambda: env_load_fn(game_config)] * num_parallel_environments)
 
-        tf_env = tf_py_environment.TFPyEnvironment(
-            parallel_py_environment.ParallelPyEnvironment(
-                [lambda: env_load_fn(game_config)] * num_parallel_environments))
 
         optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
 
@@ -463,7 +464,15 @@ def main(_):
                                         "custom_reward": custom_reward,
                                         "penalty_last_hint_token": penalty
                                     }
+                                    # ################################################ #
+                                    # --------------- Load Environments -------------- #
+                                    # ################################################ #
+                                    eval_py_env = parallel_py_environment.ParallelPyEnvironment(
+                                        [lambda: load_hanabi_env(config)] * FLAGS.num_parallel_environments)
 
+                                    tf_env = tf_py_environment.TFPyEnvironment(
+                                        parallel_py_environment.ParallelPyEnvironment(
+                                            [lambda: load_hanabi_env(config)] * FLAGS.num_parallel_environments))
                                     train_eval(
                                         root_dir=FLAGS.root_dir,
                                         summary_dir=FLAGS.summary_dir,
@@ -476,7 +485,9 @@ def main(_):
                                         num_epochs=FLAGS.num_epochs,
                                         collect_episodes_per_iteration=FLAGS.collect_episodes_per_iteration,
                                         num_eval_episodes=FLAGS.num_eval_episodes,
-                                        use_rnns=FLAGS.use_rnns)
+                                        use_rnns=FLAGS.use_rnns,
+                                    eval_py_env=eval_py_env,
+                                    tf_env=tf_env)
 
 
 if __name__ == '__main__':
