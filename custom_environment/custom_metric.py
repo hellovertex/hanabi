@@ -62,8 +62,8 @@ class PyScoreMetric(py_metrics.StreamingMetric):
 class TfScoreMetric(tf_py_metric.TFPyMetric):
   """Metric to compute the average return."""
 
-  def __init__(self, name='PyScoreMetric', dtype=tf.float32, buffer_size=10):
-    py_metric = py_metrics.AverageReturnMetric(buffer_size=buffer_size)
+  def __init__(self, name='TfScoreMetric', dtype=tf.float32, buffer_size=10, batch_size=None):
+    py_metric = PyScoreMetric(buffer_size=buffer_size, batch_size=batch_size)
 
     super(TfScoreMetric, self).__init__(
         py_metric=py_metric, name=name, dtype=dtype)

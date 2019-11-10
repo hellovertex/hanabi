@@ -168,7 +168,7 @@ def get_metrics_eval(num_parallel_environments, num_eval_episodes):
     return eval_metrics
 
 
-def get_metrics_train_and_step():
+def get_metrics_train_and_step(num_eval_episodes, num_parallel_environments):
     environment_steps_metric = tf_metrics.EnvironmentSteps()
     environment_steps_count = environment_steps_metric.result()
     step_metrics = [
@@ -291,7 +291,7 @@ def train_eval(
     # ################################################ #
     # ---------------- Create Metrics ---------------- #
     # ################################################ #
-        train_metrics, step_metrics, environment_steps_count = get_metrics_train_and_step()
+        train_metrics, step_metrics, environment_steps_count = get_metrics_train_and_step(num_eval_episodes, num_parallel_environments)
 
         # Add to replay buffer and other agent specific observers.
         replay_buffer_observer = [replay_buffer.add_batch]
