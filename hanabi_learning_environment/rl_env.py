@@ -540,7 +540,7 @@ class HanabiEnv(Environment):
                         if is_playable:
                             reward += self.reward_metrics.custom_reward
                         else:
-                            reward = self.reward_metrics.custom_reward
+                            reward = 0.1*self.reward_metrics.custom_reward
                         break
 
                 # compute "efficiency" as factor for reward
@@ -555,8 +555,9 @@ class HanabiEnv(Environment):
 
                 # in case the hint was no 'play'-hint or 'save'-hint, the reward will still be 0
                 if reward != 0:
-                    reward += hamming_distance
-
+                    reward *= np.sqrt(np.sqrt(hamming_distance))
+                else:
+                    reward= 0.01*np.sqrt(np.sqrt(hamming_distance))
                 # update last action in reward storage
                 self.reward_metrics.update_history(action, vectorized)  # used for next hamming distance
             elif action.type() == PLAY:
@@ -565,9 +566,9 @@ class HanabiEnv(Environment):
                 card_played = self.state.player_hands()[cur_player][idx_card_played]
 
                 # check if it is 3 or 4 and is playable
-                if card_played.rank() in [2, 3]:
+                if card_played.rank() in [2, 3, 4]:
                     if card_played.rank() == fireworks[card_played.color()]:
-                        reward = 17 * card_played.rank()
+                        reward = 2** card_played.rank()
         # ################################################ #
         # -------------- Custom Reward END --------------- #
         # ################################################ #

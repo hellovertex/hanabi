@@ -66,9 +66,9 @@ flags.DEFINE_string('summary_dir', str(os.path.dirname(__file__)) + '/summaries/
 flags.DEFINE_string('master', '', 'master session')
 flags.DEFINE_integer('replay_buffer_capacity', 1001,
                      'Replay buffer capacity per env.')
-flags.DEFINE_integer('num_parallel_environments', 30,
+flags.DEFINE_integer('num_parallel_environments', 40,
                      'Number of environments to run in parallel')
-flags.DEFINE_integer('num_environment_steps', int(3e06),
+flags.DEFINE_integer('num_environment_steps', int(3e08),
                      'Number of environment steps to run before finishing.')
 flags.DEFINE_integer('num_epochs', 25,
                      'Number of epochs for computing policy updates.')
@@ -90,9 +90,9 @@ NUM_PLAYERS = [2, 4]
 HAND_SIZES = [2]
 MAX_INFORMATION_TOKENS = [3]
 # MAX_LIFE_TOKENS = [2,3]
-MAX_LIFE_TOKENS = [1, 2]
+MAX_LIFE_TOKENS = [1]
 OBSERVATION_TYPE = 1  # pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value
-CUSTOM_REWARDS = [.1, .5]
+CUSTOM_REWARDS = [.2]
 PENALTIES_LAST_HINT_TOKEN = [0, .1, .5]
 
 
@@ -273,6 +273,7 @@ def train_eval(
             tf_env.time_step_spec(),
             tf_env.action_spec(),
             optimizer,
+            entropy_regularization=0.2,
             actor_net=actor_net,
             value_net=value_net,
             num_epochs=num_epochs,
