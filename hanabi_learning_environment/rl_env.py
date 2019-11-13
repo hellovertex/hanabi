@@ -38,6 +38,7 @@ PENALTY_LAST_HINT_TOKEN_USED = .5
 COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
 REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
 REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
+PLAY = 1
 
 class Environment(object):
     """Abtract Environment interface.
@@ -487,6 +488,7 @@ class HanabiEnv(Environment):
         reward = None
         if USE_CUSTOM_REWARD:
             fireworks = self.state.fireworks()
+            cur_player = self.state.cur_player()
 
             # For hint moves, change the default reward
             if action.type() in [REVEAL_COLOR, REVEAL_RANK]:
@@ -495,7 +497,6 @@ class HanabiEnv(Environment):
                 self.reward_metrics.num_hints_given += 1  # used to compute efficiency later
 
                 # observation info
-                cur_player = self.state.cur_player()
                 obs_cur_player = self.state.observation(cur_player)
                 observed_cards_cur_player = obs_cur_player.observed_hands()
                 vectorized = self.observation_encoder.encode(obs_cur_player)
@@ -552,19 +553,28 @@ class HanabiEnv(Environment):
                 # compute Hamming distance between last two given hints
                 hamming_distance = self.reward_metrics.compute_hamming_distance(vectorized, self.vectorized_observation_shape()[0])
 
-                # in case the hint was no 'play' or 'save' hint, the reward will still be 0
+                # in case the hint was no 'play'-hint or 'save'-hint, the reward will still be 0
                 if reward != 0:
                     reward += hamming_distance
 
                 # update last action in reward storage
                 self.reward_metrics.update_history(action, vectorized)  # used for next hamming distance
+            elif action.type() == PLAY:
+                # get pyhnabi.HanabiCard object for played card
+                idx_card_played = action.card_index()
+                card_played = self.state.player_hands()[cur_player][idx_card_played]
 
+                # check if it is 3 or 4 and is playable
+                if card_played.rank() in [2, 3]:
+                    if card_played.rank() == fireworks[card_played.color()]:
+                        reward = 17 * card_played.rank()
         # ################################################ #
         # -------------- Custom Reward END --------------- #
         # ################################################ #
 
 
         last_score = self.state.score()
+
         # Apply the action to the state.
         self.state.apply_move(action)
 
