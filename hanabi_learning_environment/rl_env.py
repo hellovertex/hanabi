@@ -564,11 +564,9 @@ class HanabiEnv(Environment):
                 # get pyhnabi.HanabiCard object for played card
                 idx_card_played = action.card_index()
                 card_played = self.state.player_hands()[cur_player][idx_card_played]
-
-                # check if it is 3 or 4 and is playable
                 if card_played.rank() in [2, 3, 4]:
-                    if card_played.rank() == fireworks[card_played.color()]:
-                        reward = 2** card_played.rank()
+                    if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 0 and fireworks[1] > 0:
+                        reward = 2 ** card_played.rank()
         # ################################################ #
         # -------------- Custom Reward END --------------- #
         # ################################################ #
