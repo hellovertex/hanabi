@@ -78,7 +78,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
         # stores current game score
-        info = np.array(np.int(sum(observation['fireworks'].values())))
+        info = self._env.state.score()
         obs = {'state': obs_vec, 'mask': mask_valid_actions, 'info': info}
 
         if done:
