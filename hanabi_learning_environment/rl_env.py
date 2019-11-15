@@ -27,19 +27,16 @@ from pyhanabi import color_char_to_idx
 import numpy as np
 
 MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
+REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
+REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
+PLAY = 1  # matches HanabiMoveType.REVEAL_RANK
+DISCARD = 2  # matches HanabiMoveType.REVEAL_RANK
+COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
 
 # -------------------------------------------------------------------------------
 # Environment API
 # -------------------------------------------------------------------------------
 
-USE_CUSTOM_REWARD = True
-CUSTOM_REWARD = .1
-PENALTY_LAST_HINT_TOKEN_USED = .5
-COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
-REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
-REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
-PLAY = 1  # matches HanabiMoveType.REVEAL_RANK
-DISCARD = 2  # matches HanabiMoveType.REVEAL_RANK
 
 class Environment(object):
     """Abtract Environment interface.
@@ -83,6 +80,13 @@ class Environment(object):
 # -------------------------------------------------------------------------------
 # Metric Utilities
 # -------------------------------------------------------------------------------
+USE_CUSTOM_REWARD = True
+USE_ACTION_REWARD = False
+USE_HINT_REWARD = False
+
+CUSTOM_REWARD = .1
+PENALTY_LAST_HINT_TOKEN_USED = .5
+
 
 def get_cards_touched_by_hint(hint, target_hand):
     """
@@ -111,6 +115,7 @@ def get_cards_touched_by_hint(hint, target_hand):
         raise ValueError
     return cards_touched
 
+
 def card_is_last_copy(card, discard_pile):
     """
     Returns true, if for given card, all other of its copies are on the discard_pile (none left in the deck)
@@ -128,6 +133,7 @@ def card_is_last_copy(card, discard_pile):
     if card_copies_total - card_copies_discarded == 1:
         return True
     return False
+
 
 def get_card_played_or_discarded(action, player_hand):
     """
@@ -551,7 +557,7 @@ class HanabiEnv(Environment):
             cur_player = self.state.cur_player()
 
             # For hint moves, change the default reward
-            if action.type() in [REVEAL_COLOR, REVEAL_RANK]:
+            if (action.type() in [REVEAL_COLOR, REVEAL_RANK]) and USE_HINT_REWARD:
                 reward = 0
                 # Update reward_metric utils
                 self.reward_metrics.num_hints_given += 1  # used to compute efficiency later
@@ -603,7 +609,7 @@ class HanabiEnv(Environment):
                 # update last action in reward storage
                 self.reward_metrics.update_history(action, vectorized)  # used for next hamming distance
 
-            elif action.type() == PLAY:
+            elif (action.type() == PLAY) and USE_ACTION_REWARD:
                 # get pyhnabi.HanabiCard object for played card
                 card_played = get_card_played_or_discarded(action, self.state.player_hands()[cur_player])
 
