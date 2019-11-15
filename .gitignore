@@ -1,0 +1,9 @@
+env/
+tensorboard/
+*.pycgame_example
+.idea/
+*.pyc
+__pycache__/*
+agents/rainbow_10kit/*
+training/hanabi_small/logs/*
+training/hanabi_small/summaries/*
