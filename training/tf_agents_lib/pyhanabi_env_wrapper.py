@@ -15,6 +15,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         super(PyEnvironmentBaseWrapper, self).__init__()
         self._env = env
         self._episode_ended = False
+        self._observation_spec = self.compute_observation_spec(self._env)
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
@@ -51,11 +52,10 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         # oberservation is currently a dict, extract the 'vectorized' object
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
-        scored = observation['pyhanabi']
+
         info = self._env.state.score()
         obs = {'state': obs_vec, 'mask': mask_valid_actions, 'info': info}
-        # (48, ) int64
-        #print(mask_valid_actions.shape, mask_valid_actions.dtype)
+
         return TimeStep(StepType.FIRST, reward, discount, obs)
 
     def _step(self, action):
@@ -89,21 +89,37 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
         return TimeStep(step_type, reward, discount, obs)
 
-    def observation_spec(self):
-        """Returns:
-      An `ArraySpec`, or a nested dict, list or tuple of `ArraySpec`s."""
+    @staticmethod
+    def compute_observation_spec(environment):
+        """
+        Returns an `ArraySpec`, or a nested dict, list or tuple of `ArraySpec`s.
+        i.e. ('_shape', '_dtype', '_name', '_minimum', '_maximum')
+        The shapes are dynamically computed, depending on whether the environment observation are augmented, or not.
+        This is depending on the environment flag augment_input
+        Args:
+            environment: a rl_env.HanabiEnv object
+        Returns: observation_spec dictionary with tf_agents.specs.array_spec.ArraySpec objects containg
+        """
+        # make sure we use the correct rl_env.py
+        assert hasattr(environment, 'augment_input')
+        maybe_additional_inputs = 0  # will be incremented in case of augmented observation
+        maybe_additional_range = 0  # will be incremented in case of augmented observation
 
-        # i.e. ('_shape', '_dtype', '_name', '_minimum', '_maximum')
+        if environment.augment_input:
+            # observation is augmented, so adjsut the obs_spec accordingly
+            maybe_additional_inputs += environment.game().num_players() * environment.game().hand_size()
+            maybe_additional_range = 7
 
+        len_obs = environment.vectorized_observation_shape()[0]  # get length of vectorized observation
         state_spec = BoundedArraySpec(
-            shape=self._env.vectorized_observation_shape(),
+            shape=tuple(len_obs + maybe_additional_inputs, ),  # shape is expected to be tuple (N, )
             dtype=dtype_vectorized,
             minimum=0,
-            maximum=1,
+            maximum=1 + maybe_additional_range,
             name='state'
         )
         mask_spec = ArraySpec(
-            shape=(self._env.num_moves(), ),
+            shape=(environment._env.num_moves(),),
             dtype=np.float32,
             name='mask')
         info_spec = ArraySpec(
@@ -111,7 +127,13 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
             dtype=np.int,
             name='info'
         )
+
         return {'state': state_spec, 'mask': mask_spec, 'info': info_spec}
+
+    def observation_spec(self):
+        """Returns:
+      An `ArraySpec`, or a nested dict, list or tuple of `ArraySpec`s."""
+        return self._observation_spec
 
     def action_spec(self):
         """Must return a tf_agents.specs.array_spec.BoundedArraySpec obj"""
@@ -120,4 +142,5 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         dtype = np.int64
         minimum = 0
         maximum = self._env.num_moves() - 1
+
         return BoundedArraySpec(shape, dtype, minimum, maximum, name='action')

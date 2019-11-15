@@ -84,6 +84,11 @@ USE_CUSTOM_REWARD = True
 USE_ACTION_REWARD = False
 USE_HINT_REWARD = False
 
+# If this flag is set to True, it will add neurons for each card in each hand.
+# Their input will be ranging from 0 to 7 where
+# 0 means: card is played, 1 to 5 indicate colors and 6 and 7 indicate color and rank hints resp. ?
+USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = True
+
 CUSTOM_REWARD = .1
 PENALTY_LAST_HINT_TOKEN_USED = .5
 
@@ -302,6 +307,7 @@ class HanabiEnv(Environment):
         # in case the game_config did not contain hand_size because it was meant to be defaulted
         config['hand_size'] = self.game.hand_size()
         self.reward_metrics = StorageRewardMetrics(config)
+        self.augment_input = USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV
 
     def reset(self):
         r"""Resets the environment for a new game.
