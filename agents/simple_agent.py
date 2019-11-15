@@ -51,9 +51,14 @@ class SimpleAgent(Agent):
         for card, hint in zip(player_hand, player_hints):
           if SimpleAgent.playable_card(card,
                                        fireworks) and hint['color'] is None:
+            #return {
+            #    'action_type': 'REVEAL_COLOR',
+            #    'color': card['color'],
+            #    'target_offset': player_offset
+            # }
             return {
-                'action_type': 'REVEAL_COLOR',
-                'color': card['color'],
+                'action_type': 'REVEAL_RANK',
+                'rank': card['rank'],
                 'target_offset': player_offset
             }
 

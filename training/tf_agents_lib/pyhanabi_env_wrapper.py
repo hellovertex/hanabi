@@ -51,7 +51,9 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         # oberservation is currently a dict, extract the 'vectorized' object
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
-        obs = {'state': obs_vec, 'mask': mask_valid_actions}
+        scored = observation['pyhanabi']
+        info = self._env.state.score()
+        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'info': info}
         # (48, ) int64
         #print(mask_valid_actions.shape, mask_valid_actions.dtype)
         return TimeStep(StepType.FIRST, reward, discount, obs)
@@ -75,7 +77,9 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
-        obs = {'state': obs_vec, 'mask': mask_valid_actions}
+        # stores current game score
+        info = self._env.state.score()
+        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'info': info}
 
         if done:
             self._episode_ended = True
@@ -102,8 +106,12 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
             shape=(self._env.num_moves(), ),
             dtype=np.float32,
             name='mask')
-
-        return {'state': state_spec, 'mask': mask_spec}
+        info_spec = ArraySpec(
+            shape=(),
+            dtype=np.int,
+            name='info'
+        )
+        return {'state': state_spec, 'mask': mask_spec, 'info': info_spec}
 
     def action_spec(self):
         """Must return a tf_agents.specs.array_spec.BoundedArraySpec obj"""
