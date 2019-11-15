@@ -55,13 +55,10 @@ class Runner(object):
         # Make an environment step.
         print('Agent: {} action: {}'.format(observation['current_player'],
                                             current_player_action))
-        print('fireworks are {}'.format(observation['fireworks']))
         observations, reward, done, unused_info = self.environment.step(
             current_player_action)
-        print('reward is {}'.format(reward))
         episode_reward += reward
       rewards.append(episode_reward)
-
       print('Running episode: %d' % episode)
       print('Max Reward: %.3f' % max(rewards))
     return rewards
