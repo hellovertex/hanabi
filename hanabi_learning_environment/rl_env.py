@@ -154,6 +154,9 @@ def get_card_played_or_discarded(action, player_hand):
 # @gin.configurable
 class StorageRewardMetrics(object):
     def __init__(self, extended_game_config, history_len=2):
+
+        """ Lot of dead code in this class, will be cleaned up soon """
+
         # Game-type related stats
         self.config = extended_game_config
         self.num_players = self.config['players']
@@ -416,6 +419,7 @@ class HanabiEnv(Environment):
 
         obs = self._make_observation_all_players()
         obs["current_player"] = self.state.cur_player()
+
         self.reward_metrics.reset()
 
         return obs

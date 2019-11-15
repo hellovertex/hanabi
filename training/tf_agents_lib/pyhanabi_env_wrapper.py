@@ -107,19 +107,19 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
         if environment.augment_input:
             # observation is augmented, so adjsut the obs_spec accordingly
-            maybe_additional_inputs += environment.game().num_players() * environment.game().hand_size()
+            maybe_additional_inputs += environment.game.num_players() * environment.game.hand_size()
             maybe_additional_range = 7
 
         len_obs = environment.vectorized_observation_shape()[0]  # get length of vectorized observation
         state_spec = BoundedArraySpec(
-            shape=tuple(len_obs + maybe_additional_inputs, ),  # shape is expected to be tuple (N, )
+            shape=(len_obs + maybe_additional_inputs, ),  # shape is expected to be tuple (N, )
             dtype=dtype_vectorized,
             minimum=0,
             maximum=1 + maybe_additional_range,
             name='state'
         )
         mask_spec = ArraySpec(
-            shape=(environment._env.num_moves(),),
+            shape=(environment.num_moves(),),
             dtype=np.float32,
             name='mask')
         info_spec = ArraySpec(
