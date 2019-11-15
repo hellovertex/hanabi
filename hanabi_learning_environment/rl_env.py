@@ -38,7 +38,8 @@ PENALTY_LAST_HINT_TOKEN_USED = .5
 COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
 REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
 REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
-PLAY = 1
+PLAY = 1  # matches HanabiMoveType.REVEAL_RANK
+DISCARD = 2  # matches HanabiMoveType.REVEAL_RANK
 
 class Environment(object):
     """Abtract Environment interface.
@@ -79,6 +80,54 @@ class Environment(object):
         """
         raise NotImplementedError("Not implemented in Abstract Base class")
 
+# -------------------------------------------------------------------------------
+# Metric Utilities
+# -------------------------------------------------------------------------------
+
+def get_cards_touched_by_hint(hint, target_hand):
+    """
+    Computes cards in target_hand, that are touched by hint.
+    A card is touched by a hint, if one of the following hold:
+     - the cards color is equal to the color hinted
+     - the cards rank is equals to the rank hinted
+     Args:
+         hint: pyhanabi.HanabiMove object
+         target_hand: list of pyhanabi.HanabiCard objects
+    Returns:
+        cards_touched: list of pyhanabi.HanabiCard objects containing hinted (touched) cards.
+    """
+    cards_touched = list()
+    if hint.type() == REVEAL_COLOR:
+        color_hinted = hint.color()
+        for card in target_hand:
+            if card.color() == color_hinted:
+                cards_touched.append(card)
+    elif hint.type() == REVEAL_RANK:
+        rank_hinted = hint.rank()
+        for card in target_hand:
+            if card.rank() == rank_hinted:
+                cards_touched.append(card)
+    else:
+        raise ValueError
+    return cards_touched
+
+def card_is_last_copy(card, discard_pile):
+    """
+    Returns true, if for given card, all other of its copies are on the discard_pile (none left in the deck)
+    Args:
+         card: a pyhanabi.HanabiCard object
+         discard_pile: a list of pyhanabi.HanabiCard objects containing discarded cards
+    Returns:
+         True, if all other copies of card are in discard_pile, False otherwise.
+    """
+    card_copies_total = COPIES_PER_CARD[str(card.rank())]
+    card_copies_discarded = 0
+    for discarded in discard_pile:
+        if discarded.color() == card.color() and discarded.rank() == card.rank():
+            card_copies_discarded += 1
+    if card_copies_total - card_copies_discarded == 1:
+        return True
+    return False
 
 # @gin.configurable
 class StorageRewardMetrics(object):
@@ -504,44 +553,28 @@ class HanabiEnv(Environment):
                 # action info
                 target_offset = action.target_offset()
                 target_hand = observed_cards_cur_player[target_offset]
-                cards_touched = list()  # list of pyhanabi.HanabiMove objects containing hinted cards
 
                 # get hinted cards
-                if action.type() == REVEAL_COLOR:
-                    color_hinted = action.color()
-                    for card in target_hand:
-                        if card.color() == color_hinted:
-                            cards_touched.append(card)
-                elif action.type() == REVEAL_RANK:
-                    rank_hinted = action.rank()
-                    for card in target_hand:
-                        if card.rank() == rank_hinted:
-                            cards_touched.append(card)
-                else:
-                    raise ValueError
+                cards_touched = get_cards_touched_by_hint(hint=action, target_hand=target_hand)
 
                 is_playable = False
                 is_last_copy = False
+
                 # if one hinted card is playable, set reward to CUSTOM_REWARD
                 for card in cards_touched:
                     if card.rank() == fireworks[card.color()]:
                         reward = self.reward_metrics.custom_reward
                         is_playable = True
-                        break
+                        break  # todo: potentially increase the reward, if more than one hinted card is playable
 
                 # if one hinted card is last copy, set reward to CUSTOM_REWARD
                 for card in cards_touched:
-                    card_copies_total = COPIES_PER_CARD[str(card.rank())]
-                    card_copies_discarded = 0
-                    for discarded in self.state.discard_pile():
-                        if discarded.color() == card.color() and discarded.rank() == card.rank():
-                            card_copies_discarded += 1
-                    if card_copies_total - card_copies_discarded == 1:
+                    if card_is_last_copy(card, self.state.discard_pile()):
                         if is_playable:
                             reward += self.reward_metrics.custom_reward
                         else:
                             reward = 0.1*self.reward_metrics.custom_reward
-                        break
+                        break # todo: potentially increase the reward, if more than one hinted card is last copy
 
                 # compute "efficiency" as factor for reward
                 # todo if efficiency is used, how do we initialize it?, Zero division prohibits using it atm
@@ -571,6 +604,10 @@ class HanabiEnv(Environment):
                         reward = 5 ** card_played.rank()
                     if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 2 and fireworks[1] > 2:
                         reward = 10 ** card_played.rank()
+            elif action.type() == DISCARD:
+                # punish discarding last copies of cards, weighted inversely by their rank
+
+
         # ################################################ #
         # -------------- Custom Reward END --------------- #
         # ################################################ #
