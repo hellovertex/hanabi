@@ -129,6 +129,17 @@ def card_is_last_copy(card, discard_pile):
         return True
     return False
 
+def get_card_played_or_discarded(action, player_hand):
+    """
+    Returns the card that has been played or discarded from player_hand, according to action.
+    Args:
+         action: pyhanabi.HanabiMove object
+         player_hand: list of pyhanabi.HanabiCard objects constituting the hand of the acting player
+    Returns:
+        a pyhanabi.HanabiCard object
+    """
+    return player_hand[action.card_index()]
+
 # @gin.configurable
 class StorageRewardMetrics(object):
     def __init__(self, extended_game_config, history_len=2):
@@ -556,9 +567,7 @@ class HanabiEnv(Environment):
 
                 # get hinted cards
                 cards_touched = get_cards_touched_by_hint(hint=action, target_hand=target_hand)
-
                 is_playable = False
-                is_last_copy = False
 
                 # if one hinted card is playable, set reward to CUSTOM_REWARD
                 for card in cards_touched:
@@ -593,10 +602,11 @@ class HanabiEnv(Environment):
                     reward= 0.01*np.sqrt(np.sqrt(hamming_distance))
                 # update last action in reward storage
                 self.reward_metrics.update_history(action, vectorized)  # used for next hamming distance
+
             elif action.type() == PLAY:
                 # get pyhnabi.HanabiCard object for played card
-                idx_card_played = action.card_index()
-                card_played = self.state.player_hands()[cur_player][idx_card_played]
+                card_played = get_card_played_or_discarded(action, self.state.player_hands()[cur_player])
+
                 if card_played.rank() in [2, 3, 4]:
                     if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 0 and fireworks[1] > 0:
                         reward = 2 ** card_played.rank()
@@ -604,8 +614,13 @@ class HanabiEnv(Environment):
                         reward = 5 ** card_played.rank()
                     if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 2 and fireworks[1] > 2:
                         reward = 10 ** card_played.rank()
+
             elif action.type() == DISCARD:
+                card_discarded = get_card_played_or_discarded(action, self.state.player_hands()[cur_player])
                 # punish discarding last copies of cards, weighted inversely by their rank
+                if card_is_last_copy(card_discarded, self.state.discard_pile()):
+                    reward = -2 * float(2/(card_discarded.rank()+1))  # todo check if magnitude is not to small compared to PLAY rewards
+
 
 
         # ################################################ #
