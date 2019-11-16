@@ -4,39 +4,6 @@ from collections import namedtuple
 import tensorflow as tf
 import numpy as np
 
-""" 
-score_metric = S
-eval_metrics.append(score_metric)
-summary_op = StreamingMetric.tf_summaries()
-
-
-eval_metrics are instances of 
-- StreamingMetric <- PyStepMetric <- PyMetric
-
-- question is how does observing the driver update the metrics CORRECTLY
-- the eval_metrics(traj) is called at EVERY STEP
-- how does the eval_metric know, when to empty its buffer, i.e. when the game has ended
-==> The metrics always store self._np_state.episode_return
-
-- Understand the namedtuple trajectory
-
-
-metric_utils.compute_summaries(eval_metrics, eval_py_env, eval_py_policy)
-- resets each metric
-- runs driver on eval_py_env, using eval_py_policy, with observers=eval_metrics
-- returns [eval_metric.result() for eval_metric in eval_metrics]
-
-
-
-
-
-
-"""
-traj = namedtuple('Trajectory', ['obs', 'action', 'reward'])
-transition = traj(obs=55, action=155, reward=255)
-#print(transition.reward)
-
-
 class PyScoreMetric(py_metrics.StreamingMetric):
     def __init__(self, name='PyScoreMetric', buffer_size=10, batch_size=None):
         super(PyScoreMetric, self).__init__(name=name, buffer_size=buffer_size, batch_size=batch_size)
@@ -60,13 +27,10 @@ class PyScoreMetric(py_metrics.StreamingMetric):
 
 
 class TfScoreMetric(tf_py_metric.TFPyMetric):
-  """Metric to compute the average return."""
+  """Metric to compute the average score."""
 
   def __init__(self, name='TfScoreMetric', dtype=tf.float32, buffer_size=10, batch_size=None):
     py_metric = PyScoreMetric(buffer_size=buffer_size, batch_size=batch_size)
 
     super(TfScoreMetric, self).__init__(
         py_metric=py_metric, name=name, dtype=dtype)
-
-next_step_type = np.array([1, 1, 2, 1, 1, 2, 1, 0, 0, 1, 1, 1, 2, 1, 1, 1, 0])
-print(np.where(next_step_type == 0))

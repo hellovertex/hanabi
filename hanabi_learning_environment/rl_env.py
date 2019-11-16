@@ -85,8 +85,9 @@ USE_ACTION_REWARD = False
 USE_HINT_REWARD = False
 
 # If this flag is set to True, it will add neurons for each card in each hand.
-# Their input will be ranging from 0 to 7 where
-# 0 means: card is played, 1 to 5 indicate colors and 6 and 7 indicate color and rank hints resp. ?
+# Their input will be ranging from 0 to num_colors + num_ranks where
+# 0 means: card is played/discarded/forgotten,
+# [1 to num_colors] are color values and [num_colors+1 to num_colors + rank] mean rank values
 USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = True
 
 CUSTOM_REWARD = .1
@@ -151,12 +152,10 @@ def get_card_played_or_discarded(action, player_hand):
     """
     return player_hand[action.card_index()]
 
-# @gin.configurable
+
+# todo @gin.configurable
 class StorageRewardMetrics(object):
-    def __init__(self, extended_game_config, history_len=2):
-
-        """ Lot of dead code in this class, will be cleaned up soon """
-
+    def __init__(self, extended_game_config, history_size=2):
         # Game-type related stats
         self.config = extended_game_config
         self.num_players = self.config['players']
@@ -166,6 +165,7 @@ class StorageRewardMetrics(object):
         self.total_cards_in_deck = np.sum(np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors))
 
         # Custom Reward params
+        # todo change the way these variables are set via config, its hard to understand here from where they come
         self._custom_reward = CUSTOM_REWARD
         self._penalty_last_hint_token_used = PENALTY_LAST_HINT_TOKEN_USED
         """ custom settings may be optionally overwritten by extending game_config """
@@ -174,28 +174,10 @@ class StorageRewardMetrics(object):
         if 'penalty_last_hint_token' in self.config:
             self._penalty_last_hint_token_used = self.config['penalty_last_hint_token']
 
-        # Game-metric-utils
-        starting_pace = self.total_cards_in_deck - (self.hand_size - 1) * self.num_players
-        starting_pace -= 5 * self.num_colors
-        min_efficiency_numerator = 5 * self.num_colors
-        self.history_len = history_len  # todo remove
+        self.history_size = history_size
         self.history = list()  # stores last hints [may have some (PLAY or DISCARD) actions in between]
 
-        # Game metrics
-        self._efficiency = None
-        self._num_hints_given = 0
-
-        """
-        deck_size = None
-        num_players = None
-        hand_size = None
-        starting_pace = None
-        num_cards_played = len(self.state.discard_pile) + sum(fireworks.values())    
-        """
-        # commpute starting pace
-
     def reset(self):
-        self._num_hints_given = 0
         self.history = list()
 
     @property
@@ -203,24 +185,8 @@ class StorageRewardMetrics(object):
         return self._penalty_last_hint_token_used
 
     @property
-    def efficiency(self):
-        return self._efficiency
-
-    @efficiency.setter
-    def efficiency(self, value):
-        self._efficiency = value
-
-    @property
     def custom_reward(self):
         return self._custom_reward
-
-    @property
-    def num_hints_given(self):
-        return self._num_hints_given
-
-    @num_hints_given.setter
-    def num_hints_given(self, value):
-        self._num_hints_given = value
 
     def update_history(self, action, vectorized_obs):
         """
@@ -232,7 +198,7 @@ class StorageRewardMetrics(object):
 
         """
         assert action.type() in [REVEAL_COLOR, REVEAL_RANK]
-        if len(self.history) < self.history_len:
+        if len(self.history) < self.history_size:
             self.history.append((action, vectorized_obs))
         else:
             self.history = self.history[1:]  # remove earliest hint
@@ -264,6 +230,33 @@ class StorageRewardMetrics(object):
             # todo: exclude certain bits for comparison, e.g. those not contributing to entropy
             # todo: compute modified hamming_distance
             return hamming_distance / len_vectorized_obs
+
+
+# -------------------------------------------------------------------------------
+# State Augmentation Utils
+# -------------------------------------------------------------------------------
+
+class ObservationAugmenter(object):
+    """
+    Computes values for extra dimensions added to default state space, using a given strategy.
+    These extra values lead to augmented observations.
+    The augmented observations are later used e.g. as neural network input.
+    """
+    def __init__(self, num_extra_state_dims, history_size=2):
+        # each xtra_dim corresponds to one card, i.e. len(xtra_dims) = num_players * hand_size
+        self.xtra_dims = np.zeros((num_extra_state_dims,), dtype=int)
+        self.observation_history = list()
+        # history_size determines the number of turns, after which the value of xtra_dim is forgotten
+        self.history_size = history_size
+
+    def augment_observation(self, action, player_hands, cur_player):
+        """ observation dictionary """
+        # On PLAY/DISCARD moves, we set the xtra_dim corresponding to the played card equal to 0
+        # On HINT moves, we set the xtra_dims corresponding to touched cards according to given strategy
+        # additionally, we need to keep track of the age of the values of the xtra_dims.
+        # Values older than self.history_size will be forgotten
+        # We therefore associate with each value, an age_counter that increments eacch turn
+        pass
 
 
 class HanabiEnv(Environment):
@@ -420,6 +413,8 @@ class HanabiEnv(Environment):
         obs = self._make_observation_all_players()
         obs["current_player"] = self.state.cur_player()
 
+        #if USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV:
+        #    obs = augment_observation(obs, self)
         self.reward_metrics.reset()
 
         return obs
@@ -569,8 +564,6 @@ class HanabiEnv(Environment):
             # For hint moves, change the default reward
             if (action.type() in [REVEAL_COLOR, REVEAL_RANK]) and USE_HINT_REWARD:
                 reward = 0
-                # Update reward_metric utils
-                self.reward_metrics.num_hints_given += 1  # used to compute efficiency later
 
                 # observation info
                 obs_cur_player = self.state.observation(cur_player)
@@ -615,7 +608,7 @@ class HanabiEnv(Environment):
                 if reward != 0:
                     reward *= np.sqrt(np.sqrt(hamming_distance))
                 else:
-                    reward= 0.01*np.sqrt(np.sqrt(hamming_distance))
+                    reward = 0.01 * np.sqrt(np.sqrt(hamming_distance))
                 # update last action in reward storage
                 self.reward_metrics.update_history(action, vectorized)  # used for next hamming distance
 
@@ -653,6 +646,8 @@ class HanabiEnv(Environment):
             self.state.deal_random_card()
 
         observation = self._make_observation_all_players()
+        #if USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV:
+        #    observation = augment_observation(observation, self, action)
         done = self.state.is_terminal()
 
         # if reward was not modified, default to standard reward
