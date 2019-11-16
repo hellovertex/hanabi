@@ -240,10 +240,13 @@ class StorageRewardMetrics(object):
             # todo: compute modified hamming_distance
             return hamming_distance / len_vectorized_obs
 
+    def compute_hamming_distance_for_each_card_seperately(self):
+        pass
 
 # -------------------------------------------------------------------------------
 # State Augmentation Utils
 # -------------------------------------------------------------------------------
+
 
 def abs_position_player_target(action, cur_player, num_players):
     """

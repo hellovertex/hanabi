@@ -79,7 +79,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         mask_valid_actions = self.get_mask_legal_moves(observation)
         # stores current game score
         info = self._env.state.score()
-        print(f'obsvecshape = {obs_vec.shape}')
+        
         obs = {'state': obs_vec, 'mask': mask_valid_actions, 'info': info}
 
         if done:
