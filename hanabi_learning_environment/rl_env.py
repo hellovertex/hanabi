@@ -244,6 +244,27 @@ class StorageRewardMetrics(object):
 # State Augmentation Utils
 # -------------------------------------------------------------------------------
 
+
+def abs_position_player_target(action, cur_player, num_players):
+    """
+    Utility function. Computes the player ID, i.e. absolute position on table, of the target of the action.
+    Args:
+        action: pyhanabi.HanabiMove object containing the target_offset for REVEAL_XYZ moves
+        cur_player: int, player ID of player that computed the action
+        num_players: number of total players in the game
+    Returns:
+        target pid (player ID)
+    """
+    # For play moves, the target player ID is equal to relative player ID
+    if action.type() in [PLAY, DISCARD]:
+        return cur_player
+    # For reveal moves, it is computed using the target offset and total num of players
+    elif action.type() in [REVEAL_RANK, REVEAL_COLOR]:
+        return (cur_player + action.target_offset()) % num_players
+
+    return None
+
+
 class ObservationAugmenter(object):
     """
     Computes values for extra dimensions added to default state space, using a given strategy.
@@ -282,7 +303,7 @@ class ObservationAugmenter(object):
         idxs_dim = list()
 
         # player ID (pid), i.e. absolute position on table, of the target of the action
-        abs_pid = self.abs_position_player_target(action, cur_player, self.num_players)
+        abs_pid = abs_position_player_target(action, cur_player, self.num_players)
 
         # indices of extra dimensions affected by action
         if action.type() in [PLAY, DISCARD]:
@@ -354,6 +375,7 @@ class ObservationAugmenter(object):
 
         return observation
 
+    # entry point for HanabiEnv
     def augment_observation(self, observation, player_hands=None, cur_player=None, action=None):
         """
         Augments the observation as gotten from environment.step(action), by using a given strategy.
@@ -389,34 +411,11 @@ class ObservationAugmenter(object):
             self._maybe_reset_xtra_dims_given_history_size()
             # set new values for affected_xtra_dims, according to strategy
             augmentation = self._apply_strategy(affected_xtra_dims, action)
-            # print("affected_xtra_dims")
-            # print(affected_xtra_dims)
-            # print("augmentation")
-            # print(augmentation)
 
         # The observation of the next player is replaced inside the observation dictionary by its augmented version
         augmented_observation = self._replace_vectorized_inside_observation_by_augmented(observation, augmentation)
 
         return augmented_observation
-
-    @staticmethod
-    def abs_position_player_target(action, cur_player, num_players):
-        """
-        Utility function. Computes the player ID, i.e. absolute position on table, of the target of the action.
-        Args:
-            action: pyhanabi.HanabiMove object containing the target_offset for REVEAL_XYZ moves
-            cur_player: int, player ID of player that computed the action
-            num_players: number of total players in the game
-        Returns:
-            target pid (player ID)
-        """
-        # For play moves, the target player ID is equal to relative player ID
-        if action.type() in [PLAY, DISCARD]:
-            return cur_player
-        # For reveal moves, it is computed using the target offset and total num of players
-        if action.type() in [REVEAL_RANK, REVEAL_COLOR]:
-            return (cur_player + action.target_offset()) % num_players
-        return None
 
 
 class HanabiEnv(Environment):
