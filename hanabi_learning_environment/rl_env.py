@@ -94,7 +94,7 @@ CUSTOM_REWARD = .1
 PENALTY_LAST_HINT_TOKEN_USED = .5
 
 
-def get_cards_touched_by_hint(hint, target_hand):
+def get_cards_touched_by_hint(hint, target_hand, return_indices=False):
     """
     Computes cards in target_hand, that are touched by hint.
     A card is touched by a hint, if one of the following hold:
@@ -105,18 +105,26 @@ def get_cards_touched_by_hint(hint, target_hand):
          target_hand: list of pyhanabi.HanabiCard objects
     Returns:
         cards_touched: list of pyhanabi.HanabiCard objects containing hinted (touched) cards.
+            or if return_indices == True
+        list of integers, containing indices of touched cards
     """
     cards_touched = list()
     if hint.type() == REVEAL_COLOR:
         color_hinted = hint.color()
-        for card in target_hand:
+        for i, card in enumerate(target_hand):
             if card.color() == color_hinted:
-                cards_touched.append(card)
+                if return_indices:
+                    cards_touched.append(i)
+                else:
+                    cards_touched.append(card)
     elif hint.type() == REVEAL_RANK:
         rank_hinted = hint.rank()
-        for card in target_hand:
+        for i, card in enumerate(target_hand):
             if card.rank() == rank_hinted:
-                cards_touched.append(card)
+                if return_indices:
+                    cards_touched.append(i)
+                else:
+                    cards_touched.append(card)
     else:
         raise ValueError
     return cards_touched
@@ -261,13 +269,13 @@ class ObservationAugmenter(object):
         self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
         self.observation_ages = np.zeros(self.xtra_dims.shape, dtype=int)
 
-    def indices_of_xtra_dims_changed(self, action, player_hands, cur_player):
+    def indices_of_xtra_dims_affected_by_action(self, action, player_hands, cur_player):
         """
         Computes the indices of extra dimensions in augmented state, that are affected by action.
         Args:
             action: pyhanabi.HanabiMove object, containing the current action
             player_hands: list of (list of pyhanabi.HanabiCard objects) constitung hands of each player in the game
-            cur_player: absolute position (pid) of acting player
+            cur_player: absolute position (pid) of player that computed the action
         Returns:
             idxs_dims: list of integers, containing dimensions indices
         """
@@ -276,18 +284,15 @@ class ObservationAugmenter(object):
         # player ID (pid), i.e. absolute position on table, of the target of the action
         abs_pid = self.abs_position_player_target(action, cur_player, self.num_players)
 
-        # On PLAY/DISCARD moves, we set value of xtra_dim corresponding to the played card equal to 0
+        # indices of extra dimensions affected by action
         if action.type() in [PLAY, DISCARD]:
-            # index of the card played
-            idx_card = player_hands[action.card_index()]
-            # index of extra dimension affected by hint
-            idxs_dim = [(abs_pid * self.hand_size) + idx_card]
+            # for play and discard, its always a single index
+            idxs_dim = [(abs_pid * self.hand_size) + action.card_index()]
 
-        # On HINT moves, we set the value of xtra_dims corresponding to touched cards according to given strategy
         elif action.type() in [REVEAL_RANK, REVEAL_COLOR]:
-            cards_touched = get_cards_touched_by_hint(hint=action, target_hand=player_hands[cur_player])
+            idxs_cards_touched = get_cards_touched_by_hint(hint=action, target_hand=player_hands[cur_player], return_indices=True)
             # index of extra dimensions affected by hint
-            idxs_dim = [(abs_pid * self.hand_size) + idx for idx in cards_touched]
+            idxs_dim = [(abs_pid * self.hand_size) + idx for idx in idxs_cards_touched]
 
         return idxs_dim
 
@@ -301,18 +306,19 @@ class ObservationAugmenter(object):
         # reset those observation dimensions, which have a value older than self.history_size
         self.xtra_dims[self.observation_ages > self.history_size] = 0
 
-    def _apply_strategy(self, target_dimensions, action):
+    def _apply_strategy(self, target_dims, action):
         """
         Sets values for target_dimensions, according to strategy
         Args:
-            target_dimensions: list of indices corresponding to extra dimensions affected by action
+            target_dims: list of indices corresponding to extra dimensions affected by action
             action: pyhanabi.HanabiMove object containing current action
         """
         # todo in case the strategy changes, we can start from here and will probably not have to change much elsewhere
-        # For play moves, we set the target_dimensions equal to
         xdim_value = None
+        # On PLAY/DISCARD moves, we set value of xtra_dim corresponding to the played card equal to 0
         if action.type() in [PLAY, DISCARD]:
-            self.xtra_dims[target_dimensions] = 0
+            xdim_value = 0
+        # On HINT moves, we set the value of xtra_dims corresponding to touched cards according to given strategy
         elif action.type() == REVEAL_COLOR:
             # apply hint encoding
             xdim_value = 1 + action.color()
@@ -321,28 +327,80 @@ class ObservationAugmenter(object):
         else:
             raise ValueError
 
-        self.xtra_dims[target_dimensions] = xdim_value
-        return list(self.xtra_dims)
+        self.xtra_dims[target_dims] = xdim_value
+        return self.xtra_dims
 
-    def augment_observation(self, observation, action, player_hands, cur_player):
-        """ Augments the current observation as gotten environment.step(action), by using a given strategy.
+    def _extract_next_player_observation_vectorized(self, observation):
+        """
+        Given observation dictionary that contains all informations, it extracts only
+        the vectorized observation of the next agent. This is the vectorized observation that will be augmented.
         Args:
-            observation: a list, with vectorized_observation as gotten from a call to pyhanabi.ObservationEncoder.encode
+            observation: a dict, containing observations for all players, as returned by a call to
+                         HanabiEnv._make_observation_all_players
+        Returns:
+            a tuple consisting of
+             - next_pid: the player ID (pid) corresponding to the returned vectorized_observation
+             - a python list, the vectorized observation of the next player
+        """
+        next_pid = (observation['current_player'] + 1) % self.num_players
+        return next_pid, observation['player_observations'][next_pid]['vectorized']
+
+    def replace_vectorized_inside_observation_by_augmented(self, observation, augmentation=None):
+        """
+        Replaces the observation of the next player inside the observation dictionary by its augmented version.
+        The other players observations will be discarded at training time anyway, so dont bother augmenting them as well
+        Args:
+            observation: a dict, containing observations for all players, as returned by a call to
+                         HanabiEnv._make_observation_all_players
+            augmentation: 1D-numpy array containing values for augmented dimensions. Usually its self.xtra_dims
+        Returns:
+            observation with augmented vectorized_observation for next player
+        """
+        assert isinstance(observation, dict)
+        # if augmentation is None, the environment has been reset, in this case we just return zeros for the augmented state
+        if augmentation is None:
+            augmentation = [0 for _ in range(self.num_extra_state_dims)]
+        next_pid, vectorized_observation = self._extract_next_player_observation_vectorized(observation)
+        augmented_vectorized_observation = vectorized_observation + list(augmentation)
+        observation['player_observations'][next_pid]['vectorized_observation'] = augmented_vectorized_observation
+
+        return observation
+
+    def augment_observation(self, observation, player_hands=None, cur_player=None, action=None):
+        """
+        Augments the observation as gotten from environment.step(action), by using a given strategy.
+
+        Since the action was computed by cur_player, the observation we want to augment,
+        is the observation of the player who comes next, because this player uses the augmented observation,
+        to compute the next action and so forth...
+
+        The observation of the next player is replaced inside the observation dictionary by its augmented version
+
+        Args:
+            observation: a dict, containing observations for all players, as returned by a call to
+                         HanabiEnv._make_observation_all_players
             action: pyhanabi.HanabiMove object, containing the current action
-            player_hands: list of (list of pyhanabi.HanabiCard objects) constitung hands of each player in the game
+            player_hands: list of (list of pyhanabi.HanabiCard objects) constitung hands of each player in the game as
+                          seen by cur_player.
             cur_player: index of player that computed action
         Returns:
-            augmented_observation: a list with new vectorized_observation consisting of concatenating
-            - observation with
+            augmented_observation: a new version of observations dict,
+            where vectorized_observation of next player has been replaced by concatenation of
+            - vectorized_observation
             - self.xtra_dims (after calling self._apply_strategy)
         """
+
+        # if action is None, the environment has been reset, in this case we just return zeros for the augmented state
+        if action is None:
+            return self.replace_vectorized_inside_observation_by_augmented(observation, augmentation=None)
         # indices of extra dimensions in augmented state, that are affected by action
-        affected_xtra_dims = self.indices_of_xtra_dims_changed(action, player_hands, cur_player)
+        affected_xtra_dims = self.indices_of_xtra_dims_affected_by_action(action, player_hands, cur_player)
         # Maybe forget(set to 0) values of self.xtra_dims that are too old, according to history_size
         self._maybe_reset_xtra_dims_given_history_size()
         # set new values for extra_dimensions corresponding to affected_xtra_dims, according to strategy
         augmentation = self._apply_strategy(affected_xtra_dims, action)
-        augmented_observation = observation + augmentation
+        # The observation of the next player is replaced inside the observation dictionary by its augmented version
+        augmented_observation = self.replace_vectorized_inside_observation_by_augmented(observation, augmentation)
 
         return augmented_observation
 
@@ -352,7 +410,7 @@ class ObservationAugmenter(object):
         Utility function. Computes the player ID, i.e. absolute position on table, of the target of the action.
         Args:
             action: pyhanabi.HanabiMove object containing the target_offset for REVEAL_XYZ moves
-            cur_player: int, player ID of acting player
+            cur_player: int, player ID of player that computed the action
             num_players: number of total players in the game
         Returns:
             target pid (player ID)
@@ -527,7 +585,8 @@ class HanabiEnv(Environment):
         #if USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV:
         #    obs = augment_observation(obs, self)
         self.reward_metrics.reset()
-
+        if self.augment_input:
+            obs = self.observation_augmenter.augment_observation(obs)
         return obs
 
     def vectorized_observation_shape(self):
@@ -668,10 +727,10 @@ class HanabiEnv(Environment):
         # ----------------- Custom Reward ---------------- #
         # ################################################ #
         reward = None
+        old_player_hands = self.state.player_hands()
+        cur_player = self.state.cur_player()
         if USE_CUSTOM_REWARD:
             fireworks = self.state.fireworks()
-            cur_player = self.state.cur_player()
-
             # For hint moves, change the default reward
             if (action.type() in [REVEAL_COLOR, REVEAL_RANK]) and USE_HINT_REWARD:
                 reward = 0
@@ -750,6 +809,7 @@ class HanabiEnv(Environment):
 
         last_score = self.state.score()
 
+        prev_player = cur_player
         # Apply the action to the state.
         self.state.apply_move(action)
 
@@ -757,17 +817,21 @@ class HanabiEnv(Environment):
             self.state.deal_random_card()
 
         observation = self._make_observation_all_players()
-        #if USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV:
-        #    observation = augment_observation(observation, self, action)
         done = self.state.is_terminal()
+
+        if self.augment_input:
+            observation = self.observation_augmenter.augment_observation(observation=observation,
+                                                                         player_hands=old_player_hands,
+                                                                         cur_player=prev_player,
+                                                                         action=action)
 
         # if reward was not modified, default to standard reward
         if reward is None:
             reward = self.state.score() - last_score
 
-        info = {}  # todo add default reward here for comparison
+        info = {}
 
-        return (observation, reward, done, info)
+        return observation, reward, done, info
 
     def _make_observation_all_players(self):
         """Make observation for all players.
