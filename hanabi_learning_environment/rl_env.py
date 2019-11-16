@@ -81,17 +81,14 @@ class Environment(object):
 # Metric Utilities
 # -------------------------------------------------------------------------------
 USE_CUSTOM_REWARD = True
-USE_ACTION_REWARD = False
-USE_HINT_REWARD = False
+USE_ACTION_REWARD = True
+USE_HINT_REWARD = True
 
 # If this flag is set to True, it will add neurons for each card in each hand.
 # Their input will be ranging from 0 to num_colors + num_ranks where
 # 0 means: card is played/discarded/forgotten,
 # [1 to num_colors] are color values and [num_colors+1 to num_colors + rank] mean rank values
 USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = True
-
-CUSTOM_REWARD = .1
-PENALTY_LAST_HINT_TOKEN_USED = .5
 
 
 def get_cards_touched_by_hint(hint, target_hand, return_indices=False):
@@ -103,6 +100,7 @@ def get_cards_touched_by_hint(hint, target_hand, return_indices=False):
      Args:
          hint: pyhanabi.HanabiMove object
          target_hand: list of pyhanabi.HanabiCard objects
+         return_indices: if True, this will return integer indices instead of pyhanabi.HanabiCard objects
     Returns:
         cards_touched: list of pyhanabi.HanabiCard objects containing hinted (touched) cards.
             or if return_indices == True
@@ -173,14 +171,10 @@ class StorageRewardMetrics(object):
         self.total_cards_in_deck = np.sum(np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors))
 
         # Custom Reward params
-        # todo change the way these variables are set via config, its hard to understand here from where they come
-        self._custom_reward = CUSTOM_REWARD
-        self._penalty_last_hint_token_used = PENALTY_LAST_HINT_TOKEN_USED
-        """ custom settings may be optionally overwritten by extending game_config """
-        if 'custom_reward' in self.config:
-            self._custom_reward = self.config['custom_reward']
-        if 'penalty_last_hint_token' in self.config:
-            self._penalty_last_hint_token_used = self.config['penalty_last_hint_token']
+        assert 'custom_reward' in self.config
+        assert 'penalty_last_hint_token' in self.config
+        self._custom_reward = self.config['custom_reward']
+        self._penalty_last_hint_token_used = self.config['penalty_last_hint_token']
 
         self.history_size = history_size
         self.history = list()  # stores last hints [may have some (PLAY or DISCARD) actions in between]
@@ -243,7 +237,6 @@ class StorageRewardMetrics(object):
 # -------------------------------------------------------------------------------
 # State Augmentation Utils
 # -------------------------------------------------------------------------------
-
 
 def abs_position_player_target(action, cur_player, num_players):
     """

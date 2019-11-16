@@ -83,7 +83,7 @@ flags.DEFINE_boolean('use_rnns', False,
                      'If true, use RNN for policy and value function.')
 FLAGS = flags.FLAGS
 
-# I sorted them a little bit, in order to get the most interesting results earlier
+
 COLORS = [2]
 RANKS = [5]
 NUM_PLAYERS = [2, 4]
@@ -93,7 +93,7 @@ MAX_INFORMATION_TOKENS = [3]
 MAX_LIFE_TOKENS = [1]
 OBSERVATION_TYPE = 1  # pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value
 CUSTOM_REWARDS = [.2]
-PENALTIES_LAST_HINT_TOKEN = [0, .1, .5]
+PENALTIES_LAST_HINT_TOKEN = [.1, .5]
 
 
 def load_hanabi_env(game_config):
