@@ -79,6 +79,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         mask_valid_actions = self.get_mask_legal_moves(observation)
         # stores current game score
         info = self._env.state.score()
+        print(f'obsvecshape = {obs_vec.shape}')
         obs = {'state': obs_vec, 'mask': mask_valid_actions, 'info': info}
 
         if done:
@@ -108,7 +109,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         if environment.augment_input:
             # observation is augmented, so adjsut the obs_spec accordingly
             maybe_additional_inputs += environment.game.num_players() * environment.game.hand_size()
-            maybe_additional_range = 7
+            maybe_additional_range = environment.game.num_colors() + environment.game.num_ranks()
 
         len_obs = environment.vectorized_observation_shape()[0]  # get length of vectorized observation
         state_spec = BoundedArraySpec(
@@ -127,7 +128,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
             dtype=np.int,
             name='info'
         )
-
+        
         return {'state': state_spec, 'mask': mask_spec, 'info': info_spec}
 
     def observation_spec(self):

@@ -170,11 +170,18 @@ class StorageRewardMetrics(object):
         self.hand_size = self.config['hand_size']
         self.total_cards_in_deck = np.sum(np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors))
 
-        # Custom Reward params
-        assert 'custom_reward' in self.config
-        assert 'penalty_last_hint_token' in self.config
-        self._custom_reward = self.config['custom_reward']
-        self._penalty_last_hint_token_used = self.config['penalty_last_hint_token']
+        # Custom reward params
+        self._custom_reward = None
+        self._penalty_last_hint_token_used = None
+        # Load custom reward params from train_eval script.
+        # If not started from there, e.g. from testscript, default to .2 for each param
+        attrs = ['_custom_reward', '_penalty_last_hint_token_used']
+        default_attr = .2
+        for attr in attrs:
+            if attr in self.config:
+                setattr(self, attr, self.config[attr])
+            else:
+                setattr(self, attr, default_attr)
 
         self.history_size = history_size
         self.history = list()  # stores last hints [may have some (PLAY or DISCARD) actions in between]
@@ -349,6 +356,9 @@ class ObservationAugmenter(object):
         """
         Replaces the observation of the next player inside the observation dictionary by its augmented version.
         The other players observations will be discarded at training time anyway, so dont bother augmenting them as well
+
+        Note: This is the observation, AFTER applying the action, so next_pid is current player in observation
+
         Args:
             observation: a dict, containing observations for all players, as returned by a call to
                          HanabiEnv._make_observation_all_players
@@ -359,7 +369,7 @@ class ObservationAugmenter(object):
         assert isinstance(observation, dict)
         assert augmentation is not None
         # extract only the vectorized observation of the next agent, this one will be augmented
-        next_pid = (observation['current_player'] + 1) % self.num_players
+        next_pid = observation['current_player']
         vectorized_observation = observation['player_observations'][next_pid]['vectorized']
         # concate with augmentation
         augmented_vectorized_observation = vectorized_observation + list(augmentation)
@@ -396,7 +406,7 @@ class ObservationAugmenter(object):
         # Compute augmentation of observation
         if action is None:
             # if action is None, the environment has been reset, then just return zeros for the augmented state
-            augmentation = [0 for _ in range(self.num_extra_state_dims)]
+            augmentation = np.zeros((self.num_extra_state_dims, ), dtype=int)
         else:
             # indices of extra dimensions in augmented state, that are affected by action
             affected_xtra_dims = self._indices_of_xtra_dims_affected_by_action(action, player_hands, cur_player)
