@@ -269,7 +269,7 @@ class ObservationAugmenter(object):
         self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
         self.observation_ages = np.zeros(self.xtra_dims.shape, dtype=int)
 
-    def indices_of_xtra_dims_affected_by_action(self, action, player_hands, cur_player):
+    def _indices_of_xtra_dims_affected_by_action(self, action, player_hands, cur_player):
         """
         Computes the indices of extra dimensions in augmented state, that are affected by action.
         Args:
@@ -291,7 +291,7 @@ class ObservationAugmenter(object):
 
         elif action.type() in [REVEAL_RANK, REVEAL_COLOR]:
             idxs_cards_touched = get_cards_touched_by_hint(hint=action,
-                                                           target_hand=player_hands[cur_player], return_indices=True)
+                                                           target_hand=player_hands[abs_pid], return_indices=True)
             # index of extra dimensions affected by hint
             idxs_dim = [(abs_pid * self.hand_size) + idx for idx in idxs_cards_touched]
 
@@ -331,7 +331,7 @@ class ObservationAugmenter(object):
         self.xtra_dims[target_dims] = xdim_value
         return self.xtra_dims
 
-    def replace_vectorized_inside_observation_by_augmented(self, observation, augmentation):
+    def _replace_vectorized_inside_observation_by_augmented(self, observation, augmentation):
         """
         Replaces the observation of the next player inside the observation dictionary by its augmented version.
         The other players observations will be discarded at training time anyway, so dont bother augmenting them as well
@@ -350,7 +350,7 @@ class ObservationAugmenter(object):
         # concate with augmentation
         augmented_vectorized_observation = vectorized_observation + list(augmentation)
         # replace old vectorized observatoin of next player with new augmented version
-        observation['player_observations'][next_pid]['vectorized_observation'] = augmented_vectorized_observation
+        observation['player_observations'][next_pid]['vectorized'] = augmented_vectorized_observation
 
         return observation
 
@@ -384,18 +384,18 @@ class ObservationAugmenter(object):
             augmentation = [0 for _ in range(self.num_extra_state_dims)]
         else:
             # indices of extra dimensions in augmented state, that are affected by action
-            affected_xtra_dims = self.indices_of_xtra_dims_affected_by_action(action, player_hands, cur_player)
-            # Maybe forget(set to 0) values of self.xtra_dims that are too old, according to history_size
+            affected_xtra_dims = self._indices_of_xtra_dims_affected_by_action(action, player_hands, cur_player)
+            # Forget(i.e. set to 0) values of self.xtra_dims that are too old, according to history_size
             self._maybe_reset_xtra_dims_given_history_size()
-            # set new values for extra_dimensions corresponding to affected_xtra_dims, according to strategy
+            # set new values for affected_xtra_dims, according to strategy
             augmentation = self._apply_strategy(affected_xtra_dims, action)
-            print("affected_xtra_dims")
-            print(affected_xtra_dims)
-            print("augmentation")
-            print(augmentation)
+            # print("affected_xtra_dims")
+            # print(affected_xtra_dims)
+            # print("augmentation")
+            # print(augmentation)
 
         # The observation of the next player is replaced inside the observation dictionary by its augmented version
-        augmented_observation = self.replace_vectorized_inside_observation_by_augmented(observation, augmentation)
+        augmented_observation = self._replace_vectorized_inside_observation_by_augmented(observation, augmentation)
 
         return augmented_observation
 
