@@ -250,7 +250,7 @@ class ObservationAugmenter(object):
     These extra values lead to augmented observations.
     The augmented observations are later used e.g. as neural network input.
     """
-    def __init__(self, config, history_size=2):
+    def __init__(self, config, history_size=20):
         # each xtra_dim corresponds to one card, i.e. num_extra_state_dims = num_players * hand_size
         self.num_extra_state_dims = config['num_players'] * config['hand_size']
         self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
@@ -290,7 +290,8 @@ class ObservationAugmenter(object):
             idxs_dim = [(abs_pid * self.hand_size) + action.card_index()]
 
         elif action.type() in [REVEAL_RANK, REVEAL_COLOR]:
-            idxs_cards_touched = get_cards_touched_by_hint(hint=action, target_hand=player_hands[cur_player], return_indices=True)
+            idxs_cards_touched = get_cards_touched_by_hint(hint=action,
+                                                           target_hand=player_hands[cur_player], return_indices=True)
             # index of extra dimensions affected by hint
             idxs_dim = [(abs_pid * self.hand_size) + idx for idx in idxs_cards_touched]
 
@@ -330,22 +331,7 @@ class ObservationAugmenter(object):
         self.xtra_dims[target_dims] = xdim_value
         return self.xtra_dims
 
-    def _extract_next_player_observation_vectorized(self, observation):
-        """
-        Given observation dictionary that contains all informations, it extracts only
-        the vectorized observation of the next agent. This is the vectorized observation that will be augmented.
-        Args:
-            observation: a dict, containing observations for all players, as returned by a call to
-                         HanabiEnv._make_observation_all_players
-        Returns:
-            a tuple consisting of
-             - next_pid: the player ID (pid) corresponding to the returned vectorized_observation
-             - a python list, the vectorized observation of the next player
-        """
-        next_pid = (observation['current_player'] + 1) % self.num_players
-        return next_pid, observation['player_observations'][next_pid]['vectorized']
-
-    def replace_vectorized_inside_observation_by_augmented(self, observation, augmentation=None):
+    def replace_vectorized_inside_observation_by_augmented(self, observation, augmentation):
         """
         Replaces the observation of the next player inside the observation dictionary by its augmented version.
         The other players observations will be discarded at training time anyway, so dont bother augmenting them as well
@@ -357,11 +343,13 @@ class ObservationAugmenter(object):
             observation with augmented vectorized_observation for next player
         """
         assert isinstance(observation, dict)
-        # if augmentation is None, the environment has been reset, in this case we just return zeros for the augmented state
-        if augmentation is None:
-            augmentation = [0 for _ in range(self.num_extra_state_dims)]
-        next_pid, vectorized_observation = self._extract_next_player_observation_vectorized(observation)
+        assert augmentation is not None
+        # extract only the vectorized observation of the next agent, this one will be augmented
+        next_pid = (observation['current_player'] + 1) % self.num_players
+        vectorized_observation = observation['player_observations'][next_pid]['vectorized']
+        # concate with augmentation
         augmented_vectorized_observation = vectorized_observation + list(augmentation)
+        # replace old vectorized observatoin of next player with new augmented version
         observation['player_observations'][next_pid]['vectorized_observation'] = augmented_vectorized_observation
 
         return observation
@@ -390,15 +378,22 @@ class ObservationAugmenter(object):
             - self.xtra_dims (after calling self._apply_strategy)
         """
 
-        # if action is None, the environment has been reset, in this case we just return zeros for the augmented state
+        # Compute augmentation of observation
         if action is None:
-            return self.replace_vectorized_inside_observation_by_augmented(observation, augmentation=None)
-        # indices of extra dimensions in augmented state, that are affected by action
-        affected_xtra_dims = self.indices_of_xtra_dims_affected_by_action(action, player_hands, cur_player)
-        # Maybe forget(set to 0) values of self.xtra_dims that are too old, according to history_size
-        self._maybe_reset_xtra_dims_given_history_size()
-        # set new values for extra_dimensions corresponding to affected_xtra_dims, according to strategy
-        augmentation = self._apply_strategy(affected_xtra_dims, action)
+            # if action is None, the environment has been reset, then just return zeros for the augmented state
+            augmentation = [0 for _ in range(self.num_extra_state_dims)]
+        else:
+            # indices of extra dimensions in augmented state, that are affected by action
+            affected_xtra_dims = self.indices_of_xtra_dims_affected_by_action(action, player_hands, cur_player)
+            # Maybe forget(set to 0) values of self.xtra_dims that are too old, according to history_size
+            self._maybe_reset_xtra_dims_given_history_size()
+            # set new values for extra_dimensions corresponding to affected_xtra_dims, according to strategy
+            augmentation = self._apply_strategy(affected_xtra_dims, action)
+            print("affected_xtra_dims")
+            print(affected_xtra_dims)
+            print("augmentation")
+            print(augmentation)
+
         # The observation of the next player is replaced inside the observation dictionary by its augmented version
         augmented_observation = self.replace_vectorized_inside_observation_by_augmented(observation, augmentation)
 
@@ -575,7 +570,7 @@ class HanabiEnv(Environment):
                                       'vectorized': [ 0, 0, 1, ... ]}]}
         """
         self.state = self.game.new_initial_state()
-
+        self.observation_augmenter.reset()
         while self.state.cur_player() == pyhanabi.CHANCE_PLAYER_ID:
             self.state.deal_random_card()
 
