@@ -242,21 +242,94 @@ class ObservationAugmenter(object):
     These extra values lead to augmented observations.
     The augmented observations are later used e.g. as neural network input.
     """
-    def __init__(self, num_extra_state_dims, history_size=2):
-        # each xtra_dim corresponds to one card, i.e. len(xtra_dims) = num_players * hand_size
-        self.xtra_dims = np.zeros((num_extra_state_dims,), dtype=int)
+    def __init__(self, num_extra_state_dims, num_players, hand_size, history_size=2):
+        # each xtra_dim corresponds to one card, i.e. num_extra_state_dims = num_players * hand_size
+        self.num_extra_state_dims = num_extra_state_dims
+        self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
         self.observation_history = list()
         # history_size determines the number of turns, after which the value of xtra_dim is forgotten
         self.history_size = history_size
+        # keep track of 'age' of each value of xtra_dims. Values will be reset, when age > self.history_size
+        self.observation_ages = np.zeros(self.xtra_dims.shape, dtype=int)
+        # game config
+        self.num_players = num_players
+        self.hand_size = hand_size
+
+    def reset(self):
+        # see __init__
+        self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
+        self.observation_history = list()
+        self.observation_ages = np.zeros(self.xtra_dims.shape, dtype=int)
+
+    def indices_of_xtra_dims_changed(self, action, player_hands, cur_player):
+        """
+        Computes the indices of extra dimensions in augmented state, that are affected by action.
+        Args:
+            action: pyhanabi.HanabiMove object, containing the current action
+            player_hands: list of (list of pyhanabi.HanabiCard objects) constitung hands of each player in the game
+            abs_pid: absolute player position (pid) of player targeted by action
+            cur_player: absolute position (pid) of acting player
+        Returns:
+            idxs_dims: list of integers, containing dimensions indices
+        """
+        idxs_dim = list()
+
+        # player ID (pid), i.e. absolute position on table, of the target of the action
+        abs_pid = self.abs_position_player_target(action, cur_player, self.num_players)
+
+        # On PLAY/DISCARD moves, we set value of xtra_dim corresponding to the played card equal to 0
+        if action.type() in [PLAY, DISCARD]:
+            # index of the card played
+            idx_card = player_hands[action.card_index()]
+            # index of extra dimension affected by hint
+            idxs_dim = [(abs_pid * self.hand_size) + idx_card]
+
+        # On HINT moves, we set the value of xtra_dims corresponding to touched cards according to given strategy
+        elif action.type() in [REVEAL_RANK, REVEAL_COLOR]:
+            cards_touched = get_cards_touched_by_hint(hint=action, target_hand=player_hands[cur_player])
+            # index of extra dimensions affected by hint
+            idxs_dim = [(abs_pid * self.hand_size) + idx for idx in cards_touched]
+
+        return idxs_dim
+
+    def _increment_age_counter(self):
+        """ Increments the age counter for each xtra_dim and resets (forgets its value) if necessary.
+        A value will be reset, if its age_counter is larger than self.history_size.
+        """
+        pass
 
     def augment_observation(self, action, player_hands, cur_player):
         """ observation dictionary """
-        # On PLAY/DISCARD moves, we set the xtra_dim corresponding to the played card equal to 0
-        # On HINT moves, we set the xtra_dims corresponding to touched cards according to given strategy
+        augmented_observation = None
+        # indices of extra dimensions in augmented state, that are affected by action
+        idxs_dim = self.indices_of_xtra_dims_changed(action, player_hands, cur_player)
         # additionally, we need to keep track of the age of the values of the xtra_dims.
-        # Values older than self.history_size will be forgotten
-        # We therefore associate with each value, an age_counter that increments eacch turn
-        pass
+        self._increment_age_counter()
+        # Maybe forget(set to 0) values of self.xtra_dims that are too old, according to history_size
+        # todo: self._maybe_reset_xtra_dims_given_history_size()
+        # set values for extra_dimensions corresponding to idxs_dim, according to strategy
+        # todo: augmented_observation = self.set_xtra_dims(action)
+
+        return augmented_observation
+
+    @staticmethod
+    def abs_position_player_target(action, cur_player, num_players):
+        """
+        Utility function. Computes the player ID, i.e. absolute position on table, of the target of the action.
+        Args:
+            action: pyhanabi.HanabiMove object containing the target_offset for REVEAL_XYZ moves
+            cur_player: int, player ID of acting player
+            num_players: number of total players in the game
+        Returns:
+            target pid (player ID)
+        """
+        # For play moves, the target player ID is equal to relative player ID
+        if action.type() in [PLAY, DISCARD]:
+            return cur_player
+        # For reveal moves, it is computed using the target offset and total num of players
+        if action.type() in [REVEAL_RANK, REVEAL_COLOR]:
+            return (cur_player + action.target_offset()) % num_players
+        return None
 
 
 class HanabiEnv(Environment):
