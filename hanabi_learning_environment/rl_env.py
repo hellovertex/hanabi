@@ -242,23 +242,23 @@ class ObservationAugmenter(object):
     These extra values lead to augmented observations.
     The augmented observations are later used e.g. as neural network input.
     """
-    def __init__(self, num_extra_state_dims, num_players, hand_size, history_size=2):
+    def __init__(self, config, history_size=2):
         # each xtra_dim corresponds to one card, i.e. num_extra_state_dims = num_players * hand_size
-        self.num_extra_state_dims = num_extra_state_dims
+        self.num_extra_state_dims = config['num_players'] * config['hand_size']
         self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
-        self.observation_history = list()
+
         # history_size determines the number of turns, after which the value of xtra_dim is forgotten
         self.history_size = history_size
         # keep track of 'age' of each value of xtra_dims. Values will be reset, when age > self.history_size
         self.observation_ages = np.zeros(self.xtra_dims.shape, dtype=int)
         # game config
-        self.num_players = num_players
-        self.hand_size = hand_size
+        self.num_players = config['num_players']
+        self.hand_size = config['hand_size']
+        self.num_colors = config['num_colors']
 
     def reset(self):
         # see __init__
         self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
-        self.observation_history = list()
         self.observation_ages = np.zeros(self.xtra_dims.shape, dtype=int)
 
     def indices_of_xtra_dims_changed(self, action, player_hands, cur_player):
@@ -267,7 +267,6 @@ class ObservationAugmenter(object):
         Args:
             action: pyhanabi.HanabiMove object, containing the current action
             player_hands: list of (list of pyhanabi.HanabiCard objects) constitung hands of each player in the game
-            abs_pid: absolute player position (pid) of player targeted by action
             cur_player: absolute position (pid) of acting player
         Returns:
             idxs_dims: list of integers, containing dimensions indices
@@ -292,23 +291,58 @@ class ObservationAugmenter(object):
 
         return idxs_dim
 
-    def _increment_age_counter(self):
+    def _maybe_reset_xtra_dims_given_history_size(self):
         """ Increments the age counter for each xtra_dim and resets (forgets its value) if necessary.
         A value will be reset, if its age_counter is larger than self.history_size.
         """
-        pass
+        # we keep track of the age of the values of the xtra_dims, so increment them here.
+        # each index of self.observation_ages corresponds to one index of self.xtra_dims
+        self.observation_ages += 1
+        # reset those observation dimensions, which have a value older than self.history_size
+        self.xtra_dims[self.observation_ages > self.history_size] = 0
 
-    def augment_observation(self, action, player_hands, cur_player):
-        """ observation dictionary """
-        augmented_observation = None
+    def _apply_strategy(self, target_dimensions, action):
+        """
+        Sets values for target_dimensions, according to strategy
+        Args:
+            target_dimensions: list of indices corresponding to extra dimensions affected by action
+            action: pyhanabi.HanabiMove object containing current action
+        """
+        # todo in case the strategy changes, we can start from here and will probably not have to change much elsewhere
+        # For play moves, we set the target_dimensions equal to
+        xdim_value = None
+        if action.type() in [PLAY, DISCARD]:
+            self.xtra_dims[target_dimensions] = 0
+        elif action.type() == REVEAL_COLOR:
+            # apply hint encoding
+            xdim_value = 1 + action.color()
+        elif action.type() == REVEAL_RANK:
+            xdim_value = self.num_colors + action.rank()
+        else:
+            raise ValueError
+
+        self.xtra_dims[target_dimensions] = xdim_value
+        return list(self.xtra_dims)
+
+    def augment_observation(self, observation, action, player_hands, cur_player):
+        """ Augments the current observation as gotten environment.step(action), by using a given strategy.
+        Args:
+            observation: a list, with vectorized_observation as gotten from a call to pyhanabi.ObservationEncoder.encode
+            action: pyhanabi.HanabiMove object, containing the current action
+            player_hands: list of (list of pyhanabi.HanabiCard objects) constitung hands of each player in the game
+            cur_player: index of player that computed action
+        Returns:
+            augmented_observation: a list with new vectorized_observation consisting of concatenating
+            - observation with
+            - self.xtra_dims (after calling self._apply_strategy)
+        """
         # indices of extra dimensions in augmented state, that are affected by action
-        idxs_dim = self.indices_of_xtra_dims_changed(action, player_hands, cur_player)
-        # additionally, we need to keep track of the age of the values of the xtra_dims.
-        self._increment_age_counter()
+        affected_xtra_dims = self.indices_of_xtra_dims_changed(action, player_hands, cur_player)
         # Maybe forget(set to 0) values of self.xtra_dims that are too old, according to history_size
-        # todo: self._maybe_reset_xtra_dims_given_history_size()
-        # set values for extra_dimensions corresponding to idxs_dim, according to strategy
-        # todo: augmented_observation = self.set_xtra_dims(action)
+        self._maybe_reset_xtra_dims_given_history_size()
+        # set new values for extra_dimensions corresponding to affected_xtra_dims, according to strategy
+        augmentation = self._apply_strategy(affected_xtra_dims, action)
+        augmented_observation = observation + augmentation
 
         return augmented_observation
 
@@ -373,12 +407,16 @@ class HanabiEnv(Environment):
             self.game, pyhanabi.ObservationEncoderType.CANONICAL)
         self.players = self.game.num_players()
 
-        # in case the game_config did not contain hand_size because it was meant to be defaulted
+        # in case the game_config did not contain specific keys because they were meant to be defaulted
         config['hand_size'] = self.game.hand_size()
+        config['num_players'] = self.game.num_players()
+        config['num_colors'] = self.game.num_colors()
+
         self.reward_metrics = StorageRewardMetrics(config)
         self.augment_input = USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV
+        self.observation_augmenter = ObservationAugmenter(config)
 
-    def reset(self):
+    def reset(self, config=None):
         r"""Resets the environment for a new game.
 
         Returns:
