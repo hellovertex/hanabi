@@ -16,21 +16,16 @@
 from __future__ import absolute_import
 from __future__ import division
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 import pyhanabi as pyhanabi
 from pyhanabi import color_char_to_idx
 from custom_environment.state_space import ObservationAugmenter
 from custom_environment.reward import RewardMetrics
-from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD, COPIES_PER_CARD
+from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD
 
 MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 
 
-# -------------------------------------------------------------------------------
 # Environment API
-# -------------------------------------------------------------------------------
-
-
 class Environment(object):
     """Abtract Environment interface.
 
@@ -86,7 +81,6 @@ OPEN_HANDS = True
 # 0 means: card is played/discarded/forgotten,
 # [1 to num_colors] are color values and [num_colors+1 to num_colors + rank] mean rank values
 USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = True
-
 
 
 class HanabiEnv(Environment):
