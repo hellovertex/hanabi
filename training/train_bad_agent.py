@@ -1,31 +1,52 @@
 import os
+import sys
 import time
 
 import tensorflow as tf
-
-from absl import logging
 from absl import app
 from absl import flags
-
+from absl import logging
 from tf_agents.agents.ppo.ppo_agent import PPOAgent
 from tf_agents.drivers import dynamic_episode_driver
 from tf_agents.environments import parallel_py_environment
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
-from tf_agents.metrics import tf_metrics
+from tf_agents.metrics import tf_metrics, batched_py_metric
+from tf_agents.metrics.py_metrics import AverageReturnMetric, AverageEpisodeLengthMetric
 from tf_agents.policies import py_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
+from custom_environment.custom_metric import PyScoreMetric
 from custom_environment.pub_mdp import PubMDP
 from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
 from hanabi_learning_environment import rl_env
-from training.hanabi_small.train_ppo_custom_env import get_metrics_eval, get_writers_train_eval
 from training.tf_agents_lib import pyhanabi_env_wrapper
-from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork, MaskedValueNetwork, \
-    MaskedValueEvalNetwork
-from training.tf_agents_lib.pyhanabi_env_wrapper import PyhanabiEnvWrapper
+from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork, MaskedValueNetwork
 
+sys.path.insert(0, 'lib')
+flags.DEFINE_string('root_dir', str(os.path.dirname(__file__)) + '/logs/hanabi_small/ppo/',
+                    'Root directory for writing logs/summaries/checkpoints.')
+flags.DEFINE_string('summary_dir', str(os.path.dirname(__file__)) + '/summaries/hanabi_small/ppo/',
+                    'Directory for writing tensorboards summaries.')
+flags.DEFINE_string('master', '', 'master session')
+flags.DEFINE_integer('replay_buffer_capacity', 1001,
+                     'Replay buffer capacity per env.')
+flags.DEFINE_integer('num_parallel_environments', 30,
+                     'Number of environments to run in parallel')
+flags.DEFINE_integer('num_environment_steps', int(3e08),
+                     'Number of environment steps to run before finishing.')
+flags.DEFINE_integer('num_epochs', 25,
+                     'Number of epochs for computing policy updates.')
+flags.DEFINE_integer(
+    'collect_episodes_per_iteration', 30,
+    'The number of episodes to take in the environment before '
+    'each update. This is the total across all parallel '
+    'environments.')
+flags.DEFINE_integer('num_eval_episodes', 30,
+                     'The number of episodes to run eval on.')
+flags.DEFINE_boolean('use_rnns', False,
+                     'If true, use RNN for policy and value function.')
 FLAGS = flags.FLAGS
 
 DEFAULT_CONFIG = {  # config for Hanabi-Small
@@ -93,6 +114,34 @@ def get_obs_spec_action_spec_from_game_config(game_config):
 
     return gc_tf_env.time_step_spec(), gc_tf_env.observation_spec(), gc_tf_env.action_spec()
 
+def get_metrics_eval(num_parallel_environments, num_eval_episodes):
+    eval_metrics = [
+        batched_py_metric.BatchedPyMetric(
+            AverageReturnMetric,
+            metric_args={'buffer_size': num_eval_episodes},
+            batch_size=num_parallel_environments),
+        batched_py_metric.BatchedPyMetric(
+            AverageEpisodeLengthMetric,
+            metric_args={'buffer_size': num_eval_episodes},
+            batch_size=num_parallel_environments),
+        batched_py_metric.BatchedPyMetric(
+            PyScoreMetric,
+            metric_args={'buffer_size': num_eval_episodes},
+            batch_size=num_parallel_environments)
+    ]
+    return eval_metrics
+
+def get_writers_train_eval(summary_dir, eval_dir, game_config, summaries_flush_secs=1):
+    formatted_summary_dir = format_dir(summary_dir, game_config)
+
+    train_summary_writer = tf.compat.v2.summary.create_file_writer(
+        formatted_summary_dir, flush_millis=summaries_flush_secs * 1000)  #
+    train_summary_writer.set_as_default()
+
+    eval_summary_writer = tf.compat.v2.summary.create_file_writer(
+        eval_dir, flush_millis=summaries_flush_secs * 1000)
+
+    return train_summary_writer, eval_summary_writer
 
 def get_metrics_train_and_step():
     environment_steps_metric = tf_metrics.EnvironmentSteps()
