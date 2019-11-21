@@ -1,3 +1,8 @@
+tut/
+training/logs/
+training/summaries/
+logs/
+summaries/
 env/
 tensorboard/
 *.pycgame_example
