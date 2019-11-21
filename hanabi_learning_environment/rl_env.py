@@ -21,16 +21,9 @@ import pyhanabi as pyhanabi
 from pyhanabi import color_char_to_idx
 from custom_environment.state_space import ObservationAugmenter
 from custom_environment.reward import RewardMetrics
-
-# custom imports
-import numpy as np
+from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD, COPIES_PER_CARD
 
 MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
-REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
-REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
-PLAY = 1  # matches HanabiMoveType.REVEAL_RANK
-DISCARD = 2  # matches HanabiMoveType.REVEAL_RANK
-COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
 
 
 # -------------------------------------------------------------------------------
@@ -78,9 +71,7 @@ class Environment(object):
         raise NotImplementedError("Not implemented in Abstract Base class")
 
 
-# -------------------------------------------------------------------------------
-# Metric Utilities
-# -------------------------------------------------------------------------------
+#  ------------------------ Reward Flags -----------------------------
 USE_CUSTOM_REWARD = True
 USE_ACTION_REWARD = True
 USE_HINT_REWARD = True
@@ -88,8 +79,8 @@ USE_PLAY_REWARD = True
 USE_DISCARD_REWARD = True
 USE_HAMMING_WEIGHT = True
 
+#  ------------------------ state space Flags -----------------------------
 OPEN_HANDS = True
-
 # If this flag is set to True, it will add neurons for each card in each hand.
 # Their input will be ranging from 0 to num_colors + num_ranks where
 # 0 means: card is played/discarded/forgotten,

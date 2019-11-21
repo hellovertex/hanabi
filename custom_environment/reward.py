@@ -1,13 +1,7 @@
 import numpy as np
 
 from custom_environment.utils import get_cards_touched_by_hint, card_is_last_copy, get_card_played_or_discarded
-
-REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
-REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
-PLAY = 1  # matches HanabiMoveType.REVEAL_RANK
-DISCARD = 2  # matches HanabiMoveType.REVEAL_RANK
-COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
-
+from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD
 
 # todo @gin.configurable
 class RewardMetrics(object):
