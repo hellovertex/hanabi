@@ -53,7 +53,7 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
 # own imports
-from custom_environment.custom_metric import PyScoreMetric, TfScoreMetric
+from training.tf_agents_lib.custom_metric import PyScoreMetric, TfScoreMetric
 
 sys.path.insert(0, 'lib')
 from hanabi_learning_environment import rl_env
