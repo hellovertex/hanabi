@@ -1,4 +1,5 @@
 env/
+tut/
 *.pyc
 __pycache__/*
 training/logs/*
