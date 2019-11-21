@@ -1,0 +1,7 @@
+env/
+*.pyc
+__pycache__/*
+training/logs/*
+training/summaries/*
+.idea/
+
