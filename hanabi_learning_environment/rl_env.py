@@ -33,6 +33,7 @@ PLAY = 1  # matches HanabiMoveType.REVEAL_RANK
 DISCARD = 2  # matches HanabiMoveType.REVEAL_RANK
 COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
 
+
 # -------------------------------------------------------------------------------
 # Environment API
 # -------------------------------------------------------------------------------
@@ -77,12 +78,14 @@ class Environment(object):
         """
         raise NotImplementedError("Not implemented in Abstract Base class")
 
+
 # -------------------------------------------------------------------------------
 # Metric Utilities
 # -------------------------------------------------------------------------------
 USE_CUSTOM_REWARD = True
 USE_ACTION_REWARD = True
 USE_HINT_REWARD = True
+OPEN_HANDS = True
 
 # If this flag is set to True, it will add neurons for each card in each hand.
 # Their input will be ranging from 0 to num_colors + num_ranks where
@@ -243,6 +246,7 @@ class StorageRewardMetrics(object):
     def compute_hamming_distance_for_each_card_seperately(self):
         pass
 
+
 # -------------------------------------------------------------------------------
 # State Augmentation Utils
 # -------------------------------------------------------------------------------
@@ -274,6 +278,7 @@ class ObservationAugmenter(object):
     These extra values lead to augmented observations.
     The augmented observations are later used e.g. as neural network input.
     """
+
     def __init__(self, config, history_size=20):
         # each xtra_dim corresponds to one card, i.e. num_extra_state_dims = num_players * hand_size
         self.num_extra_state_dims = config['num_players'] * config['hand_size']
@@ -287,6 +292,7 @@ class ObservationAugmenter(object):
         self.num_players = config['num_players']
         self.hand_size = config['hand_size']
         self.num_colors = config['num_colors']
+        self.num_ranks = config['num_ranks']
 
     def reset(self):
         # see __init__
@@ -384,9 +390,9 @@ class ObservationAugmenter(object):
     # entry point for HanabiEnv
     def augment_observation(self, observation, player_hands=None, cur_player=None, action=None):
         """
-        Augments the observation as gotten from environment.step(action), by using a given strategy.
+        Augments the observation we got from environment.step(action), by using a given strategy.
 
-        Since the action was computed by cur_player, the observation we want to augment,
+        Since action was computed by cur_player(last player), the observation we want to augment,
         is the observation of the player who comes next, because this player uses the augmented observation,
         to compute the next action and so forth...
 
@@ -409,7 +415,7 @@ class ObservationAugmenter(object):
         # Compute augmentation of observation
         if action is None:
             # if action is None, the environment has been reset, then just return zeros for the augmented state
-            augmentation = np.zeros((self.num_extra_state_dims, ), dtype=int)
+            augmentation = np.zeros((self.num_extra_state_dims,), dtype=int)
         else:
             # indices of extra dimensions in augmented state, that are affected by action
             affected_xtra_dims = self._indices_of_xtra_dims_affected_by_action(action, player_hands, cur_player)
@@ -422,6 +428,89 @@ class ObservationAugmenter(object):
         augmented_observation = self._replace_vectorized_inside_observation_by_augmented(observation, augmentation)
 
         return augmented_observation
+
+    def vectorize_single_hand(self, hand, all_hands):
+        """
+        Returns binary representation of hand, consistent with encoding scheme of pyhanabi.ObservationEncoder
+        Args:
+            hand: a list containing the hand cards, (card dictionaries), e.g.
+            [{'color': 'W', 'rank': 2},
+             {'color': 'Y', 'rank': 4},
+             {'color': 'Y', 'rank': 2},
+             {'color': 'G', 'rank': 0},
+             {'color': 'W', 'rank': 1}]
+            all_hands: list of hands, used to determine bits for missing cards in player hands (on last round of game)
+
+        Returns: obs_vec: a binary list of length hand_size * num_colors * num_ranks
+        """
+        num_cards = 0
+        obs_vec = list()
+        offset = 0
+        bits_per_card = self.num_colors * self.num_ranks
+        for card in hand:
+            rank = card["rank"]
+            color = color_char_to_idx(card["color"])
+            card_index = color * self.num_ranks + rank
+
+            obs_vec[offset + card_index] = 1
+            num_cards += 1
+            offset += bits_per_card
+
+        '''
+        A player's hand can have fewer cards than the initial hand size.
+        Leave the bits for the absent cards empty (adjust the offset to skip
+        bits for the missing cards).
+        '''
+
+        if num_cards < self.hand_size:
+            offset += (self.hand_size - num_cards) * bits_per_card
+
+        # For each player, set a bit if their hand is missing a card
+        i = 0
+        for i, player_hand in enumerate(all_hands):
+            if len(player_hand) < self.hand_size:
+                obs_vec[offset + i] = 1
+        offset += self.num_players
+
+        assert len(obs_vec) == self.hand_size * self.num_colors * self.num_ranks
+
+        return obs_vec
+
+    def show_cards(self, observation):
+        """
+        Uses (for simplicity) previous agents observation, to reveal to current agent his own cards
+        It does not matter, whether the previous agent actually acted (i.e. the environment has been reset)
+        His observation will contain the necessary information anyways.
+        Args:
+             observation: dict, containing the full observation about the game at the current step.
+                          The current_player is the one for which we have to reveal his cards.
+
+        Returns:
+            observation: the same dict, with cards revealed (only to acting player)
+        """
+        assert isinstance(observation, dict)
+        hand_to_reveal = None
+
+        # get previous players observation
+        for obs in observation['player_observations']:
+            # current_player_offset returns the player index of the acting player, relative to observer.
+            if obs['current_player_offset'] == self.num_players - 1:
+                prev_player_observation = obs
+                # get current agents own cards, knowing that he must have offset 1 to prev player
+                hand_to_reveal = prev_player_observation['observed_hands'][1]
+                break
+
+        # reveal hand (not necessary for training basically)
+        current_player = observation['current_player']
+        observation['player_observations'][current_player]['observed_hands'][0] = hand_to_reveal
+
+        # refresh vectorized (by simply appending the agents own vectorized hand to the vectorized observation)
+        util_hands = observation['player_observations'][current_player]['observed_hands']
+        binary_revealed = self.vectorize_single_hand(hand_to_reveal, util_hands)
+
+        observation['player_observations'][current_player]['vectorized'] += binary_revealed
+
+        return observation
 
 
 class HanabiEnv(Environment):
@@ -469,10 +558,13 @@ class HanabiEnv(Environment):
         config['hand_size'] = self.game.hand_size()
         config['num_players'] = self.game.num_players()
         config['num_colors'] = self.game.num_colors()
+        config['num_ranks'] = self.game.num_ranks()
 
         self.reward_metrics = StorageRewardMetrics(config)
         self.augment_input = USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV
         self.observation_augmenter = ObservationAugmenter(config)
+
+        self.OPEN_HANDS = OPEN_HANDS
 
     def reset(self, config=None):
         r"""Resets the environment for a new game.
@@ -582,7 +674,7 @@ class HanabiEnv(Environment):
         obs = self._make_observation_all_players()
         obs["current_player"] = self.state.cur_player()
 
-        #if USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV:
+        # if USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV:
         #    obs = augment_observation(obs, self)
         self.reward_metrics.reset()
         if self.augment_input:
@@ -761,8 +853,8 @@ class HanabiEnv(Environment):
                         if is_playable:
                             reward += self.reward_metrics.custom_reward
                         else:
-                            reward = 0.1*self.reward_metrics.custom_reward
-                        break # todo: potentially increase the reward, if more than one hinted card is last copy
+                            reward = 0.1 * self.reward_metrics.custom_reward
+                        break  # todo: potentially increase the reward, if more than one hinted card is last copy
 
                 # compute "efficiency" as factor for reward
                 # todo if efficiency is used, how do we initialize it?, Zero division prohibits using it atm
@@ -772,7 +864,8 @@ class HanabiEnv(Environment):
                 reward *= hint_penalty
 
                 # compute Hamming distance between last two given hints
-                hamming_distance = self.reward_metrics.compute_hamming_distance(vectorized, self.vectorized_observation_shape()[0])
+                hamming_distance = self.reward_metrics.compute_hamming_distance(vectorized,
+                                                                                self.vectorized_observation_shape()[0])
 
                 # in case the hint was no 'play'-hint or 'save'-hint, the reward will still be 0
                 if reward != 0:
@@ -798,14 +891,12 @@ class HanabiEnv(Environment):
                 card_discarded = get_card_played_or_discarded(action, self.state.player_hands()[cur_player])
                 # punish discarding last copies of cards, weighted inversely by their rank
                 if card_is_last_copy(card_discarded, self.state.discard_pile()):
-                    reward = -2 * float(2/(card_discarded.rank()+1))  # todo check if magnitude is not to small compared to PLAY rewards
-
-
+                    reward = -2 * float(2 / (
+                                card_discarded.rank() + 1))  # todo check if magnitude is not to small compared to PLAY rewards
 
         # ################################################ #
         # -------------- Custom Reward END --------------- #
         # ################################################ #
-
 
         last_score = self.state.score()
 
@@ -824,6 +915,10 @@ class HanabiEnv(Environment):
                                                                          player_hands=old_player_hands,
                                                                          cur_player=prev_player,
                                                                          action=action)
+
+        if self.OPEN_HANDS:
+            # show next(now current) player his cards
+            observation = self.observation_augmenter.show_cards(observation)
 
         # if reward was not modified, default to standard reward
         if reward is None:
@@ -1171,4 +1266,3 @@ class Agent(object):
                 }
         """
         raise NotImplementedError("Not implemented in Abstract Base class")
-

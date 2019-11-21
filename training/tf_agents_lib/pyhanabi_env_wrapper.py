@@ -53,6 +53,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
 
+
         info = self._env.state.score()
         obs = {'state': obs_vec, 'mask': mask_valid_actions, 'info': info}
 
@@ -111,7 +112,17 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
             maybe_additional_inputs += environment.game.num_players() * environment.game.hand_size()
             maybe_additional_range = environment.game.num_colors() + environment.game.num_ranks()
 
+        # if we use OPEN_HANDS game mode
+        assert hasattr(environment, 'OPEN_HANDS')  # use correct version of env
+        if environment.OPEN_HANDS:
+            # the cards are only revealed to acting player, hence the number of extra bits is
+            # hand_size * num_colors * num_ranks
+            num_extra_bits = environment.game.hand_size() * \
+                             environment.game.num_colors() * environment.game.num_ranks()
+            maybe_additional_inputs += num_extra_bits
+
         len_obs = environment.vectorized_observation_shape()[0]  # get length of vectorized observation
+
         state_spec = BoundedArraySpec(
             shape=(len_obs + maybe_additional_inputs, ),  # shape is expected to be tuple (N, )
             dtype=dtype_vectorized,
