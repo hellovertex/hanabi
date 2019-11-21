@@ -45,7 +45,9 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         self._episode_ended = False
         observations = self._env.reset()
         observation = observations['player_observations'][observations['current_player']]
-
+        print("all vectorized shapes")
+        for obs in observations['player_observations']:
+            print(len(obs['vectorized']))
         # reward is 0 on reset
         reward = np.asarray(0, dtype=np.float32)
 

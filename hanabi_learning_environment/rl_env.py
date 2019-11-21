@@ -444,9 +444,10 @@ class ObservationAugmenter(object):
         Returns: obs_vec: a binary list of length hand_size * num_colors * num_ranks
         """
         num_cards = 0
-        obs_vec = list()
-        offset = 0
         bits_per_card = self.num_colors * self.num_ranks
+        obs_vec = [0 for _ in range(self.hand_size * bits_per_card)]
+        offset = 0
+
         for card in hand:
             rank = card["rank"]
             color = color_char_to_idx(card["color"])
@@ -679,6 +680,11 @@ class HanabiEnv(Environment):
         self.reward_metrics.reset()
         if self.augment_input:
             obs = self.observation_augmenter.augment_observation(obs)
+
+        if self.OPEN_HANDS:
+            # show next(now current) player his cards
+            obs = self.observation_augmenter.show_cards(obs)
+
         return obs
 
     def vectorized_observation_shape(self):
