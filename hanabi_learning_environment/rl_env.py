@@ -15,13 +15,12 @@
 
 from __future__ import absolute_import
 from __future__ import division
-
-# import os
-# import sys
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import pyhanabi as pyhanabi
 from pyhanabi import color_char_to_idx
+from custom_environment.state_space import ObservationAugmenter
+from custom_environment.reward import RewardMetrics
 
 # custom imports
 import numpy as np
@@ -85,6 +84,10 @@ class Environment(object):
 USE_CUSTOM_REWARD = True
 USE_ACTION_REWARD = True
 USE_HINT_REWARD = True
+USE_PLAY_REWARD = True
+USE_DISCARD_REWARD = True
+USE_HAMMING_WEIGHT = True
+
 OPEN_HANDS = True
 
 # If this flag is set to True, it will add neurons for each card in each hand.
@@ -93,425 +96,6 @@ OPEN_HANDS = True
 # [1 to num_colors] are color values and [num_colors+1 to num_colors + rank] mean rank values
 USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = True
 
-
-def get_cards_touched_by_hint(hint, target_hand, return_indices=False):
-    """
-    Computes cards in target_hand, that are touched by hint.
-    A card is touched by a hint, if one of the following hold:
-     - the cards color is equal to the color hinted
-     - the cards rank is equals to the rank hinted
-     Args:
-         hint: pyhanabi.HanabiMove object
-         target_hand: list of pyhanabi.HanabiCard objects
-         return_indices: if True, this will return integer indices instead of pyhanabi.HanabiCard objects
-    Returns:
-        cards_touched: list of pyhanabi.HanabiCard objects containing hinted (touched) cards.
-            or if return_indices == True
-        list of integers, containing indices of touched cards
-    """
-    cards_touched = list()
-    if hint.type() == REVEAL_COLOR:
-        color_hinted = hint.color()
-        for i, card in enumerate(target_hand):
-            if card.color() == color_hinted:
-                if return_indices:
-                    cards_touched.append(i)
-                else:
-                    cards_touched.append(card)
-    elif hint.type() == REVEAL_RANK:
-        rank_hinted = hint.rank()
-        for i, card in enumerate(target_hand):
-            if card.rank() == rank_hinted:
-                if return_indices:
-                    cards_touched.append(i)
-                else:
-                    cards_touched.append(card)
-    else:
-        raise ValueError
-    return cards_touched
-
-
-def card_is_last_copy(card, discard_pile):
-    """
-    Returns true, if for given card, all other of its copies are on the discard_pile (none left in the deck)
-    Args:
-         card: a pyhanabi.HanabiCard object
-         discard_pile: a list of pyhanabi.HanabiCard objects containing discarded cards
-    Returns:
-         True, if all other copies of card are in discard_pile, False otherwise.
-    """
-    card_copies_total = COPIES_PER_CARD[str(card.rank())]
-    card_copies_discarded = 0
-    for discarded in discard_pile:
-        if discarded.color() == card.color() and discarded.rank() == card.rank():
-            card_copies_discarded += 1
-    if card_copies_total - card_copies_discarded == 1:
-        return True
-    return False
-
-
-def get_card_played_or_discarded(action, player_hand):
-    """
-    Returns the card that has been played or discarded from player_hand, according to action.
-    Args:
-         action: pyhanabi.HanabiMove object
-         player_hand: list of pyhanabi.HanabiCard objects constituting the hand of the acting player
-    Returns:
-        a pyhanabi.HanabiCard object
-    """
-    return player_hand[action.card_index()]
-
-
-# todo @gin.configurable
-class StorageRewardMetrics(object):
-    def __init__(self, extended_game_config, history_size=2):
-        # Game-type related stats
-        self.config = extended_game_config
-        self.num_players = self.config['players']
-        self.num_ranks = self.config['ranks']
-        self.num_colors = self.config['colors']
-        self.hand_size = self.config['hand_size']
-        self.total_cards_in_deck = np.sum(np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors))
-
-        # Custom reward params
-        self._custom_reward = None
-        self._penalty_last_hint_token_used = None
-        # Load custom reward params from train_eval script.
-        # If not started from there, e.g. from testscript, default to .2 for each param
-        attrs = ['_custom_reward', '_penalty_last_hint_token_used']
-        default_attr = .2
-        for attr in attrs:
-            if attr in self.config:
-                setattr(self, attr, self.config[attr])
-            else:
-                setattr(self, attr, default_attr)
-
-        self.history_size = history_size
-        self.history = list()  # stores last hints [may have some (PLAY or DISCARD) actions in between]
-
-    def reset(self):
-        self.history = list()
-
-    @property
-    def penalty_last_hint_token_used(self):
-        return self._penalty_last_hint_token_used
-
-    @property
-    def custom_reward(self):
-        return self._custom_reward
-
-    def update_history(self, action, vectorized_obs):
-        """
-        Inserts tuple (hint move, vectorized_obs) to FIFO queue self.history.
-
-        Args:
-            action: a pyhanabi.HanabiMove object
-            vectorized_obs: vectorized observation as returned by pyhanabi.ObservationEncoder
-
-        """
-        assert action.type() in [REVEAL_COLOR, REVEAL_RANK]
-        if len(self.history) < self.history_size:
-            self.history.append((action, vectorized_obs))
-        else:
-            self.history = self.history[1:]  # remove earliest hint
-            self.history.append((action, vectorized_obs))
-
-    def compute_hamming_distance(self, vectorized_obs, len_vectorized_obs):
-        """
-        Returns the hamming distance between
-            vectorized observed state when previous hint given
-        and
-            vectorized observed state when current hint was given
-        relative to acting player.
-
-        When self.history is empty, 0 is returned.
-        Args:
-             vectorized_obs: vectorized observation as returned by pyhanabi.ObservationEncoder
-             len_vectorized_obs: length of vectorized observation. Used for normalization
-        Returns:
-            hamming_distance: an integer value between 0 and 1
-         """
-
-        if len(self.history) == 0:
-            return 1  # default for first hint
-        else:
-            last_vectorized_obs = np.array(self.history[-1][1])
-            new_vectorized_obs = np.array(vectorized_obs)
-            # in order for the hamming distance to not be too large, we normalize with 1/len
-            hamming_distance = np.count_nonzero(last_vectorized_obs != new_vectorized_obs)
-            # todo: exclude certain bits for comparison, e.g. those not contributing to entropy
-            # todo: compute modified hamming_distance
-            return hamming_distance / len_vectorized_obs
-
-    def compute_hamming_distance_for_each_card_seperately(self):
-        pass
-
-
-# -------------------------------------------------------------------------------
-# State Augmentation Utils
-# -------------------------------------------------------------------------------
-
-
-def abs_position_player_target(action, cur_player, num_players):
-    """
-    Utility function. Computes the player ID, i.e. absolute position on table, of the target of the action.
-    Args:
-        action: pyhanabi.HanabiMove object containing the target_offset for REVEAL_XYZ moves
-        cur_player: int, player ID of player that computed the action
-        num_players: number of total players in the game
-    Returns:
-        target pid (player ID)
-    """
-    # For play moves, the target player ID is equal to relative player ID
-    if action.type() in [PLAY, DISCARD]:
-        return cur_player
-    # For reveal moves, it is computed using the target offset and total num of players
-    elif action.type() in [REVEAL_RANK, REVEAL_COLOR]:
-        return (cur_player + action.target_offset()) % num_players
-
-    return None
-
-
-class ObservationAugmenter(object):
-    """
-    Computes values for extra dimensions added to default state space, using a given strategy.
-    These extra values lead to augmented observations.
-    The augmented observations are later used e.g. as neural network input.
-    """
-
-    def __init__(self, config, history_size=20):
-        # each xtra_dim corresponds to one card, i.e. num_extra_state_dims = num_players * hand_size
-        self.num_extra_state_dims = config['num_players'] * config['hand_size']
-        self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
-
-        # history_size determines the number of turns, after which the value of xtra_dim is forgotten
-        self.history_size = history_size
-        # keep track of 'age' of each value of xtra_dims. Values will be reset, when age > self.history_size
-        self.observation_ages = np.zeros(self.xtra_dims.shape, dtype=int)
-        # game config
-        self.num_players = config['num_players']
-        self.hand_size = config['hand_size']
-        self.num_colors = config['num_colors']
-        self.num_ranks = config['num_ranks']
-
-    def reset(self):
-        # see __init__
-        self.xtra_dims = np.zeros((self.num_extra_state_dims,), dtype=int)
-        self.observation_ages = np.zeros(self.xtra_dims.shape, dtype=int)
-
-    def _indices_of_xtra_dims_affected_by_action(self, action, player_hands, cur_player):
-        """
-        Computes the indices of extra dimensions in augmented state, that are affected by action.
-        Args:
-            action: pyhanabi.HanabiMove object, containing the current action
-            player_hands: list of (list of pyhanabi.HanabiCard objects) constitung hands of each player in the game
-            cur_player: absolute position (pid) of player that computed the action
-        Returns:
-            idxs_dims: list of integers, containing dimensions indices
-        """
-        idxs_dim = list()
-
-        # player ID (pid), i.e. absolute position on table, of the target of the action
-        abs_pid = abs_position_player_target(action, cur_player, self.num_players)
-
-        # indices of extra dimensions affected by action
-        if action.type() in [PLAY, DISCARD]:
-            # for play and discard, its always a single index
-            idxs_dim = [(abs_pid * self.hand_size) + action.card_index()]
-
-        elif action.type() in [REVEAL_RANK, REVEAL_COLOR]:
-            idxs_cards_touched = get_cards_touched_by_hint(hint=action,
-                                                           target_hand=player_hands[abs_pid], return_indices=True)
-            # index of extra dimensions affected by hint
-            idxs_dim = [(abs_pid * self.hand_size) + idx for idx in idxs_cards_touched]
-
-        return idxs_dim
-
-    def _maybe_reset_xtra_dims_given_history_size(self):
-        """ Increments the age counter for each xtra_dim and resets (forgets its value) if necessary.
-        A value will be reset, if its age_counter is larger than self.history_size.
-        """
-        # we keep track of the age of the values of the xtra_dims, so increment them here.
-        # each index of self.observation_ages corresponds to one index of self.xtra_dims
-        self.observation_ages += 1
-        # reset those observation dimensions, which have a value older than self.history_size
-        self.xtra_dims[self.observation_ages > self.history_size] = 0
-
-    def _apply_strategy(self, target_dims, action):
-        """
-        Sets values for target_dimensions, according to strategy
-        Args:
-            target_dims: list of indices corresponding to extra dimensions affected by action
-            action: pyhanabi.HanabiMove object containing current action
-        """
-        # todo in case the strategy changes, we can start from here and will probably not have to change much elsewhere
-        xdim_value = None
-        # On PLAY/DISCARD moves, we set value of xtra_dim corresponding to the played card equal to 0
-        if action.type() in [PLAY, DISCARD]:
-            xdim_value = 0
-        # On HINT moves, we set the value of xtra_dims corresponding to touched cards according to given strategy
-        elif action.type() == REVEAL_COLOR:
-            # apply hint encoding
-            xdim_value = 1 + action.color()
-        elif action.type() == REVEAL_RANK:
-            xdim_value = self.num_colors + action.rank()
-        else:
-            raise ValueError
-
-        self.xtra_dims[target_dims] = xdim_value
-        return self.xtra_dims
-
-    def _replace_vectorized_inside_observation_by_augmented(self, observation, augmentation):
-        """
-        Replaces the observation of the next player inside the observation dictionary by its augmented version.
-        The other players observations will be discarded at training time anyway, so dont bother augmenting them as well
-
-        Note: This is the observation, AFTER applying the action, so next_pid is current player in observation
-
-        Args:
-            observation: a dict, containing observations for all players, as returned by a call to
-                         HanabiEnv._make_observation_all_players
-            augmentation: 1D-numpy array containing values for augmented dimensions. Usually its self.xtra_dims
-        Returns:
-            observation with augmented vectorized_observation for next player
-        """
-        assert isinstance(observation, dict)
-        assert augmentation is not None
-        # extract only the vectorized observation of the next agent, this one will be augmented
-        next_pid = observation['current_player']
-        vectorized_observation = observation['player_observations'][next_pid]['vectorized']
-        # concate with augmentation
-        augmented_vectorized_observation = vectorized_observation + list(augmentation)
-        # replace old vectorized observatoin of next player with new augmented version
-        observation['player_observations'][next_pid]['vectorized'] = augmented_vectorized_observation
-
-        return observation
-
-    # entry point for HanabiEnv
-    def augment_observation(self, observation, player_hands=None, cur_player=None, action=None):
-        """
-        Augments the observation we got from environment.step(action), by using a given strategy.
-
-        Since action was computed by cur_player(last player), the observation we want to augment,
-        is the observation of the player who comes next, because this player uses the augmented observation,
-        to compute the next action and so forth...
-
-        The observation of the next player is replaced inside the observation dictionary by its augmented version
-
-        Args:
-            observation: a dict, containing observations for all players, as returned by a call to
-                         HanabiEnv._make_observation_all_players
-            action: pyhanabi.HanabiMove object, containing the current action
-            player_hands: list of (list of pyhanabi.HanabiCard objects) constitung hands of each player in the game as
-                          seen by cur_player.
-            cur_player: index of player that computed action
-        Returns:
-            augmented_observation: a new version of observations dict,
-            where vectorized_observation of next player has been replaced by concatenation of
-            - vectorized_observation
-            - self.xtra_dims (after calling self._apply_strategy)
-        """
-
-        # Compute augmentation of observation
-        if action is None:
-            # if action is None, the environment has been reset, then just return zeros for the augmented state
-            augmentation = np.zeros((self.num_extra_state_dims,), dtype=int)
-        else:
-            # indices of extra dimensions in augmented state, that are affected by action
-            affected_xtra_dims = self._indices_of_xtra_dims_affected_by_action(action, player_hands, cur_player)
-            # Forget(i.e. set to 0) values of self.xtra_dims that are too old, according to history_size
-            self._maybe_reset_xtra_dims_given_history_size()
-            # set new values for affected_xtra_dims, according to strategy
-            augmentation = self._apply_strategy(affected_xtra_dims, action)
-
-        # The observation of the next player is replaced inside the observation dictionary by its augmented version
-        augmented_observation = self._replace_vectorized_inside_observation_by_augmented(observation, augmentation)
-
-        return augmented_observation
-
-    def vectorize_single_hand(self, hand, all_hands):
-        """
-        Returns binary representation of hand, consistent with encoding scheme of pyhanabi.ObservationEncoder
-        Args:
-            hand: a list containing the hand cards, (card dictionaries), e.g.
-            [{'color': 'W', 'rank': 2},
-             {'color': 'Y', 'rank': 4},
-             {'color': 'Y', 'rank': 2},
-             {'color': 'G', 'rank': 0},
-             {'color': 'W', 'rank': 1}]
-            all_hands: list of hands, used to determine bits for missing cards in player hands (on last round of game)
-
-        Returns: obs_vec: a binary list of length hand_size * num_colors * num_ranks
-        """
-        num_cards = 0
-        bits_per_card = self.num_colors * self.num_ranks
-        obs_vec = [0 for _ in range(self.hand_size * bits_per_card)]
-        offset = 0
-
-        for card in hand:
-            rank = card["rank"]
-            color = color_char_to_idx(card["color"])
-            card_index = color * self.num_ranks + rank
-
-            obs_vec[offset + card_index] = 1
-            num_cards += 1
-            offset += bits_per_card
-
-        '''
-        A player's hand can have fewer cards than the initial hand size.
-        Leave the bits for the absent cards empty (adjust the offset to skip
-        bits for the missing cards).
-        '''
-
-        if num_cards < self.hand_size:
-            offset += (self.hand_size - num_cards) * bits_per_card
-
-        # For each player, set a bit if their hand is missing a card
-        i = 0
-        for i, player_hand in enumerate(all_hands):
-            if len(player_hand) < self.hand_size:
-                obs_vec[offset + i] = 1
-        offset += self.num_players
-
-        assert len(obs_vec) == self.hand_size * self.num_colors * self.num_ranks
-
-        return obs_vec
-
-    def show_cards(self, observation):
-        """
-        Uses (for simplicity) previous agents observation, to reveal to current agent his own cards
-        It does not matter, whether the previous agent actually acted (i.e. the environment has been reset)
-        His observation will contain the necessary information anyways.
-        Args:
-             observation: dict, containing the full observation about the game at the current step.
-                          The current_player is the one for which we have to reveal his cards.
-
-        Returns:
-            observation: the same dict, with cards revealed (only to acting player)
-        """
-        assert isinstance(observation, dict)
-        hand_to_reveal = None
-
-        # get previous players observation
-        for obs in observation['player_observations']:
-            # current_player_offset returns the player index of the acting player, relative to observer.
-            if obs['current_player_offset'] == self.num_players - 1:
-                prev_player_observation = obs
-                # get current agents own cards, knowing that he must have offset 1 to prev player
-                hand_to_reveal = prev_player_observation['observed_hands'][1]
-                break
-
-        # reveal hand (not necessary for training basically)
-        current_player = observation['current_player']
-        observation['player_observations'][current_player]['observed_hands'][0] = hand_to_reveal
-
-        # refresh vectorized (by simply appending the agents own vectorized hand to the vectorized observation)
-        util_hands = observation['player_observations'][current_player]['observed_hands']
-        binary_revealed = self.vectorize_single_hand(hand_to_reveal, util_hands)
-
-        observation['player_observations'][current_player]['vectorized'] += binary_revealed
-
-        return observation
 
 
 class HanabiEnv(Environment):
@@ -561,7 +145,7 @@ class HanabiEnv(Environment):
         config['num_colors'] = self.game.num_colors()
         config['num_ranks'] = self.game.num_ranks()
 
-        self.reward_metrics = StorageRewardMetrics(config)
+        self.reward_metrics = RewardMetrics(config)
         self.augment_input = USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV
         self.observation_augmenter = ObservationAugmenter(config)
 
@@ -821,92 +405,25 @@ class HanabiEnv(Environment):
             raise ValueError("Expected action as dict or int, got: {}".format(
                 action))
 
-        # ################################################ #
         # ----------------- Custom Reward ---------------- #
-        # ################################################ #
+
         reward = None
-        old_player_hands = self.state.player_hands()
-        cur_player = self.state.cur_player()
+        prev_player_hands = self.state.player_hands()
+        prev_player = self.state.cur_player()
+
         if USE_CUSTOM_REWARD:
-            fireworks = self.state.fireworks()
-            # For hint moves, change the default reward
-            if (action.type() in [REVEAL_COLOR, REVEAL_RANK]) and USE_HINT_REWARD:
-                reward = 0
+            if USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
+                reward = self.reward_metrics.maybe_change_hint_reward(action, self.state, self.observation_encoder)
+            if USE_PLAY_REWARD and (action.type() == PLAY):
+                reward = self.reward_metrics.maybe_change_play_reward(action, self.state)
+            if USE_DISCARD_REWARD and (action.type() == DISCARD):
+                reward = self.reward_metrics.maybe_change_discard_reward(action, self.state)
 
-                # observation info
-                obs_cur_player = self.state.observation(cur_player)
-                observed_cards_cur_player = obs_cur_player.observed_hands()
-                vectorized = self.observation_encoder.encode(obs_cur_player)
 
-                # action info
-                target_offset = action.target_offset()
-                target_hand = observed_cards_cur_player[target_offset]
-
-                # get hinted cards
-                cards_touched = get_cards_touched_by_hint(hint=action, target_hand=target_hand)
-                is_playable = False
-
-                # if one hinted card is playable, set reward to CUSTOM_REWARD
-                for card in cards_touched:
-                    if card.rank() == fireworks[card.color()]:
-                        reward = self.reward_metrics.custom_reward
-                        is_playable = True
-                        break  # todo: potentially increase the reward, if more than one hinted card is playable
-
-                # if one hinted card is last copy, set reward to CUSTOM_REWARD
-                for card in cards_touched:
-                    if card_is_last_copy(card, self.state.discard_pile()):
-                        if is_playable:
-                            reward += self.reward_metrics.custom_reward
-                        else:
-                            reward = 0.1 * self.reward_metrics.custom_reward
-                        break  # todo: potentially increase the reward, if more than one hinted card is last copy
-
-                # compute "efficiency" as factor for reward
-                # todo if efficiency is used, how do we initialize it?, Zero division prohibits using it atm
-
-                # compute penalty for last hint token used
-                hint_penalty = self.state.information_tokens() - self.reward_metrics.penalty_last_hint_token_used
-                reward *= hint_penalty
-
-                # compute Hamming distance between last two given hints
-                hamming_distance = self.reward_metrics.compute_hamming_distance(vectorized,
-                                                                                self.vectorized_observation_shape()[0])
-
-                # in case the hint was no 'play'-hint or 'save'-hint, the reward will still be 0
-                if reward != 0:
-                    reward *= np.sqrt(np.sqrt(hamming_distance))
-                else:
-                    reward = 0.01 * np.sqrt(np.sqrt(hamming_distance))
-                # update last action in reward storage
-                self.reward_metrics.update_history(action, vectorized)  # used for next hamming distance
-
-            elif (action.type() == PLAY) and USE_ACTION_REWARD:
-                # get pyhnabi.HanabiCard object for played card
-                card_played = get_card_played_or_discarded(action, self.state.player_hands()[cur_player])
-
-                if card_played.rank() in [2, 3, 4]:
-                    if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 0 and fireworks[1] > 0:
-                        reward = 2 ** card_played.rank()
-                    if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 1 and fireworks[1] > 1:
-                        reward = 5 ** card_played.rank()
-                    if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 2 and fireworks[1] > 2:
-                        reward = 10 ** card_played.rank()
-
-            elif action.type() == DISCARD:
-                card_discarded = get_card_played_or_discarded(action, self.state.player_hands()[cur_player])
-                # punish discarding last copies of cards, weighted inversely by their rank
-                if card_is_last_copy(card_discarded, self.state.discard_pile()):
-                    reward = -2 * float(2 / (
-                                card_discarded.rank() + 1))  # todo check if magnitude is not to small compared to PLAY rewards
-
-        # ################################################ #
         # -------------- Custom Reward END --------------- #
-        # ################################################ #
 
         last_score = self.state.score()
 
-        prev_player = cur_player
         # Apply the action to the state.
         self.state.apply_move(action)
 
@@ -918,7 +435,7 @@ class HanabiEnv(Environment):
 
         if self.augment_input:
             observation = self.observation_augmenter.augment_observation(observation=observation,
-                                                                         player_hands=old_player_hands,
+                                                                         player_hands=prev_player_hands,
                                                                          cur_player=prev_player,
                                                                          action=action)
 

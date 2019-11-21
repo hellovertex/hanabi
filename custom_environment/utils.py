@@ -1,3 +1,31 @@
+from hanabi_learning_environment.pyhanabi import COLOR_CHAR
+
+REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
+REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
+PLAY = 1  # matches HanabiMoveType.REVEAL_RANK
+DISCARD = 2  # matches HanabiMoveType.REVEAL_RANK
+COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
+
+
+def color_char_to_idx(color_char):
+  r"""Helper function for converting color character to index.
+
+  Args:
+    color_char: str, Character representing a color.
+
+  Returns:
+    color_idx: int, Index into a color array \in [0, num_colors -1]
+
+  Raises:
+    ValueError: If color_char is not a valid color.
+  """
+  assert isinstance(color_char, str)
+  try:
+    return next(idx for (idx, c) in enumerate(COLOR_CHAR) if c == color_char)
+  except StopIteration:
+    raise ValueError("Invalid color: {}. Should be one of {}.".format(
+        color_char, COLOR_CHAR))
+
 
 def abs_position_player_target(action, cur_player, num_players):
     """
