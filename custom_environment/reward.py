@@ -17,8 +17,7 @@ class RewardMetrics(object):
         # Custom reward params
         self._custom_reward = None
         self._penalty_last_hint_token_used = None
-        # Load custom reward params from train_eval script.
-        # If not started from there, e.g. from testscript, default to .2 for each param
+        # Load custom reward params from train_eval script config, default to .2 for each param
         attrs = ['_custom_reward', '_penalty_last_hint_token_used']
         default_attr = .2
         for attr in attrs:
