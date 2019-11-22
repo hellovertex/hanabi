@@ -69,7 +69,6 @@ class Environment(object):
 
 #  ------------------------ Reward Flags -----------------------------
 USE_CUSTOM_REWARD = True
-USE_ACTION_REWARD = True
 USE_HINT_REWARD = True
 USE_PLAY_REWARD = True
 USE_DISCARD_REWARD = True
