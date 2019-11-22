@@ -29,7 +29,9 @@ class RewardMetrics(object):
         self.history_size = history_size
         self.history = list()  # stores last hints [may have some (PLAY or DISCARD) actions in between]
 
-    def reset(self):
+    def reset(self, config=None):
+        """ config will contain the reward table for PBT """
+
         self.history = list()
 
     @property
@@ -56,37 +58,7 @@ class RewardMetrics(object):
             self.history = self.history[1:]  # remove earliest hint
             self.history.append((action, vectorized_obs))
 
-    def compute_hamming_distance(self, vectorized_obs, len_vectorized_obs):
-        """
-        Returns the hamming distance between
-            vectorized observed state when previous hint given
-        and
-            vectorized observed state when current hint was given
-        relative to acting player.
-
-        When self.history is empty, 0 is returned.
-        Args:
-             vectorized_obs: vectorized observation as returned by pyhanabi.ObservationEncoder
-             len_vectorized_obs: length of vectorized observation. Used for normalization
-        Returns:
-            hamming_distance: an integer value between 0 and 1
-         """
-
-        if len(self.history) == 0:
-            return 1  # default for first hint
-        else:
-            last_vectorized_obs = np.array(self.history[-1][1])
-            new_vectorized_obs = np.array(vectorized_obs)
-            # in order for the hamming distance to not be too large, we normalize with 1/len
-            hamming_distance = np.count_nonzero(last_vectorized_obs != new_vectorized_obs)
-            # todo: exclude certain bits for comparison, e.g. those not contributing to entropy
-            # todo: compute modified hamming_distance
-            return hamming_distance / len_vectorized_obs
-
-    def compute_hamming_distance_for_each_card_seperately(self):
-        pass
-
-    def maybe_change_hint_reward(self, action, state, observation_encoder):
+    def maybe_change_hint_reward(self, action, state):
 
         assert action.type() in [REVEAL_COLOR, REVEAL_RANK]
 
@@ -95,7 +67,6 @@ class RewardMetrics(object):
         # observation info
         obs_cur_player = state.observation(state.cur_player())
         observed_cards_cur_player = obs_cur_player.observed_hands()
-        vectorized = observation_encoder.encode(obs_cur_player)
 
         # action info
         target_offset = action.target_offset()
@@ -125,17 +96,41 @@ class RewardMetrics(object):
         hint_penalty = state.information_tokens() - self.penalty_last_hint_token_used
         reward *= hint_penalty
 
-        # compute Hamming distance between last two given hints
-        hamming_distance = self.compute_hamming_distance(vectorized, observation_encoder.shape()[0])
-        self.update_history(action, vectorized)  # used for next hamming distance
-
-        # in case the hint was no 'play'-hint or 'save'-hint, the reward will still be 0
-        if reward != 0:
-            reward *= np.sqrt(np.sqrt(hamming_distance))
-        else:
-            reward = 0.01 * np.sqrt(np.sqrt(hamming_distance))
-
         return reward
+
+    def hamming_distance(self, action, vectorized_new, vectorized_old, len_vectorized_obs, per_card=False):
+
+        hamming_distance = 0
+
+        # compute Hamming distance between last two given hints
+        last_vectorized_obs = np.array(vectorized_old)
+        new_vectorized_obs = np.array(vectorized_new)
+
+        bits_per_card = self.num_colors * self.num_ranks + self.num_ranks + self.num_colors  # bits are not added consecutively
+        num_bits_per_hand = bits_per_card * self.hand_size
+
+        start = len_vectorized_obs - self.num_players * num_bits_per_hand
+        end = start + num_bits_per_hand
+
+        if per_card:
+            dist_per_card = [0 for i in range(self.hand_size)]
+            for i in range(self.hand_size):
+                end_card = start + self.num_colors * self.num_ranks
+                dist_per_card[i] = np.count_nonzero(
+                    last_vectorized_obs[start:end_card] != new_vectorized_obs[start:end_card])
+                start += end_card
+            hamming_distance = dist_per_card
+        else:
+            hamming_distance = np.count_nonzero(last_vectorized_obs[start:end] != new_vectorized_obs[start:end])
+
+        # hamming_distance /= num_bits_per_hand
+
+        #print(action, last_vectorized_obs[start:end], new_vectorized_obs[start:end])
+        #print(start, end)
+        #print(hamming_distance)
+        self.update_history(action, vectorized_new)  # used for next hamming distance
+
+        return hamming_distance
 
     @staticmethod
     def maybe_change_play_reward(action, state):
@@ -172,5 +167,20 @@ class RewardMetrics(object):
             # dont punish when the card is already played on the fireworks
 
             reward = -2 * float(2 / (card_discarded.rank() + 1))
+
+        return reward
+
+    @staticmethod
+    def maybe_apply_weight(reward, weight):
+
+        """
+         weight = hamming_distance atm
+         right now, weight may either be a list, if hamming distance was computed per card, or a float """
+
+        # in case the hint was no 'play'-hint or 'save'-hint, the reward will still be 0
+        if reward != 0:
+            reward *= np.sqrt(np.sqrt(weight))  #
+        else:
+            reward = 0.01 * np.sqrt(np.sqrt(weight))
 
         return reward

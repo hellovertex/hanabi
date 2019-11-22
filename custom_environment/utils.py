@@ -1,10 +1,9 @@
-from hanabi_learning_environment.pyhanabi import COLOR_CHAR
-
 REVEAL_COLOR = 3  # matches HanabiMoveType.REVEAL_COLOR
 REVEAL_RANK = 4  # matches HanabiMoveType.REVEAL_RANK
 PLAY = 1  # matches HanabiMoveType.REVEAL_RANK
 DISCARD = 2  # matches HanabiMoveType.REVEAL_RANK
 COPIES_PER_CARD = {'0': 3, '1': 2, '2': 2, '3': 2, '4': 1}
+COLOR_CHAR = ["R", "Y", "G", "W", "B"]  # consistent with hanabi_lib/util.cc
 
 
 def color_char_to_idx(color_char):

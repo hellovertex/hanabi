@@ -21,6 +21,7 @@ from pyhanabi import color_char_to_idx
 from custom_environment.state_space import ObservationAugmenter
 from custom_environment.reward import RewardMetrics
 from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD
+import numpy as np
 
 MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 
@@ -75,12 +76,13 @@ USE_DISCARD_REWARD = True
 USE_HAMMING_WEIGHT = True
 
 #  ------------------------ state space Flags -----------------------------
-OPEN_HANDS = True
+OPEN_HANDS = False
 # If this flag is set to True, it will add neurons for each card in each hand.
 # Their input will be ranging from 0 to num_colors + num_ranks where
 # 0 means: card is played/discarded/forgotten,
 # [1 to num_colors] are color values and [num_colors+1 to num_colors + rank] mean rank values
-USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = True
+USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = False
+USE_AUGMENTED_BINARY_INPUTS_WHEN_WRAPPING_ENV = False
 
 
 class HanabiEnv(Environment):
@@ -132,7 +134,8 @@ class HanabiEnv(Environment):
 
         self.reward_metrics = RewardMetrics(config)
         self.augment_input = USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV
-        self.observation_augmenter = ObservationAugmenter(config)
+        self.augment_input_using_binary = USE_AUGMENTED_BINARY_INPUTS_WHEN_WRAPPING_ENV
+        self.observation_augmenter = ObservationAugmenter(config, use_binary=self.augment_input_using_binary)
 
         self.OPEN_HANDS = OPEN_HANDS
 
@@ -246,7 +249,7 @@ class HanabiEnv(Environment):
 
         # if USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV:
         #    obs = augment_observation(obs, self)
-        self.reward_metrics.reset()
+        self.reward_metrics.reset(config)
         if self.augment_input:
             obs = self.observation_augmenter.augment_observation(obs)
 
@@ -394,16 +397,20 @@ class HanabiEnv(Environment):
 
         reward = None
         prev_player_hands = self.state.player_hands()
-        prev_player = self.state.cur_player()
+        # needed for hamming distance
+        cur_pid = self.state.cur_player()  # absolute pid
+        next_pid = (cur_pid + 1) % self.game.num_players()  # absolute next_pid
+
+        old_obs_next_player = self.state.observation(next_pid)
+        vectorized_old = self.observation_encoder.encode(old_obs_next_player)
 
         if USE_CUSTOM_REWARD:
             if USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
-                reward = self.reward_metrics.maybe_change_hint_reward(action, self.state, self.observation_encoder)
+                reward = self.reward_metrics.maybe_change_hint_reward(action, self.state)
             if USE_PLAY_REWARD and (action.type() == PLAY):
                 reward = self.reward_metrics.maybe_change_play_reward(action, self.state)
             if USE_DISCARD_REWARD and (action.type() == DISCARD):
                 reward = self.reward_metrics.maybe_change_discard_reward(action, self.state)
-
 
         # -------------- Custom Reward END --------------- #
 
@@ -418,15 +425,31 @@ class HanabiEnv(Environment):
         observation = self._make_observation_all_players()
         done = self.state.is_terminal()
 
+        # -------------- state space --------------- #
         if self.augment_input:
             observation = self.observation_augmenter.augment_observation(observation=observation,
                                                                          player_hands=prev_player_hands,
-                                                                         cur_player=prev_player,
                                                                          action=action)
 
         if self.OPEN_HANDS:
             # show next(now current) player his cards
             observation = self.observation_augmenter.show_cards(observation)
+
+        # -------------- state space END --------------- #
+
+        if USE_CUSTOM_REWARD:
+            if action.type() in [REVEAL_COLOR, REVEAL_RANK]:
+                vectorized = observation['player_observations'][next_pid]['vectorized']
+                # we compute this after stepping, for simplicity (to have the new observation readily computed)
+                hamming_distance = self.reward_metrics.hamming_distance(action=action,
+                                                                        vectorized_new=vectorized,
+                                                                        vectorized_old=vectorized_old,
+                                                                        len_vectorized_obs=
+                                                                        self.vectorized_observation_shape()[0],
+                                                                        per_card=False
+                                                                        # !!! if True, will return list() !!!
+                                                                        )
+                reward = self.reward_metrics.maybe_apply_weight(reward, hamming_distance)
 
         # if reward was not modified, default to standard reward
         if reward is None:

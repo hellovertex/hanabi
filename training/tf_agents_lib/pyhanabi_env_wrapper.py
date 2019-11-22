@@ -39,11 +39,11 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
         return mask.astype(np.float32)
 
-    def _reset(self):
+    def _reset(self, pbt_config=None):
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
         # i.e. ['step_type', 'reward', 'discount', 'observation']
         self._episode_ended = False
-        observations = self._env.reset()
+        observations = self._env.reset(pbt_config)
         observation = observations['player_observations'][observations['current_player']]
         # reward is 0 on reset
         reward = np.asarray(0, dtype=np.float32)
@@ -108,8 +108,13 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
         if environment.augment_input:
             # observation is augmented, so adjsut the obs_spec accordingly
-            maybe_additional_inputs += environment.game.num_players() * environment.game.hand_size()
-            maybe_additional_range = environment.game.num_colors() + environment.game.num_ranks()
+            if environment.augment_input_using_binary:
+                maybe_additional_inputs += environment.game.num_players() * environment.game.hand_size() \
+                                           * (environment.game.num_colors() + environment.game.num_ranks())
+            else:
+                maybe_additional_inputs += environment.game.num_players() * environment.game.hand_size()
+                maybe_additional_range = environment.game.num_colors() + environment.game.num_ranks()
+
 
         # if we use OPEN_HANDS game mode
         assert hasattr(environment, 'OPEN_HANDS')  # use correct version of env
