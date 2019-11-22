@@ -17,7 +17,7 @@ from tf_agents.policies import py_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
-from custom_environment.custom_metric import PyScoreMetric
+from training.tf_agents_lib.custom_metric import PyScoreMetric
 from custom_environment.pub_mdp import PubMDP
 from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
 from hanabi_learning_environment import rl_env
