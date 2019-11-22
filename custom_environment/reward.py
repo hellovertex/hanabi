@@ -1,7 +1,8 @@
 import numpy as np
 
 from custom_environment.utils import get_cards_touched_by_hint, card_is_last_copy, get_card_played_or_discarded
-from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD
+from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD, COLOR_CHAR
+
 
 # todo @gin.configurable
 class RewardMetrics(object):
@@ -117,17 +118,19 @@ class RewardMetrics(object):
             for i in range(self.hand_size):
                 end_card = start + self.num_colors * self.num_ranks
                 dist_per_card[i] = np.count_nonzero(
-                    last_vectorized_obs[start:end_card] != new_vectorized_obs[start:end_card])
+                    last_vectorized_obs[start:end_card] != new_vectorized_obs[start:end_card]) / (
+                                               self.num_colors * self.num_ranks)
                 start += end_card
             hamming_distance = dist_per_card
         else:
-            hamming_distance = np.count_nonzero(last_vectorized_obs[start:end] != new_vectorized_obs[start:end])
+            hamming_distance = np.count_nonzero(last_vectorized_obs[start:end] != new_vectorized_obs[start:end]) / (
+                        self.num_colors * self.num_ranks * self.hand_size)
 
         # hamming_distance /= num_bits_per_hand
 
-        #print(action, last_vectorized_obs[start:end], new_vectorized_obs[start:end])
-        #print(start, end)
-        #print(hamming_distance)
+        # print(action, last_vectorized_obs[start:end], new_vectorized_obs[start:end])
+        # print(start, end)
+        # print(hamming_distance)
         self.update_history(action, vectorized_new)  # used for next hamming distance
 
         return hamming_distance
@@ -162,10 +165,11 @@ class RewardMetrics(object):
         reward = None
         card_discarded = get_card_played_or_discarded(action, state.player_hands()[state.cur_player()])
 
-        # todo punish discarding last copies of cards, weighted inversely by their rank
         if card_is_last_copy(card_discarded, state.discard_pile()):
+            fireworks = state.fireworks()
             # dont punish when the card is already played on the fireworks
-
+            if fireworks[card_discarded.color()] > card_discarded.rank():
+                return None
             reward = -2 * float(2 / (card_discarded.rank() + 1))
 
         return reward
@@ -174,8 +178,8 @@ class RewardMetrics(object):
     def maybe_apply_weight(reward, weight):
 
         """
-         weight = hamming_distance atm
-         right now, weight may either be a list, if hamming distance was computed per card, or a float """
+         weight = hamming_distance (currently)
+         may either be a list, if hamming distance was computed per card, or a float """
 
         # in case the hint was no 'play'-hint or 'save'-hint, the reward will still be 0
         if reward != 0:

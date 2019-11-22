@@ -449,7 +449,7 @@ class HanabiEnv(Environment):
                                                                         per_card=False
                                                                         # !!! if True, will return list() !!!
                                                                         )
-                reward = self.reward_metrics.maybe_apply_weight(reward, hamming_distance)
+                reward = self.reward_metrics.maybe_apply_weight(reward=reward, weight=hamming_distance)
 
         # if reward was not modified, default to standard reward
         if reward is None:
