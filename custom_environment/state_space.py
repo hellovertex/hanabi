@@ -191,22 +191,6 @@ class ObservationAugmenter(object):
             num_cards += 1
             offset += bits_per_card
 
-        '''
-        A player's hand can have fewer cards than the initial hand size.
-        Leave the bits for the absent cards empty (adjust the offset to skip
-        bits for the missing cards).
-        '''
-
-        if num_cards < self.hand_size:
-            offset += (self.hand_size - num_cards) * bits_per_card
-
-        # For each player, set a bit if their hand is missing a card
-        i = 0
-        for i, player_hand in enumerate(all_hands):
-            if len(player_hand) < self.hand_size:
-                obs_vec[offset + i] = 1
-        offset += self.num_players
-
         assert len(obs_vec) == self.hand_size * self.num_colors * self.num_ranks
 
         return obs_vec
