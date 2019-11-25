@@ -273,7 +273,7 @@ def train_eval(
             tf_env.time_step_spec(),
             tf_env.action_spec(),
             optimizer,
-            entropy_regularization=0.2,
+            entropy_regularization=0,
             actor_net=actor_net,
             value_net=value_net,
             num_epochs=num_epochs,

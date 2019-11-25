@@ -72,10 +72,10 @@ USE_CUSTOM_REWARD = True
 USE_HINT_REWARD = True
 USE_PLAY_REWARD = True
 USE_DISCARD_REWARD = True
-USE_HAMMING_WEIGHT = True
+USE_HAMMING_WEIGHT = False
 
 #  ------------------------ state space Flags -----------------------------
-OPEN_HANDS = False
+OPEN_HANDS = True
 # If this flag is set to True, it will add neurons for each card in each hand.
 # Their input will be ranging from 0 to num_colors + num_ranks where
 # 0 means: card is played/discarded/forgotten,
@@ -394,7 +394,7 @@ class HanabiEnv(Environment):
 
         # ----------------- Custom Reward ---------------- #
 
-        reward = None
+        reward = 2
         prev_player_hands = self.state.player_hands()
         # needed for hamming distance
         cur_pid = self.state.cur_player()  # absolute pid
@@ -405,11 +405,11 @@ class HanabiEnv(Environment):
 
         if USE_CUSTOM_REWARD:
             if USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
-                reward = self.reward_metrics.maybe_change_hint_reward(action, self.state)
+                reward += self.reward_metrics.maybe_change_hint_reward(action, self.state)
             if USE_PLAY_REWARD and (action.type() == PLAY):
-                reward = self.reward_metrics.maybe_change_play_reward(action, self.state)
+                reward += self.reward_metrics.maybe_change_play_reward(action, self.state)
             if USE_DISCARD_REWARD and (action.type() == DISCARD):
-                reward = self.reward_metrics.maybe_change_discard_reward(action, self.state)
+                reward += self.reward_metrics.maybe_change_discard_reward(action, self.state)
 
         # -------------- Custom Reward END --------------- #
 

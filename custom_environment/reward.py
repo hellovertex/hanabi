@@ -145,15 +145,12 @@ class RewardMetrics(object):
         card_played = get_card_played_or_discarded(action, state.player_hands()[state.cur_player()])
         fireworks = state.fireworks()
 
-        reward = None
-        if card_played.rank() in [2, 3, 4]:
-            if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 0 and fireworks[1] > 0:
-                reward = 2 ** card_played.rank()
-            if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 1 and fireworks[1] > 1:
-                reward = 5 ** card_played.rank()
-            if card_played.rank() == fireworks[card_played.color()] and fireworks[0] > 2 and fireworks[1] > 2:
-                reward = 10 ** card_played.rank()
 
+        if card_played.rank() in [0, 1, 2, 3, 4]:
+            if card_played.rank() == fireworks[card_played.color()]:
+                reward = 3 ** card_played.rank()
+            if card_played.rank() != fireworks[card_played.color()]:
+                reward= -50
         return reward
 
     @staticmethod
@@ -162,16 +159,19 @@ class RewardMetrics(object):
         """ Changes reward for DISCARD moves """
         assert action.type() == DISCARD
 
-        reward = None
         card_discarded = get_card_played_or_discarded(action, state.player_hands()[state.cur_player()])
 
-        if card_is_last_copy(card_discarded, state.discard_pile()):
-            fireworks = state.fireworks()
-            # dont punish when the card is already played on the fireworks
-            if fireworks[card_discarded.color()] > card_discarded.rank():
-                return None
-            reward = -2 * float(2 / (card_discarded.rank() + 1))
 
+        fireworks = state.fireworks()
+
+        if fireworks[card_discarded.color()] > card_discarded.rank():
+            reward=0.5
+        elif card_discarded.rank()==4:
+            reward=0
+        elif card_is_last_copy(card_discarded, state.discard_pile()):
+            reward= -50 * float(2 / (card_discarded.rank() + 1))
+        else:
+            reward=-float(1/ (card_discarded.rank() + 1))
         return reward
 
     @staticmethod
