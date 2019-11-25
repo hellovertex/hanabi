@@ -146,10 +146,9 @@ class Game():
             noise_val_list.append((np.random.normal(0, noisescale, noise_ph.shape)))
         self.noise_val_list = noise_val_list
 
-    def reset_model(self, new_model):
+    def reset_model(self, new_model, rewards_config):
         self.model = new_model
         self.players = [Player(i, new_model) for i in range(self.num_players)]
-        self.rewards_config = rewards_config
         self.reset(rewards_config)
         
     def reset(self, rewards_config = {}):

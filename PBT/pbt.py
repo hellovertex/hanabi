@@ -4,7 +4,7 @@ import random
 import os
 from collections import defaultdict
 import pickle
-
+from PPOAgent.Model import Model
 def randomize_dict(d, min_val = 0.5, max_val = 2):
     for key in d:
         d[key] *= np.random.uniform(min_val, max_val)
