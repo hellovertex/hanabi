@@ -1,0 +1,11 @@
+.ipynb_checkpoints/
+experiments/
+env/
+tensorboard/
+*.pycgame_example
+.idea/
+*.pyc
+__pycache__/*
+agents/rainbow_10kit/*
+training/logs/*
+training/summaries/*
