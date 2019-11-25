@@ -5,15 +5,18 @@ import os
 from collections import defaultdict
 import pickle
 from PPOAgent.Model import Model
+
 def randomize_dict(d, min_val = 0.5, max_val = 2):
     for key in d:
         d[key] *= np.random.uniform(min_val, max_val)
     return d
-def mutate_dict(d, mutations):
+
+def mutate_dict(d, mutations, mutation_prob = 0.075):
     d_new = dict(d)
     for key in d_new:
-        mutation = random.choice(mutations)
-        d_new[key] *= mutation
+        if np.random.uniform(0, 1) <= mutation_prob:
+            mutation = random.choice(mutations)
+            d_new[key] *= mutation
     return d_new
 def sliding_average(data, n = 10):
     data_averaged = [np.mean(data[i : i + n]) for i in range(0, len(data) + 1 - n, n)]
@@ -110,11 +113,17 @@ def update_rewards(pair, reward_weights_pool):
     reward_weights_pool[pair[0]] = dict(good_reward_weights)
     
     
-def mutate_models(model_pool, reward_weights_pool, k_pool, mutations):
-    for model_num, model in enumerate(model_pool):
-        model.change_lr(model.lr.value() * random.choice(mutations))
-        k_pool[model_num] = max(1, int(k_pool[model_num] * random.choice(mutations)))
-        reward_weights_pool[model_num] = mutate_dict(reward_weights_pool[model_num], mutations)
+def mutate_models(model_pool, reward_weights_pool, k_pool, nums_to_mutate, mutations, mutation_prob = 0.075):
+    for model_num in enumerate(nums_to_mutate):
+        model = model_pool[model_num]
+        if np.random.uniform(0, 1) <= mutation_prob:
+            model.change_lr(model.lr.value() * random.choice(mutations))
+            
+        if np.random.uniform(0, 1) <= mutation_prob:
+            k_pool[model_num] = max(1, int(k_pool[model_num] * random.choice(mutations)))
+        
+        reward_weights_pool[model_num] = mutate_dict(reward_weights_pool[model_num], mutations, mutation_prob)
+        
     return model_pool, reward_weights_pool, k_pool
 
 def print_pool_results(pool_results, sorted_model_nums, title, time_taken):
