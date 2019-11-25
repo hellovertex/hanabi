@@ -114,7 +114,7 @@ def update_rewards(pair, reward_weights_pool):
     
     
 def mutate_models(model_pool, reward_weights_pool, k_pool, nums_to_mutate, mutations, mutation_prob = 0.075):
-    for model_num in enumerate(nums_to_mutate):
+    for model_num in nums_to_mutate:
         model = model_pool[model_num]
         if np.random.uniform(0, 1) <= mutation_prob:
             model.change_lr(model.lr.value() * random.choice(mutations))
