@@ -167,7 +167,7 @@ class RewardMetrics(object):
         if fireworks[card_discarded.color()] > card_discarded.rank():
             reward=0.5
         elif card_discarded.rank()==4:
-            reward=0
+            reward=-1
         elif card_is_last_copy(card_discarded, state.discard_pile()):
             reward= -50 * float(2 / (card_discarded.rank() + 1))
         else:
