@@ -99,7 +99,6 @@ class RewardMetrics(object):
                     break
         # Compute reward per card
         else:
-            card_rewards = [0 for _ in range(self.hand_size)]
 
             # todo can add more conditions here
             cond = namedtuple('card_condition', ['playable', 'last_copy'])
