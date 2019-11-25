@@ -161,7 +161,7 @@ def write_pool_summary(summary_writer, model_pool, reward_weights_pool, k_pool, 
     summary_writer.add_summary(summary, evolution_epoch)
     summary_writer.flush()
     
-def save_population(model_pool, saver_pool, reward_weights_pool, k_pool, 
+def save_population(sess, model_pool, saver_pool, reward_weights_pool, k_pool, 
                     population_name, folder = './experiments/PBT/'):
     path = folder + population_name + '/'
     for model, saver, reward_dict, k in zip(model_pool, saver_pool, reward_weights_pool, k_pool):
