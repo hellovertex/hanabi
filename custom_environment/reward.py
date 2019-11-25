@@ -147,15 +147,17 @@ class RewardMetrics(object):
         end = start + num_bits_per_hand
 
         if self.per_card_reward:
-            dist_per_card = np.array([0 for i in range(self.hand_size)])
+            dist_per_card = np.array([0. for i in range(self.hand_size)])
             for i in range(self.hand_size):
                 end_card = start + self.num_colors * self.num_ranks
                 # (ones before - ones after) / ones after
                 # normalization_before_commit = self.num_colors * self.num_ranks
                 normalization = np.count_nonzero(new_vectorized_obs[start:end_card]) + 1  # add one in case its 0
-                dist_per_card[i] = np.count_nonzero(
-                    last_vectorized_obs[start:end_card] != new_vectorized_obs[start:end_card]) / normalization
-                start += end_card
+                difference = np.count_nonzero(
+                    last_vectorized_obs[start:end_card] != new_vectorized_obs[start:end_card])
+                dist_per_card[i] = difference / normalization
+                # print(f'action is {action} difference is {difference}, normalization is {normalization}, dist_per_card[i] is {dist_per_card[i]}, new bits { new_vectorized_obs[start:end_card]}')
+                start += end_card + self.num_ranks + self.num_colors
             hamming_distance = dist_per_card
         else:
             # this is approximate, as end may contain some extra bits due to bits_per_card value
