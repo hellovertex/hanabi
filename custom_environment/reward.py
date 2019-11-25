@@ -2,7 +2,7 @@ import numpy as np
 
 from custom_environment.utils import get_cards_touched_by_hint, card_is_last_copy, get_card_played_or_discarded
 from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD, COLOR_CHAR
-
+from collections import namedtuple
 
 # todo @gin.configurable
 class RewardMetrics(object):
@@ -18,6 +18,7 @@ class RewardMetrics(object):
         # Custom reward params
         self._custom_reward = None
         self._penalty_last_hint_token_used = None
+        self.per_card_reward = self.config['per_card_reward']
         # Load custom reward params from train_eval script config, default to .2 for each param
         attrs = ['_custom_reward', '_penalty_last_hint_token_used']
         default_attr = .2
@@ -76,22 +77,55 @@ class RewardMetrics(object):
         # get hinted cards
         cards_touched = get_cards_touched_by_hint(hint=action, target_hand=target_hand)
         is_playable = False
+        is_last_copy = False
 
-        # if one hinted card is playable, set reward to CUSTOM_REWARD
-        for card in cards_touched:
-            if card.rank() == state.fireworks()[card.color()]:
-                reward = self.custom_reward
-                is_playable = True
-                break  # todo: potentially increase the reward, if more than one hinted card is playable
+        # Compute single reward
+        # todo: (re-)move this if statement (is it needed anymore?)
+        if not self.per_card_reward:
+            # if one hinted card is playable, set reward to CUSTOM_REWARD
+            for card in cards_touched:
+                if card.rank() == state.fireworks()[card.color()]:
+                    reward = self.custom_reward
+                    is_playable = True
+                    break
 
-        # if one hinted card is last copy, set reward to CUSTOM_REWARD
-        for card in cards_touched:
-            if card_is_last_copy(card, state.discard_pile()):
-                if is_playable:
-                    reward += self.custom_reward
-                else:
-                    reward = 0.1 * self.custom_reward
-                break  # todo: potentially increase the reward, if more than one hinted card is last copy
+            # if one hinted card is last copy, set reward to CUSTOM_REWARD
+            for card in cards_touched:
+                if card_is_last_copy(card, state.discard_pile()):
+                    if is_playable:
+                        reward += self.custom_reward
+                    else:
+                        reward = 0.1 * self.custom_reward
+                    break
+        # Compute reward per card
+        else:
+            card_rewards = [0 for _ in range(self.hand_size)]
+
+            # todo can add more conditions here
+            cond = namedtuple('card_condition', ['playable', 'last_copy'])
+            # initialize conditions per card
+            conds_per_card = [cond(playable=False, last_copy=False) for _ in range(self.hand_size)]
+            reward_per_card = [0 for _ in range(self.hand_size)]
+
+            # set reward values
+            reward_playable = self.custom_reward
+            reward_last_copy = self.custom_reward * .1
+
+            # determine for each card, which conditions are True
+            for i, card in enumerate(cards_touched):
+                if card.rank() == state.fireworks()[card.color()]:
+                    is_playable = True
+                if card_is_last_copy(card, state.discard_pile()):
+                    is_last_copy = True
+                conds_per_card[i] = cond(is_playable, is_last_copy)
+            # Compute the reward accordingly
+                reward_per_card[i] = conds_per_card[i].playable * reward_playable + \
+                                     conds_per_card[i].last_copy * reward_last_copy
+                # reset conditions
+                is_playable = False
+                is_last_copy = False
+
+            reward = np.array(reward_per_card)
 
         # compute penalty for last hint token used
         hint_penalty = state.information_tokens() - self.penalty_last_hint_token_used
@@ -99,7 +133,7 @@ class RewardMetrics(object):
 
         return reward
 
-    def hamming_distance(self, action, vectorized_new, vectorized_old, len_vectorized_obs, per_card=False):
+    def hamming_distance(self, action, vectorized_new, vectorized_old, len_vectorized_obs):
 
         hamming_distance = 0
 
@@ -113,24 +147,24 @@ class RewardMetrics(object):
         start = len_vectorized_obs - self.num_players * num_bits_per_hand
         end = start + num_bits_per_hand
 
-        if per_card:
-            dist_per_card = [0 for i in range(self.hand_size)]
+        if self.per_card_reward:
+            dist_per_card = np.array([0 for i in range(self.hand_size)])
             for i in range(self.hand_size):
                 end_card = start + self.num_colors * self.num_ranks
+                # (ones before - ones after) / ones after
+                # normalization_before_commit = self.num_colors * self.num_ranks
+                normalization = np.count_nonzero(new_vectorized_obs[start:end_card]) + 1  # add one in case its 0
                 dist_per_card[i] = np.count_nonzero(
-                    last_vectorized_obs[start:end_card] != new_vectorized_obs[start:end_card]) / (
-                                               self.num_colors * self.num_ranks)
+                    last_vectorized_obs[start:end_card] != new_vectorized_obs[start:end_card]) / normalization
                 start += end_card
             hamming_distance = dist_per_card
         else:
-            hamming_distance = np.count_nonzero(last_vectorized_obs[start:end] != new_vectorized_obs[start:end]) / (
-                        self.num_colors * self.num_ranks * self.hand_size)
+            # this is approximate, as end may contain some extra bits due to bits_per_card value
+            # normalization_before_commit = self.num_colors * self.num_ranks * self.hand_size
+            normalization = np.count_nonzero(new_vectorized_obs[start:end])
+            hamming_distance = np.count_nonzero(last_vectorized_obs[start:end] != new_vectorized_obs[start:end]) / normalization
 
-        # hamming_distance /= num_bits_per_hand
 
-        # print(action, last_vectorized_obs[start:end], new_vectorized_obs[start:end])
-        # print(start, end)
-        # print(hamming_distance)
         self.update_history(action, vectorized_new)  # used for next hamming distance
 
         return hamming_distance
@@ -174,17 +208,22 @@ class RewardMetrics(object):
             reward=-float(1/ (card_discarded.rank() + 1))
         return reward
 
-    @staticmethod
-    def maybe_apply_weight(reward, weight):
+    def maybe_apply_weight(self, reward, weight):
 
         """
          weight = hamming_distance (currently)
          may either be a list, if hamming distance was computed per card, or a float """
 
         # in case the hint was no 'play'-hint or 'save'-hint, the reward will still be 0
-        if reward != 0:
-            reward *= np.sqrt(np.sqrt(weight))  #
+        if isinstance(weight, list) or isinstance(weight, np.ndarray):
+            assert (isinstance(reward, list) or isinstance(reward, np.ndarray))
+            assert self.per_card_reward is True
+            # compute weighting elementwise
+            return np.dot(weight, reward)
         else:
-            reward = 0.01 * np.sqrt(np.sqrt(weight))
+            if reward != 0:
+                reward *= np.sqrt(np.sqrt(weight))  #
+            else:
+                reward = 0.01 * np.sqrt(np.sqrt(weight))
 
         return reward

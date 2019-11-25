@@ -444,12 +444,12 @@ class HanabiEnv(Environment):
                                                                         vectorized_new=vectorized,
                                                                         vectorized_old=vectorized_old,
                                                                         len_vectorized_obs=
-                                                                        self.vectorized_observation_shape()[0],
-                                                                        per_card=False
-                                                                        # !!! if True, will return list() !!!
-                                                                        )
-                reward = self.reward_metrics.maybe_apply_weight(reward=reward, weight=hamming_distance)
+                                                                        self.vectorized_observation_shape()[0])
 
+
+                print(reward, hamming_distance)  # [3. 3.] [2 0]
+                reward = self.reward_metrics.maybe_apply_weight(reward=reward, weight=hamming_distance)
+                print(reward)  # 6.0
         # if reward was not modified, default to standard reward
         if reward is None:
             reward = self.state.score() - last_score

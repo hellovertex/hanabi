@@ -463,7 +463,8 @@ def main(_):
                                         "max_life_tokens": max_life_tokens,
                                         "observation_type": OBSERVATION_TYPE,
                                         "custom_reward": custom_reward,
-                                        "penalty_last_hint_token": penalty
+                                        "penalty_last_hint_token": penalty,
+                                        "per_card_reward": True
                                     }
                                     # ################################################ #
                                     # --------------- Load Environments -------------- #
