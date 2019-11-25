@@ -394,7 +394,7 @@ class HanabiEnv(Environment):
 
         # ----------------- Custom Reward ---------------- #
 
-        reward = 2
+        reward = 3
         prev_player_hands = self.state.player_hands()
         # needed for hamming distance
         cur_pid = self.state.cur_player()  # absolute pid
