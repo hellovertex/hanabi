@@ -183,7 +183,7 @@ class RewardMetrics(object):
 
         if card_played.rank() in [0, 1, 2, 3, 4]:
             if card_played.rank() == fireworks[card_played.color()]:
-                reward = 3 ** card_played.rank()
+                reward = 2 ** card_played.rank()
             if card_played.rank() != fireworks[card_played.color()]:
                 reward= -50
         return reward
@@ -204,7 +204,7 @@ class RewardMetrics(object):
         elif card_discarded.rank()==4:
             reward=-1
         elif card_is_last_copy(card_discarded, state.discard_pile()):
-            reward= -50 * float(2 / (card_discarded.rank() + 1))
+            reward= -20 * float(2 / (card_discarded.rank() + 1))
         else:
             reward=-float(1/ (card_discarded.rank() + 1))
         return reward
@@ -220,11 +220,6 @@ class RewardMetrics(object):
             assert (isinstance(reward, list) or isinstance(reward, np.ndarray))
             assert self.per_card_reward is True
             # compute weighting elementwise
-            return np.dot(weight, reward)
-        else:
-            if reward != 0:
-                reward *= np.sqrt(np.sqrt(weight))  #
-            else:
-                reward = 0.01 * np.sqrt(np.sqrt(weight))
+            return np.log(np.sum(np.exp(5*np.multiply(weight, reward))))/5 + 0.1 * weight
 
         return reward

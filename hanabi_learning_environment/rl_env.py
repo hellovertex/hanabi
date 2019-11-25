@@ -72,10 +72,10 @@ USE_CUSTOM_REWARD = True
 USE_HINT_REWARD = True
 USE_PLAY_REWARD = True
 USE_DISCARD_REWARD = True
-USE_HAMMING_WEIGHT = False
+USE_HAMMING_WEIGHT = True
 
 #  ------------------------ state space Flags -----------------------------
-OPEN_HANDS = True
+OPEN_HANDS = False
 # If this flag is set to True, it will add neurons for each card in each hand.
 # Their input will be ranging from 0 to num_colors + num_ranks where
 # 0 means: card is played/discarded/forgotten,
