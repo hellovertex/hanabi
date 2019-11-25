@@ -1,3 +1,5 @@
+tut/
+training/rainbow/
 .ipynb_checkpoints/
 experiments/
 env/
