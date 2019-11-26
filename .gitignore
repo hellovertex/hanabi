@@ -1,3 +1,6 @@
+.ipynb_checkpoints/
+baselines/
+experiments/
 training/rainbow/
 tut/
 env/

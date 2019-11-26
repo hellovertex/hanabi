@@ -59,9 +59,11 @@ sys.path.insert(0, 'lib')
 from hanabi_learning_environment import rl_env
 from training.tf_agents_lib import masked_networks, pyhanabi_env_wrapper
 
-flags.DEFINE_string('root_dir', str(os.path.dirname(__file__)) + '/logs/hanabi_small/ppo/',
+
+
+flags.DEFINE_string('root_dir', str(os.path.dirname(__file__)) + '/logs/',
                     'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_string('summary_dir', str(os.path.dirname(__file__)) + '/summaries/hanabi_small/ppo/',
+flags.DEFINE_string('summary_dir', str(os.path.dirname(__file__)) + '/summaries/',
                     'Directory for writing tensorboards summaries.')
 flags.DEFINE_string('master', '', 'master session')
 flags.DEFINE_integer('replay_buffer_capacity', 1001,
@@ -83,7 +85,9 @@ flags.DEFINE_boolean('use_rnns', False,
                      'If true, use RNN for policy and value function.')
 FLAGS = flags.FLAGS
 
-
+# unfortunately, one cannot have different tfevent filenames nor different models in the same folder, so the best is right now,
+# to create a folder for each run
+FOLDERNAME = 'this_is_where_the_current_tfevent_files_will_get_stored'
 COLORS = [2]
 RANKS = [5]
 NUM_PLAYERS = [2]
@@ -105,31 +109,6 @@ def load_hanabi_env(game_config):
         return pyhanabi_env_wrapper.PyhanabiEnvWrapper(pyhanabi_env)
 
     return None
-
-
-def format_dir(dir, game_config):
-    """ Outputs directory for tensorboard summary writing, corresponding to current game_config
-    Example: dir/2_players/hand_size=2/max_life_tokens=2/colors=2,ranks=2/max_info_tokens=3,ot=1/
-    """
-    first_lvl = f'{game_config["players"]}_players'
-    second_lvl = f'hand_size={game_config["hand_size"]}'
-    third_lvl = f'max_life_tokens={game_config["max_life_tokens"]}'
-    fourth_lvl = f'colors={game_config["colors"]},ranks={game_config["ranks"]}'
-    fifth_lvl = f'max_info_tokens={game_config["max_information_tokens"]},ot={game_config["observation_type"]}'
-
-    tmp = os.path.join(dir, first_lvl)
-    tmp = os.path.join(tmp, second_lvl)
-    tmp = os.path.join(tmp, third_lvl)
-    tmp = os.path.join(tmp, fourth_lvl)
-    formatted_summary_dir = os.path.join(tmp, fifth_lvl)
-    if 'custom_reward' in game_config:
-        custom_reward = f'custom_reward={game_config["custom_reward"]}'
-        formatted_summary_dir = os.path.join(formatted_summary_dir, custom_reward)
-    if 'penalty_last_hint_token' in game_config:
-        penalty = f'penalty={game_config["penalty_last_hint_token"]}'
-        formatted_summary_dir = os.path.join(formatted_summary_dir, penalty)
-
-    return formatted_summary_dir
 
 
 def get_networks(tf_env, networks_layers):
@@ -184,11 +163,13 @@ def get_metrics_train_and_step(num_eval_episodes, num_parallel_environments):
     return train_metrics, step_metrics, environment_steps_count
 
 
-def get_writers_train_eval(summary_dir, eval_dir, game_config, summaries_flush_secs=1):
-    formatted_summary_dir = format_dir(summary_dir, game_config)
-
+def get_writers_train_eval(summary_dir, eval_dir, summaries_flush_secs=1, filename_suffix=None):
+    if filename_suffix is not None:
+        formatted = '_____________' + filename_suffix
+    else:
+        formatted = None
     train_summary_writer = tf.compat.v2.summary.create_file_writer(
-        formatted_summary_dir, flush_millis=summaries_flush_secs * 1000)  #
+        summary_dir, flush_millis=summaries_flush_secs * 1000, filename_suffix=formatted)  #
     train_summary_writer.set_as_default()
 
     eval_summary_writer = tf.compat.v2.summary.create_file_writer(
@@ -243,10 +224,11 @@ def train_eval(
     # ------------ Create summary-writers ------------ #
     # ################################################ #
     root_dir = os.path.expanduser(root_dir)
-    train_dir = os.path.join(format_dir(root_dir, game_config), 'train')
-    eval_dir = os.path.join(format_dir(root_dir, game_config), 'eval')
+    summary_dir = os.path.join(summary_dir, FOLDERNAME)
+    train_dir = os.path.join(os.path.join(root_dir, 'train'), FOLDERNAME)
+    eval_dir = os.path.join(os.path.join(root_dir, 'eval'), FOLDERNAME)
 
-    train_summary_writer, eval_summary_writer = get_writers_train_eval(summary_dir, eval_dir, game_config)
+    train_summary_writer, eval_summary_writer = get_writers_train_eval(summary_dir, eval_dir)
     eval_metrics = get_metrics_eval(num_parallel_environments, num_eval_episodes)
     eval_summary_writer_flush_op = eval_summary_writer.flush()
 
