@@ -88,6 +88,8 @@ FLAGS = flags.FLAGS
 # unfortunately, one cannot have different tfevent filenames nor different models in the same folder, so the best is right now,
 # to create a folder for each run
 FOLDERNAME = 'this_is_where_the_current_tfevent_files_will_get_stored'
+FILENAME_SUFFIX = 'only change this when you want the filename to have a different suffix'
+#FILENAME_SUFFIX = 'BLUB'
 COLORS = [2]
 RANKS = [5]
 NUM_PLAYERS = [2]
@@ -165,9 +167,10 @@ def get_metrics_train_and_step(num_eval_episodes, num_parallel_environments):
 
 def get_writers_train_eval(summary_dir, eval_dir, summaries_flush_secs=1, filename_suffix=None):
     if filename_suffix is not None:
-        formatted = '_____________' + filename_suffix
-    else:
-        formatted = None
+        if not filename_suffix == 'only change this when you want the filename to have a different suffix':
+            formatted = '_____________' + filename_suffix
+        else:
+            formatted = None
     train_summary_writer = tf.compat.v2.summary.create_file_writer(
         summary_dir, flush_millis=summaries_flush_secs * 1000, filename_suffix=formatted)  #
     train_summary_writer.set_as_default()
@@ -228,7 +231,7 @@ def train_eval(
     train_dir = os.path.join(os.path.join(root_dir, 'train'), FOLDERNAME)
     eval_dir = os.path.join(os.path.join(root_dir, 'eval'), FOLDERNAME)
 
-    train_summary_writer, eval_summary_writer = get_writers_train_eval(summary_dir, eval_dir)
+    train_summary_writer, eval_summary_writer = get_writers_train_eval(summary_dir, eval_dir, filename_suffix=FILENAME_SUFFIX)
     eval_metrics = get_metrics_eval(num_parallel_environments, num_eval_episodes)
     eval_summary_writer_flush_op = eval_summary_writer.flush()
 
