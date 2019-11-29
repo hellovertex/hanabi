@@ -220,6 +220,6 @@ class RewardMetrics(object):
             assert (isinstance(reward, list) or isinstance(reward, np.ndarray))
             assert self.per_card_reward is True
             # compute weighting elementwise
-            return np.log(np.sum(np.exp(5*np.multiply(weight, reward))))/5 + 0.1 * weight
+            return np.log(np.sum(np.exp(5*np.multiply(weight, reward))))/5 + 0.01*np.sum(weight)
 
         return reward
