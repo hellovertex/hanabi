@@ -1,3 +1,7 @@
+*.ipynb_checkpoints/
+baselines/
+experiments/
+training/rainbow/
 env/
 tut/
 *.pyc
