@@ -123,6 +123,7 @@ class HanabiEnv(Environment):
         config['num_players'] = self.game.num_players()
         config['num_colors'] = self.game.num_colors()
         config['num_ranks'] = self.game.num_ranks()
+
         if 'use_custom_rewards' not in config:
             config['use_custom_rewards'] = False
         self.use_custom_rewards = config['use_custom_rewards']
@@ -131,7 +132,7 @@ class HanabiEnv(Environment):
         self.augment_input_using_binary = USE_AUGMENTED_BINARY_INPUTS_WHEN_WRAPPING_ENV
         self.observation_augmenter = ObservationAugmenter(config, use_binary=self.augment_input_using_binary)
 
-        self.OPEN_HANDS = OPEN_HANDS
+        self.open_hands = config['open_hands']
 
     def reset(self, rewards_config = {}):
         r"""Resets the environment for a new game.
@@ -251,7 +252,7 @@ class HanabiEnv(Environment):
         if self.augment_input:
             obs = self.observation_augmenter.augment_observation(obs)
 
-        if self.OPEN_HANDS:
+        if self.open_hands:
             # show next(now current) player his cards
             obs = self.observation_augmenter.show_cards(obs)
 
@@ -433,7 +434,7 @@ class HanabiEnv(Environment):
                                                                          player_hands=prev_player_hands,
                                                                          action=action)
 
-        if self.OPEN_HANDS:
+        if self.open_hands:
             # show next(now current) player his cards
             observation = self.observation_augmenter.show_cards(observation)
 
@@ -593,8 +594,8 @@ class HanabiEnv(Environment):
         return move
 
 
-def make(environment_name="Hanabi-Full", num_players=2, use_custom_rewards = False, 
-         pyhanabi_path=None, rewards_config = {}):
+def make(environment_name="Hanabi-Full", num_players = 2, use_custom_rewards = False,
+         open_hands = False, pyhanabi_path = None, rewards_config = {}):
     """Make an environment.
     Args:
       environment_name: str, Name of the environment to instantiate.
@@ -627,7 +628,8 @@ def make(environment_name="Hanabi-Full", num_players=2, use_custom_rewards = Fal
                     3,
                 "observation_type":
                     pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value,
-                "use_custom_rewards" : use_custom_rewards
+                "use_custom_rewards" : use_custom_rewards,
+                "open_hands" : open_hands
             }, rewards_config = rewards_config)
     elif environment_name == "Hanabi-Full-Minimal":
         return HanabiEnv(
@@ -638,7 +640,8 @@ def make(environment_name="Hanabi-Full", num_players=2, use_custom_rewards = Fal
                 "max_information_tokens": 8,
                 "max_life_tokens": 3,
                 "observation_type": pyhanabi.AgentObservationType.MINIMAL.value,
-                "use_custom_rewards" : use_custom_rewards
+                "use_custom_rewards" : use_custom_rewards,
+                "open_hands" : open_hands
             }, rewards_config = rewards_config)
     elif environment_name == "Hanabi-Small":
         return HanabiEnv(
@@ -657,7 +660,8 @@ def make(environment_name="Hanabi-Full", num_players=2, use_custom_rewards = Fal
                     1,
                 "observation_type":
                     pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value,
-                "use_custom_rewards" : use_custom_rewards
+                "use_custom_rewards" : use_custom_rewards,
+                "open_hands" : open_hands
             }, rewards_config = rewards_config)
     elif environment_name == "Hanabi-Very-Small":
         return HanabiEnv(
@@ -676,7 +680,8 @@ def make(environment_name="Hanabi-Full", num_players=2, use_custom_rewards = Fal
                     1,
                 "observation_type":
                     pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value,
-                "use_custom_rewards" : use_custom_rewards
+                "use_custom_rewards" : use_custom_rewards,
+                "open_hands" : open_hands
             }, rewards_config = rewards_config)
     else:
         raise ValueError("Unknown environment {}".format(environment_name))

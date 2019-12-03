@@ -1,7 +1,57 @@
 import tensorflow as tf
 import numpy as np
 
+def constant(p):
+    return 1
 
+def linear(p):
+    return 1-p
+
+def middle_drop(p):
+    eps = 0.75
+    if 1-p<eps:
+        return eps*0.1
+    return 1-p
+
+def double_linear_con(p):
+    p *= 2
+    eps = 0.125
+    if 1-p<eps:
+        return eps
+    return 1-p
+
+def double_middle_drop(p):
+    eps1 = 0.75
+    eps2 = 0.25
+    if 1-p<eps1:
+        if 1-p<eps2:
+            return eps2*0.5
+        return eps1*0.1
+    return 1-p
+
+schedules = {
+    'linear':linear,
+    'constant':constant,
+    'double_linear_con': double_linear_con,
+    'middle_drop': middle_drop,
+    'double_middle_drop': double_middle_drop
+}
+
+class Scheduler(object):
+
+    def __init__(self, v, nvalues, schedule):
+        self.n = 0.
+        self.v = v
+        self.nvalues = nvalues
+        self.schedule = schedules[schedule]
+
+    def value(self):
+        current_value = self.v*self.schedule(self.n/self.nvalues)
+        self.n += 1.
+        return current_value
+
+    def value_steps(self, steps):
+        return self.v*self.schedule(steps/self.nvalues)
 def ortho_init(scale=1.0):
     def _ortho_init(shape, dtype, partition_info=None):
         #lasagne ortho init for tf
@@ -45,6 +95,7 @@ def seq_to_batch(h, flat = False):
     else:
         return tf.reshape(tf.stack(values=h, axis=1), [-1])
 
+
 def _lstm(xs, ms, s, scope, nh, init_scale=1.0):
     nbatch, nin = [v.value for v in xs[0].get_shape()]
     with tf.variable_scope(scope):
@@ -70,6 +121,7 @@ def _lstm(xs, ms, s, scope, nh, init_scale=1.0):
 
 def _lstm_noisy(xs, ms, s, scope, nh, init_scale=1.0, noise_wx = None, noise_wh = None, noise_b = None):
     nbatch, nin = [v.value for v in xs[0].get_shape()]
+
     with tf.variable_scope(scope):
         wx = tf.get_variable("wx", [nin, nh*4], initializer=ortho_init(1.))
         wh = tf.get_variable("wh", [nh, nh*4], initializer=ortho_init(1.))
@@ -291,7 +343,7 @@ def fc_noisy(x, nh, scope, init_scale = 1.0, init_bias=0.0, layer_norm = False, 
         if layer_norm:
             h = tf.contrib.layers.layer_norm(h, center=True, scale=True)
     return h, noise_w, noise_b
-    
+
 
 def multilayer_fc(X, layers = [64, 64], scope = 'fc_net', activation=tf.tanh, layer_norm = False):
     num_layers = len(layers)

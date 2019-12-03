@@ -1,0 +1,27 @@
+REWARD NORMALIZATION IN PPO:
+
+if normalize_rewards:
+    reward_normalizer = tens_norm.StreamingTensorNormalizer(tensor_spec.TensorSpec([],tf.float32))
+    R_NORM = reward_normalizer.normalize(R, center_mean = False, clip_value = r_clip)
+
+
+KL PENALTY IN PPO:
+
+            # kl penalty
+            newdist =  probs + 1e-10
+            olddist = tf.exp(OLDPROBS) + 1e-10
+            kl_divergence = olddist * tf.log(olddist/newdist)
+            mean_kl = tf.reduce_mean(input_tensor = kl_divergence)
+            adaptive_kl_beta = common.create_variable('adaptive_kl_beta', initial_adaptive_kl_beta, 
+                                                      dtype = tf.float32)
+            kl_loss = adaptive_kl_beta * mean_kl
+            if self.use_kl_penalty:
+                loss_actor += kl_loss
+                # adaptive update op
+                factor = tf.case([(mean_kl <= adaptive_kl_target / 1.5, lambda: tf.constant(0.5, dtype=tf.float32)),
+                                  (mean_kl >  adaptive_kl_target * 1.5, lambda: tf.constant(2.0, dtype=tf.float32)),
+                                 ], default=lambda: tf.constant(1.0, dtype=tf.float32), exclusive=True)
+                beta_update_op = tf.compat.v1.assign(adaptive_kl_beta, adaptive_kl_beta * factor)
+
+ESTIMATION OF KL, MAY BE USED FOR EARLY STOPPING:
+approx_kl = tf.reduce_mean(OLDLOGP - logp)

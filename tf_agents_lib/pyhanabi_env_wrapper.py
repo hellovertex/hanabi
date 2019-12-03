@@ -119,8 +119,8 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
 
         # if we use OPEN_HANDS game mode
-        assert hasattr(environment, 'OPEN_HANDS')  # use correct version of env
-        if environment.OPEN_HANDS:
+        assert hasattr(environment, 'open_hands')  # use correct version of env
+        if environment.open_hands:
             # the cards are only revealed to acting player, hence the number of extra bits is
             # hand_size * num_colors * num_ranks
             num_extra_bits = environment.game.hand_size() * \
