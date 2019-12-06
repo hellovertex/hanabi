@@ -19,7 +19,7 @@ REWARDS_KEYS = ['baseline', 'play0', 'play1', 'play2', 'play3', 'play4',
 class Model(object):
     def __init__(self, nactions, nobs, nplayers, nenvs, nsteps,  sess, scope = '',
                  fc_input_layers  = [128], lstm_layers = [128],
-                 v_net = 'shared', noisy_fc = True, layer_norm = True,
+                 v_net = 'shared', noisy_fc = True, noisy_lstm = True, layer_norm = True,
                  gamma = 0.99, ent_coef = 0.01, vf_coef = 0.5, cliprange = 0.2, rewards_config = {},
                  max_grad_norm = None, k = 8,  lr = 0.001, lr_half_period = int(1e6), anneal_lr = True,
                  normalize_advs = True, epsilon = 1e-5, path = './experiments/PBT/'):
@@ -78,11 +78,10 @@ class Model(object):
    
             with tf.variable_scope('network', reuse = tf.AUTO_REUSE):
                 # CREATE NETWORK
-                
                 step_network = Network(self.STEP_OBS, self.STEP_MASKS, self.LEGAL_MOVES, nactions, nenvs, 1,
-                                       fc_input_layers, lstm_layers, v_net, layer_norm, noisy_fc)
-                train_network = Network(self.TRAIN_OBS, self.TRAIN_MASKS, self.LEGAL_MOVES, nactions, nenvs * nplayers, nsteps,
-                                        fc_input_layers, lstm_layers, v_net, layer_norm, noisy_fc)
+                                       fc_input_layers, lstm_layers, v_net, layer_norm, noisy_fc, noisy_lstm)
+                train_network = Network(self.TRAIN_OBS, self.TRAIN_MASKS, self.LEGAL_MOVES, nactions, nenvs * nplayers, 
+                                        nsteps, fc_input_layers, lstm_layers, v_net, layer_norm, noisy_fc, noisy_lstm)
             # DEFINE LOSSES                         
             # POLICY LOSS
             new_alogp = tf.reduce_sum(self.A_OH * train_network.logp, axis=1)

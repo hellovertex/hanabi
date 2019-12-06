@@ -4,9 +4,8 @@ from .lstm_util import *
     
 def build_network(observation, masks, nactions, input_states, input_states_v = None, 
                   input_fc_layers = [128], lstm_layers = [128,],
-                  nenvs = 8, nsteps = 128, v_net = 'shared', noisy_fc = False,
-                  layer_norm = False):
-    
+                  nenvs = 8, nsteps = 128, v_net = 'shared', 
+                  layer_norm = False,  noisy_fc = True, noisy_lstm = True,):
     
     noise_list = []
     h = observation
@@ -18,8 +17,15 @@ def build_network(observation, masks, nactions, input_states, input_states_v = N
             noise = []
         noise_list.extend(noise)
         if len(lstm_layers):
-            lstm_outputs, states, init_state = multilayer_lstm(h, masks, input_states, lstm_layers, 
-                                                               'lstm_net', nenvs, nsteps)
+            if noisy_lstm:
+                lstm_outputs, states, init_state, noise = multilayer_lstm_noisy(h, masks, input_states, lstm_layers, 
+                                                                                'lstm_net', nenvs, nsteps, layer_norm)
+                
+            else:
+                lstm_outputs, states, init_state = multilayer_lstm(h, masks, input_states, lstm_layers, 
+                                                               'lstm_net', nenvs, nsteps, layer_norm)
+                noise = []
+            noise_list.extend(noise)
             h = lstm_outputs
         else:
             states, init_state = None, None
@@ -41,18 +47,35 @@ def build_network(observation, masks, nactions, input_states, input_states_v = N
         noise_list.extend(noise_v)
         if len(lstm_layers):
             assert input_states_v is not None, 'Specify input states for value network'
-            lstm_outputs_p, states_p, init_state_p = multilayer_lstm(h_p, masks, input_states, lstm_layers,
-                                                                     'lstm_net_p', nenvs, nsteps)
-            lstm_outputs_v, states_v, init_state_v = multilayer_lstm(h_v, masks, input_states_v, lstm_layers,
-                                                                     'lstm_net_v', nenvs, nsteps)
+            
+            if noisy_lstm:
+                lstm_outputs_p, states_p, init_state_p, noise_p = multilayer_lstm_noisy(h_p, masks,
+                                                                                        input_states, lstm_layers,
+                                                                                        'lstm_net_p', nenvs, nsteps,
+                                                                                       layer_norm)
+                lstm_outputs_v, states_v, init_state_v, noise_v = multilayer_lstm_noisy(h_v, masks, 
+                                                                                        input_states_v, lstm_layers,
+                                                                                        'lstm_net_v', nenvs, nsteps, 
+                                                                                        layer_norm,
+                                                                                        noise = noise_p)
+                
+            else:
+                lstm_outputs_p, states_p, init_state_p = multilayer_lstm(h_p, masks, input_states, lstm_layers,
+                                                                     'lstm_net_p', nenvs, nsteps, layer_norm)
+                lstm_outputs_v, states_v, init_state_v = multilayer_lstm(h_v, masks, input_states_v, lstm_layers,
+                                                                     'lstm_net_v', nenvs, nsteps, layer_norm)
+                noise_v = noise_v = []
+                
+            noise_list.extend(noise_p)
+            noise_list.extend(noise_v)
             h_p = lstm_outputs_p
             h_v = lstm_outputs_v
         else:
             states_p, init_state_p = None, None
             states_v, init_state_v = None, None
             
-        policy = multilayer_fc(h_p, [nactions], scope = 'policy', activation = None)
-        value = multilayer_fc(h_v, [1], activation = None, scope = 'value')
+        policy = multilayer_fc(h_p, [nactions], scope = 'policy', activation = None, layer_norm = False)
+        value = multilayer_fc(h_v, [1], activation = None, scope = 'value', layer_norm = False)
 
         return policy, value, noise_list, states_p, init_state_p, states_v, init_state_v
         
@@ -61,7 +84,7 @@ def build_network(observation, masks, nactions, input_states, input_states_v = N
 class Network:
     def __init__(self, obs, masks, legal_moves, nactions, nenvs, nsteps,
                  input_fc_layers = [128], lstm_layers = [128], v_net = 'shared',
-                 layer_norm = True, noisy_fc = False):
+                 layer_norm = False, noisy_fc = False, noisy_lstm = False,):
 
             self.nactions = nactions
             self.nenvs = nenvs
@@ -82,7 +105,6 @@ class Network:
             else:
                 self.input_states = None
                 self.input_states_v = None
-                
             policy, value, noise_list, states, init_state, states_v, init_state_v = build_network(self.OBS, self.MASKS,
                                                                                                    nactions, 
                                                                                                    self.input_states,
@@ -90,8 +112,10 @@ class Network:
                                                                                                    input_fc_layers,
                                                                                                    lstm_layers,
                                                                                                    nenvs, nsteps,
-                                                                                                   v_net, noisy_fc,
-                                                                                                   layer_norm)
+                                                                                                   v_net, layer_norm,
+                                                                                                   noisy_fc,
+                                                                                                   noisy_lstm,
+                                                                                                   )
             self.states = states
             self.init_state = init_state
             self.states_v = states_v

@@ -32,7 +32,7 @@ class Player():
         else:
             noise_val_list = noise
         self.noise_val_list = noise_val_list
-        
+        #print('player %d noise' % self.num, self.noise_val_list)
     def step(self, legal_moves, obs, prev_dones, prev_rewards,) :
         # checks if player waits for reward from previous step, updates it if so
         # computes next actions, values, probs, updates episode buffer

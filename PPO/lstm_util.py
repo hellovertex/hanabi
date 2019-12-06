@@ -102,7 +102,6 @@ def _lstm(xs, ms, s, scope, nh, init_scale=1.0):
         wx = tf.get_variable("wx", [nin, nh*4], initializer=ortho_init(1.))
         wh = tf.get_variable("wh", [nh, nh*4], initializer=ortho_init(1.))
         b = tf.get_variable("b", [nh*4], initializer=tf.constant_initializer(0.0))
-
     c, h = tf.split(axis=1, num_or_size_splits=2, value=s)
     for idx, (x, m) in enumerate(zip(xs, ms)):
         c = c*(1-m)
@@ -121,7 +120,6 @@ def _lstm(xs, ms, s, scope, nh, init_scale=1.0):
 
 def _lstm_noisy(xs, ms, s, scope, nh, init_scale=1.0, noise_wx = None, noise_wh = None, noise_b = None):
     nbatch, nin = [v.value for v in xs[0].get_shape()]
-
     with tf.variable_scope(scope):
         wx = tf.get_variable("wx", [nin, nh*4], initializer=ortho_init(1.))
         wh = tf.get_variable("wh", [nh, nh*4], initializer=ortho_init(1.))
@@ -132,9 +130,9 @@ def _lstm_noisy(xs, ms, s, scope, nh, init_scale=1.0, noise_wx = None, noise_wh 
             noise_wh = tf.placeholder(dtype = tf.float32, shape = [nh, nh*4])
         if noise_b is None:
             noise_b = tf.placeholder(dtype = tf.float32, shape = [nh*4])
-        wh_noise = tf.get_variable("wh_noise", [nh, nh*4], initializer = tf.constant_initializer(0.0017))    
-        wx_noise = tf.get_variable("wx_noise", [nin, nh*4], initializer = tf.constant_initializer(0.0017))
-        b_noise = tf.get_variable("b_noise", [nh*4], initializer = tf.constant_initializer(0.0017))
+        wh_noise = tf.get_variable("wh_noise", [nh, nh*4], initializer = tf.constant_initializer(0.05))    
+        wx_noise = tf.get_variable("wx_noise", [nin, nh*4], initializer = tf.constant_initializer(0.05))
+        b_noise = tf.get_variable("b_noise", [nh*4], initializer = tf.constant_initializer(0.05))
         wx += tf.multiply(noise_wx, wh_noise)
         wh += tf.multiply(noise_wh, wh_noise)
         b += tf.multiply(noise_b, b_noise)
@@ -210,9 +208,9 @@ def _lnlstm_noisy(xs, ms, s, scope, nh, init_scale=1.0,  noise_wx = None, noise_
             noise_wh = tf.placeholder(dtype = tf.float32, shape = [nh, nh*4])
         if noise_b is None:
             noise_b = tf.placeholder(dtype = tf.float32, shape = [nh*4])
-        wh_noise = tf.get_variable("wh_noise", [nh, nh*4], initializer = tf.constant_initializer(0.0017))    
-        wx_noise = tf.get_variable("wx_noise", [nin, nh*4], initializer = tf.constant_initializer(0.0017))
-        b_noise = tf.get_variable("b_noise", [nh*4], initializer = tf.constant_initializer(0.0017))
+        wh_noise = tf.get_variable("wh_noise", [nh, nh*4], initializer = tf.constant_initializer(0.05))    
+        wx_noise = tf.get_variable("wx_noise", [nin, nh*4], initializer = tf.constant_initializer(0.05))
+        b_noise = tf.get_variable("b_noise", [nh*4], initializer = tf.constant_initializer(0.05))
         wx += tf.multiply(noise_wx, wh_noise)
         wh += tf.multiply(noise_wh, wh_noise)
         b += tf.multiply(noise_b, b_noise)
@@ -272,7 +270,7 @@ def lstm_noisy(X, M, S, nlstm, nenv = 8, nsteps = 128, scope  ='lstm', layer_nor
     return h, snew, initial_state, noise_wx, noise_wh, noise_b
 
 
-def multilayer_lstm(X, M, S_list, lstm_layers, scope = 'lstm_net', nenv = 8, nsteps = 128):
+def multilayer_lstm(X, M, S_list, lstm_layers, scope = 'lstm_net', nenv = 8, nsteps = 128, layer_norm = False):
     h = X
     states_list = []
     init_states_list = []
@@ -281,7 +279,7 @@ def multilayer_lstm(X, M, S_list, lstm_layers, scope = 'lstm_net', nenv = 8, nst
             nlstm = lstm_layers[i]
             S = S_list[i]
 
-            h, state, init_state =  lstm(h, M, S, nlstm, nenv, nsteps,'lstm_' + str(i)) 
+            h, state, init_state =  lstm(h, M, S, nlstm, nenv, nsteps,'lstm_' + str(i), layer_norm = layer_norm) 
             states_list.append(state)
             init_states_list.append(init_state)
     return h, states_list, init_states_list
@@ -301,7 +299,7 @@ def multilayer_lstm_noisy(X, M, S_list, lstm_layers, scope = 'lstm_net', nenv = 
                                                                                 'lstm_' + str(i),
                                                                                 layer_norm = layer_norm) 
             else:
-                noise_wx, noise_wh, noise_b = noise[i : i + 3]
+                noise_wx, noise_wh, noise_b = noise[3* i : 3*i + 3]
                 h, state, init_state, noise_wx, noise_wh, noise_b =  lstm_noisy(h, M, S, nlstm, nenv, nsteps,
                                                                                 'lstm_' + str(i),
                                                                                 layer_norm = layer_norm, 
@@ -326,7 +324,6 @@ def fc(x, nh, scope, init_scale=1.0, init_bias=0.0, layer_norm = False):
 
 def fc_noisy(x, nh, scope, init_scale = 1.0, init_bias=0.0, layer_norm = False, noise_w = None, noise_b = None):
     nin = x.get_shape()[1].value
-
     with tf.variable_scope(scope):
         w = tf.get_variable("w", [nin, nh], initializer = ortho_init(init_scale))
         b = tf.get_variable("b", [nh], initializer = tf.random_uniform_initializer(-np.sqrt(3/nin), np.sqrt(3/nin)))
@@ -335,8 +332,8 @@ def fc_noisy(x, nh, scope, init_scale = 1.0, init_bias=0.0, layer_norm = False, 
         if noise_b is None:
             noise_b = tf.placeholder(dtype = tf.float32, shape = [nh])
         
-        w_noise = tf.get_variable("w_noise", [nin, nh], initializer = tf.constant_initializer(0.017))
-        b_noise = tf.get_variable("b_noise", [nh], initializer = tf.constant_initializer(0.017))
+        w_noise = tf.get_variable("w_noise", [nin, nh], initializer = tf.constant_initializer(0.05))
+        b_noise = tf.get_variable("b_noise", [nh], initializer = tf.constant_initializer(0.05))
         w += tf.multiply(noise_w, w_noise)
         b += tf.multiply(noise_b, b_noise)
         h = tf.matmul(x, w) + b
