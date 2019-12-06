@@ -41,42 +41,30 @@ class Population:
         for model in self.models:
             model.load_model()
         if len(os.listdir(self.path + 'avg params/')):
-            log_file = tf.train.summary_iterator('./experiments/openhands/pbt_test/avg params/' +
+            log_file = tf.train.summary_iterator(self.path + 'avg params/' +
                                                  os.listdir(self.path + 'avg params/')[0])
             for l in log_file:
                 self.evolve_epochs = max(self.evolve_epochs, l.step)
              
         print('Created population. Initial epoch is %d' % self.evolve_epochs)
             
-    def run_training(self, game, timesteps, episodes_to_train = 90, nsteps_to_train = None,
-                     save_every = 2000, summary_every = 1000):
-        nsteps_to_train_def = int(nsteps_to_train)
+    def run_training(self, game, timesteps, summary_every = 20000):
         for i in range(self.nmodels):
             model = self.models[i]
             for player in game.players:
                 player.assign_model(model)
             game.reset(model.rewards_config)
             model_nsteps = model.sess.run(model.nsteps)
-            if model_nsteps > 0:
-                nsteps_to_train = int(model_nsteps)
-            else:
-                nsteps_to_train = nsteps_to_train_def
-            save_every_upd = save_every // (nsteps_to_train * game.nenvs)
-            summary_every_upd = summary_every // (nsteps_to_train * game.nenvs)
+            summary_every_upd = summary_every // (model_nsteps * game.nenvs)
             start_ts = int(game.total_steps)
             nupd = 0
+            #print(game.total_steps, start_ts)
             while game.total_steps - start_ts <= timesteps:
-                #print('will run for %d steps' % nsteps_to_train)
-                training_stats = game.play_untill_train(episodes_to_train, nsteps_to_train)
-
+                training_stats = game.play_untill_train(nsteps = model_nsteps)
                 policy_loss, value_loss, policy_entropy = train_model(game, model, player_nums = 'all')
                 write_into_buffer(self.history_buffer[i], training_stats, policy_loss, 
                                   value_loss, policy_entropy)
                 self.recent_results[i].append(np.mean(training_stats['scores']))
-                nupd += 1
-                if (nupd %  save_every_upd) == 0:
-                    print('Saving', model.scope)
-                    model.save_model()
                 if (nupd % summary_every_upd) == 0:
                     #print('writing summary for ', model.scope)
                     summary = tf.Summary()
@@ -85,11 +73,10 @@ class Population:
                     self.history_buffer[i] = defaultdict(list)
                     model_steps = model.sess.run(model.timesteps)
                     model_epochs = model.sess.run(model.train_epochs)
-                    #print('model an for %d steps and %d train epochs' % (model_steps, model_epochs))
                     summary.value.add(tag = 'Perf/Updates', simple_value = model_epochs)
                     model.writer.add_summary(summary, model_steps)
                     model.writer.flush()
-                    
+                nupd += 1
      
     def rank_models(self, n_to_evolve = 4):
         model_results = [np.mean(result) for result in self.recent_results]
@@ -119,25 +106,38 @@ class Population:
             self.models[bad_ind].change_rewards_config(dict(self.models[good_ind].rewards_config))
             #print(self.rewards_weights)
             
-    def explore(self, mutation_fun = lambda: np.random.uniform(0.75, 1.25), mutation_prob = 0.075):
+    def explore(self, mutation_fun = lambda: np.random.uniform(0.75, 1.25), mutation_prob = 0.3):
+        print('exploring models:', self.inds_to_evolve)
         for ind in self.inds_to_evolve:
             model = self.models[ind]
             for attr in self.random_attributes:
                 if attr == 'k' or attr == 'nsteps':
-                    if np.random.uniform() < 0.05:
-                        mutation = self.random_attributes[attr]()
+                    '''if np.random.uniform() < 0.05:
+                        new_val = self.random_attributes[attr]()
+                        attr_val = getattr(model, attr)
+                        old_val = model.sess.run(attr_val)
+                        model.sess.run(attr_val.assign(new_val))
+                        print('%s mutated: %f -> %f' %(attr, old_val, new_val))
                     else:
-                        mutation = 1
+                        mutation = 1'''
+
+                    if np.random.uniform() < mutation_prob:
+                        mutation = mutation_fun()
+                        attr_val = getattr(model, attr)
+                        old_val = model.sess.run(attr_val)  # remove
+                        model.sess.run(attr_val.assign(attr_val * mutation))
+                        print('%s mutated: %f -> %f' %(attr, old_val, int(old_val * mutation)))
+                    else:
+                        mutation = 1  
                 else:
                     if np.random.uniform() < mutation_prob:
                         mutation = mutation_fun()
+                        attr_val = getattr(model, attr)
+                        old_val = model.sess.run(attr_val)  # remove
+                        model.sess.run(attr_val.assign(attr_val * mutation))
+                        print('%s mutated: %f -> %f' %(attr, old_val, old_val * mutation))
                     else:
-                        mutation = 1
-                attr_val = getattr(model, attr)
-                old_val = model.sess.run(attr_val)  # remove
-                model.sess.run(attr_val.assign(attr_val * mutation))
-                #print('%s was %f, became %f' % (attr, old_val, model.sess.run(attr_val)))
-                
+                        mutation = 1               
             
             self.models[ind].change_rewards_config(mutate_dict(self.models[ind].rewards_config,
                                                                    mutation_fun, mutation_prob))
@@ -165,17 +165,12 @@ class Population:
         self.avg_writer.flush()
         
         
-    def run_epoch(self, game, nupdates, n_to_evolve, 
-                  episodes_to_train = 32, nsteps_to_train = None,
-                  save_every = 10, summary_every = 10):
+    def run_epoch(self, game, timesteps, n_to_evolve, mutation_prob,
+                  summary_every = 10):
         
-        self.run_training(game, nupdates, episodes_to_train, nsteps_to_train,
-                                save_every, summary_every)
+        self.run_training(game, timesteps, summary_every)
         self.rank_models(n_to_evolve)
-        self.exploit(n_to_evolve)
-        self.explore()
+        self.exploit(n_to_evolve, )
+        self.explore(mutation_prob = mutation_prob)
         self.save_population()
         self.evolve_epochs += 1
-        
-    
-    
