@@ -108,8 +108,10 @@ def run_experiment(run_name, models_configs, env_config,  rewards_configs,
     # create model
     for config in models_configs:
         config['path'] = path
-    modelfn = ModelLSTM if models_configs[0]['lstm_layers'] else Model
-    gamefn = GameLSTM if models_configs[0]['lstm_layers'] else Game
+    #modelfn = ModelLSTM if lstm_layers in models_configs[0] else Model
+    #gamefn = GameLSTM if models_configs[0]['lstm_layers'] else Game
+    modelfn = ModelLSTM
+    gamefn = GameLSTM
     print(modelfn)
     models = [modelfn(nactions, nobs, nplayers, sess = sess, **mc) for mc in models_configs]
     # create game

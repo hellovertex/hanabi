@@ -18,11 +18,14 @@ class Player():
         self.history_buffer =  [defaultdict(list) for _ in range(self.nenvs)]
         self.waiting = [False for _ in range(self.nenvs)]
 
-    def generate_noise(self, noisescale = 1):
-        noise_ph_list = self.model.network.noise_list
-        noise_val_list = []
-        for noise_ph in noise_ph_list:
-            noise_val_list.append((np.random.normal(0, noisescale, noise_ph.shape)))
+    def generate_noise(self, noise = None, noisescale = 1):
+        if noise is None:
+            noise_ph_list = self.model.network.noise_list
+            noise_val_list = []
+            for noise_ph in noise_ph_list:
+                noise_val_list.append((np.random.normal(0, noisescale, noise_ph.shape)))
+        else:
+            noise_val_list = noise
         self.noise_val_list = noise_val_list
         
     def step(self, legal_moves, obs, prev_dones, prev_rewards,) :

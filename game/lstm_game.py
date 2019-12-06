@@ -68,8 +68,8 @@ class Game():
     def eval_results(self, episodes_per_env = 6, noisescale = 1):
         # runs the game untll gall envs collect enough data for training
         self.reset()
-        for p in self.players:
-            p.generate_noise(noisescale)
+        self.players[0].generate_noise(noisescale = noisescale)
+        self.players[1].generate_noise(self.players[0].noise_val_list, noisescale)
         episodes_done = np.zeros(self.nenvs)
         record_env = np.ones(self.nenvs, dtype = 'bool')
         self.last_episodes_stats = defaultdict(list)
@@ -90,8 +90,8 @@ class Game():
         #self.reset()
         
         self.last_episodes_stats = defaultdict(list)
-        for p in self.players:
-            p.generate_noise(noisescale)
+        self.players[0].generate_noise(noisescale = noisescale)
+        self.players[1].generate_noise(self.players[0].noise_val_list, noisescale)
             
         self.first_player = self.current_player
         self.steps_per_player = np.zeros(self.nplayers)

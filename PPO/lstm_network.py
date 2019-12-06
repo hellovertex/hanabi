@@ -61,7 +61,7 @@ def build_network(observation, masks, nactions, input_states, input_states_v = N
 class Network:
     def __init__(self, obs, masks, legal_moves, nactions, nenvs, nsteps,
                  input_fc_layers = [128], lstm_layers = [128], v_net = 'shared',
-                 layer_norm = True, noisy_fc = True):
+                 layer_norm = True, noisy_fc = False):
 
             self.nactions = nactions
             self.nenvs = nenvs

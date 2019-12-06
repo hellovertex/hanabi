@@ -12,3 +12,4 @@ agents/rainbow_10kit/*
 training/logs/*
 training/summaries/*
 old code/
+plots.ipynb
