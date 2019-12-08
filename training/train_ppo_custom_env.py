@@ -126,9 +126,19 @@ def get_networks(tf_env, networks_layers):
     return actor_net, value_net
 
 
-def get_rnn_networks(tf_env, network_layers, lstm_size=(75,75)):
+def get_rnn_networks(tf_env, networks_layers, lstm_size=(75,75)):
     """ Question is, whether we should use RNN for value net as well, yes so? """
-    raise NotImplementedError
+    assert isinstance(networks_layers, dict)
+    actor_fc_layers = networks_layers["actor_net"]
+    value_fc_layers = networks_layers["value_net"]
+    actor_net = masked_networks.MaskedActorDistributionRnnNetwork(
+        tf_env.observation_spec(),
+        tf_env.action_spec(),
+        input_fc_layer_params=actor_fc_layers,
+        lstm_size=lstm_size)
+    value_net = masked_networks.MaskedValueRnnNetwork(
+        tf_env.observation_spec(), input_fc_layer_params=value_fc_layers, lstm_size=lstm_size)
+    return actor_net, value_net
 
 
 def get_metrics_eval(num_parallel_environments, num_eval_episodes):
@@ -193,7 +203,7 @@ def train_eval(
         value_fc_layers=(150, 75),
         actor_fc_layers_rnn=(150,),
         value_fc_layers_rnn=(150,),
-        use_rnns=False,
+        use_rnns=True,
         # Params for collect
         num_environment_steps=int(3e08),
         collect_episodes_per_iteration=90,
@@ -247,7 +257,7 @@ def train_eval(
     # ---------------- Create Networks --------------- #
     # ################################################ #
         if use_rnns:
-            actor_net, value_net = get_rnn_networks(tf_env, None)
+            actor_net, value_net = get_networks(tf_env, {"actor_net": actor_fc_layers_rnn, "value_net": value_fc_layers_rnn})
         else:
             actor_net, value_net = get_networks(tf_env, {"actor_net": actor_fc_layers, "value_net": value_fc_layers})
 
