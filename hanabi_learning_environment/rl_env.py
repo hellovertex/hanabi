@@ -68,11 +68,9 @@ class Environment(object):
 
 
 #  ------------------------ Reward Flags -----------------------------
-USE_CUSTOM_REWARD = True
-USE_HINT_REWARD = True
+USE_HINT_REWARD = False
 USE_PLAY_REWARD = True
 USE_DISCARD_REWARD = True
-USE_HAMMING_WEIGHT = True
 
 #  ------------------------ state space Flags -----------------------------
 OPEN_HANDS = False
@@ -403,13 +401,13 @@ class HanabiEnv(Environment):
         old_obs_next_player = self.state.observation(next_pid)
         vectorized_old = self.observation_encoder.encode(old_obs_next_player)
 
-        if USE_CUSTOM_REWARD:
-            if USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
-                reward += self.reward_metrics.maybe_change_hint_reward(action, self.state)
-            if USE_PLAY_REWARD and (action.type() == PLAY):
-                reward += self.reward_metrics.maybe_change_play_reward(action, self.state)
-            if USE_DISCARD_REWARD and (action.type() == DISCARD):
-                reward += self.reward_metrics.maybe_change_discard_reward(action, self.state)
+
+        if USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
+            reward += self.reward_metrics.maybe_change_hint_reward(action, self.state)
+        if USE_PLAY_REWARD and (action.type() == PLAY):
+            reward += self.reward_metrics.maybe_change_play_reward(action, self.state)
+        if USE_DISCARD_REWARD and (action.type() == DISCARD):
+            reward += self.reward_metrics.maybe_change_discard_reward(action, self.state)
 
         # -------------- Custom Reward END --------------- #
 
@@ -436,7 +434,7 @@ class HanabiEnv(Environment):
 
         # -------------- state space END --------------- #
 
-        if USE_CUSTOM_REWARD:
+        if USE_HINT_REWARD:
             if action.type() in [REVEAL_COLOR, REVEAL_RANK]:
                 vectorized = observation['player_observations'][next_pid]['vectorized']
                 # we compute this after stepping, for simplicity (to have the new observation readily computed)
@@ -447,11 +445,12 @@ class HanabiEnv(Environment):
                                                                         self.vectorized_observation_shape()[0])
 
 
-                print(reward, hamming_distance)  # [3. 3.] [2 0]
+                #print(reward, hamming_distance)  # [3. 3.] [2 0]
                 reward = self.reward_metrics.maybe_apply_weight(reward=reward, weight=hamming_distance)
-                print(reward)  # 6.0
+                #print(reward)  # 6.0
         # if reward was not modified, default to standard reward
-        if reward is None:
+        # if reward is None:  used for when reward was not initially set to 3
+        if not(USE_HINT_REWARD or USE_PLAY_REWARD or USE_DISCARD_REWARD):
             reward = self.state.score() - last_score
 
         info = {}
