@@ -4,7 +4,6 @@ from collections import defaultdict
 from tf_agents_lib.pyhanabi_env_wrapper import PyhanabiEnvWrapper
 from hanabi_learning_environment import rl_env
 import tensorflow as tf
-
 def check_create_path(path):
     if not os.path.isdir(path):
         os.makedirs(path)
@@ -40,14 +39,20 @@ def write_into_buffer(buffer, training_stats, policy_loss, value_loss, policy_en
     buffer['Losses/Policy entropy'].append(np.mean(policy_entropy))           
             
 def train_model(game, model,  player_nums = 'all'):
-    (mb_obs, _, mb_actions, mb_probs, mb_logp, mb_legal_moves, mb_values, mb_returns,
-     mb_dones, mb_masks, mb_states, mb_states_v, mb_noise) = game.collect_data(player_nums)
-        
-    policy_loss, value_loss, policy_entropy = model.train(mb_obs, mb_actions, mb_probs, mb_logp, 
-                                                          mb_legal_moves, mb_masks, mb_values, mb_returns,
-                                                          mb_states, mb_states_v, mb_noise)
+    if model.type == 'lstm':
+        (mb_obs, mb_obs_ext, mb_actions, mb_probs, mb_logp, mb_legal_moves, mb_values, mb_returns,
+         mb_dones, mb_masks, mb_states, mb_states_v, mb_noise) = game.collect_data(player_nums)
+        policy_loss, value_loss, policy_entropy = model.train(mb_obs_ext, mb_actions, mb_probs, mb_logp, 
+                                                              mb_legal_moves, mb_masks, mb_values, mb_returns,
+                                                              mb_states, mb_states_v, mb_noise)
+    else:
+        (mb_obs, mb_actions, mb_probs, mb_logp, mb_legal_moves, mb_values, mb_returns,
+         mb_dones, mb_noise) = game.collect_data(player_nums)
+    
+        policy_loss, value_loss, policy_entropy = model.train(mb_obs, mb_actions, mb_probs, mb_logp, 
+                                                              mb_legal_moves, mb_values, mb_returns, mb_noise)
 
     
-    return policy_loss, value_loss, policy_entropy
+    return policy_loss, value_loss, policy_entropy, mb_obs, mb_actions
         
         

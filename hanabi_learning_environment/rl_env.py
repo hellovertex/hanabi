@@ -21,6 +21,7 @@ from pyhanabi import color_char_to_idx
 from custom_environment.state_space import ObservationAugmenter
 from custom_environment.reward import RewardMetrics
 from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD
+from custom_environment.beliefs import Belief
 import numpy as np
 
 MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
@@ -113,7 +114,7 @@ class HanabiEnv(Environment):
         """
         assert isinstance(config, dict), "Expected config to be of type dict."
         self.game = pyhanabi.HanabiGame(config)
-
+        
         self.observation_encoder = pyhanabi.ObservationEncoder(
             self.game, pyhanabi.ObservationEncoderType.CANONICAL)
         self.players = self.game.num_players()
@@ -126,7 +127,14 @@ class HanabiEnv(Environment):
 
         if 'use_custom_rewards' not in config:
             config['use_custom_rewards'] = False
+            
+        if 'use_beliefs' not in config:
+            config['use_beliefs'] = False
         self.use_custom_rewards = config['use_custom_rewards']
+        self.use_beliefs = config['use_beliefs']
+        if self.use_beliefs:
+            self.beliefs = [Belief(self.game, i) for i in range(config['num_players'])]
+            
         self.reward_metrics = RewardMetrics(config, rewards_config)
         self.augment_input = USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV
         self.augment_input_using_binary = USE_AUGMENTED_BINARY_INPUTS_WHEN_WRAPPING_ENV
@@ -245,7 +253,14 @@ class HanabiEnv(Environment):
 
         obs = self._make_observation_all_players()
         obs["current_player"] = self.state.cur_player()
-
+        
+        if self.use_beliefs:
+            for b in self.beliefs:
+                b.reset(self.state)
+            cp = obs["current_player"]
+            obs['beliefs_prob_dict'] = self.beliefs[cp].compute_all_probs()
+        else:
+            obs['beliefs_prob_dict'] = {}
         # if USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV:
         #    obs = augment_observation(obs, self)
         self.reward_metrics.reset(rewards_config)
@@ -402,18 +417,18 @@ class HanabiEnv(Environment):
         old_obs_next_player = self.state.observation(next_pid)
         vectorized_old = self.observation_encoder.encode(old_obs_next_player)
         
-        info = {'hint_reward' : 0, 'discard_reward' : 0, 'play_reward' : 0}
+        custom_rewards = {'hint_reward' : 0, 'discard_reward' : 0, 'play_reward' : 0}
         if self.use_custom_rewards:
             reward = self.reward_metrics.rewards_config['baseline']
             if action.type() in [REVEAL_COLOR, REVEAL_RANK]:
                 reward += self.reward_metrics.maybe_change_hint_reward(action, self.state)
-                info['hint_reward'] = reward
+                custom_rewards['hint_reward'] = reward
             elif action.type() == PLAY:
                 reward += self.reward_metrics.maybe_change_play_reward(action, self.state)
-                info['play_reward'] = reward
+                custom_rewards['play_reward'] = reward
             else:
                 reward += self.reward_metrics.maybe_change_discard_reward(action, self.state)
-                info['discard_reward'] = reward
+                custom_rewards['discard_reward'] = reward
 
         # -------------- Custom Reward END --------------- #
 
@@ -454,12 +469,19 @@ class HanabiEnv(Environment):
                                                                         )
                 
                 reward = self.reward_metrics.maybe_apply_weight(reward=reward, weight=hamming_distance)
-                info['hint_reward'] = reward
-
+                custom_rewards['hint_reward'] = reward
+        if self.use_beliefs:
+            # only two players version rn
+            cp = observation['current_player']
+            self.beliefs[cp].observe_action(action)
+            self.beliefs[1 - cp].make_action(action)
+            observation['beliefs_prob_dict'] = self.beliefs[cp].compute_all_probs()
+        else:
+            observation['beliefs_prob_dict'] = {}
         # if reward was not modified, default to standard reward
         if reward is None or not self.use_custom_rewards:
             reward = self.state.score() - last_score
-        return observation, reward, done, info
+        return observation, reward, done, custom_rewards
 
     def _make_observation_all_players(self):
         """Make observation for all players.
@@ -595,7 +617,7 @@ class HanabiEnv(Environment):
 
 
 def make(environment_name="Hanabi-Full", num_players = 2, use_custom_rewards = False,
-         open_hands = False, pyhanabi_path = None, rewards_config = {}):
+         open_hands = False, use_beliefs = False, pyhanabi_path = None, rewards_config = {}):
     """Make an environment.
     Args:
       environment_name: str, Name of the environment to instantiate.
@@ -629,7 +651,8 @@ def make(environment_name="Hanabi-Full", num_players = 2, use_custom_rewards = F
                 "observation_type":
                     pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value,
                 "use_custom_rewards" : use_custom_rewards,
-                "open_hands" : open_hands
+                "open_hands" : open_hands,
+                "use_beliefs" : use_beliefs
             }, rewards_config = rewards_config)
     elif environment_name == "Hanabi-Full-Minimal":
         return HanabiEnv(
@@ -641,7 +664,8 @@ def make(environment_name="Hanabi-Full", num_players = 2, use_custom_rewards = F
                 "max_life_tokens": 3,
                 "observation_type": pyhanabi.AgentObservationType.MINIMAL.value,
                 "use_custom_rewards" : use_custom_rewards,
-                "open_hands" : open_hands
+                "open_hands" : open_hands,
+                "use_beliefs" : use_beliefs
             }, rewards_config = rewards_config)
     elif environment_name == "Hanabi-Small":
         return HanabiEnv(
@@ -661,7 +685,8 @@ def make(environment_name="Hanabi-Full", num_players = 2, use_custom_rewards = F
                 "observation_type":
                     pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value,
                 "use_custom_rewards" : use_custom_rewards,
-                "open_hands" : open_hands
+                "open_hands" : open_hands,
+                "use_beliefs" : use_beliefs
             }, rewards_config = rewards_config)
     elif environment_name == "Hanabi-Very-Small":
         return HanabiEnv(
@@ -681,7 +706,8 @@ def make(environment_name="Hanabi-Full", num_players = 2, use_custom_rewards = F
                 "observation_type":
                     pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value,
                 "use_custom_rewards" : use_custom_rewards,
-                "open_hands" : open_hands
+                "open_hands" : open_hands,
+                "use_beliefs" : use_beliefs
             }, rewards_config = rewards_config)
     else:
         raise ValueError("Unknown environment {}".format(environment_name))

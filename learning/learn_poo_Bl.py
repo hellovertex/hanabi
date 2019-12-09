@@ -6,8 +6,10 @@ from collections import defaultdict
 import pandas as pd
 import numpy as np
 
+from PPO.ppo import Model as Model
 from PPO.lstm_ppo import Model as ModelLSTM
-from game.lstm_game_B import Game as GameLSTM
+from game.game import Game as Game
+from game.lstm_game import Game as GameLSTM
 
 import tensorflow as tf
 
@@ -27,11 +29,11 @@ def run_evaluation(models, game, nepisodes = 10):
             for p2_model_num in model_nums:
                 game.players[1].assign_model(models[p1_model_num])
                 game.reset()
-                result_scores = np.mean(game.eval_results( episodes_per_env = nepisodes)['scores'])
+                result_scores = np.mean(game.eval_results( episodes_per_env = nepisodes)[0]['scores'])
                 result_matrix[p1_model_num, p2_model_num] = result_scores
         else:
             game.reset()
-            result_scores = np.mean(game.eval_results( episodes_per_env = nepisodes)['scores'])
+            result_scores = np.mean(game.eval_results( episodes_per_env = nepisodes)[0]['scores'])
             result_matrix[p1_model_num, p1_model_num] = result_scores
 
     return result_matrix
@@ -53,7 +55,7 @@ def train_one_epoch(game, models, history_buffers, updates_in_epoch = 100,
             if hasattr(model, 'nsteps'):
                 nsteps = model.nsteps
             training_stats = game.play_untill_train(episodes, nsteps) # collect
-            policy_loss, value_loss, policy_entropy = train_model(game, model) # train 
+            policy_loss, value_loss, policy_entropy,_,_ = train_model(game, model) # train 
             write_into_buffer(model_buffer, training_stats, policy_loss, value_loss, policy_entropy) # store 
         
     elif method == 'self play':
@@ -64,7 +66,7 @@ def train_one_epoch(game, models, history_buffers, updates_in_epoch = 100,
                 nsteps = model.nsteps
                 
             training_stats = game.play_untill_train(episodes, nsteps) # collect
-            policy_loss, value_loss, policy_entropy = train_model(game, model) # train 
+            policy_loss, value_loss, policy_entropy,_,_ = train_model(game, model) # train 
             write_into_buffer(model_buffer, training_stats, policy_loss, value_loss, policy_entropy) # store 
             
     elif method == 'multi agent':
@@ -85,12 +87,12 @@ def train_one_epoch(game, models, history_buffers, updates_in_epoch = 100,
                         other_player.assign(random.choice(models))
                 train_players = [p.num for p in game.players if p.model.scope == main_model.scope]
                 training_stats = game.play_untill_train(episodes, nsteps) # collect
-                policy_loss, value_loss, policy_entropy = train_model(game, mode, train_players) # train 
+                policy_loss, value_loss, policy_entropy,_,_ = train_model(game, mode, train_players) # train 
                 write_into_buffer(model_buffer, training_stats, policy_loss, value_loss, policy_entropy) # store 
 
 
 def run_experiment(run_name, models_configs, env_config,  rewards_configs,
-                   nupdates = 10000,  episodes = 90, nsteps = None, change_lr = False,
+                   nupdates = 10000,  episodes = 90, nsteps = None, reset_lr = False,
                    save_every = 100, summary_every = 10, evaluation_every = 200, eval_eps = 10,
                    folder = './experiments/openhands/', method = 'self play'):
     # set session
@@ -103,11 +105,12 @@ def run_experiment(run_name, models_configs, env_config,  rewards_configs,
     nenvs = models_configs[0]['nenvs']
     path = folder + env_config['environment_name'] + '-' + str(env_config['num_players'])
     path += '/' + run_name + '/'
+    use_beliefs = env._env.use_beliefs
+    
     # create model
     for config in models_configs:
         config['path'] = path
-    #modelfn = ModelLSTM if lstm_layers in models_configs[0] else Model
-    #gamefn = GameLSTM if models_configs[0]['lstm_layers'] else Game
+
     modelfn = ModelLSTM
     gamefn = GameLSTM
     print(modelfn)
@@ -123,7 +126,7 @@ def run_experiment(run_name, models_configs, env_config,  rewards_configs,
     history_buffers = [defaultdict(list) for _ in range(len(models))]
     # try to load models
     for model in models:
-        model.load_model()
+        model.load_model(reset_lr)
     # run training
     steps_start, time_start = game.total_steps, time.time()
     for nupd in range(1, nupdates):

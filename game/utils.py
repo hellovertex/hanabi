@@ -8,9 +8,10 @@ def parse_timestep(ts):
         lm = [-1e10 if lmi < 0 else 0 for lmi in lm]
         legal_moves[i] = lm
     obs = ts[3]['state']
+    beliefs_prob_dict = ts[3]['beliefs_prob_dict']
     score = ts[3]['score']
     custom_rewards = ts[3]['custom_rewards']
-    return obs, rewards, legal_moves, dones, score, custom_rewards
+    return obs, rewards, legal_moves, dones, score, custom_rewards, beliefs_prob_dict
 
 
 def discount_with_dones(rewards, dones, gamma):

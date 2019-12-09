@@ -7,6 +7,7 @@ tensorboard/
 *.pycgame_example
 .idea/
 *.pyc
+*.ipynb
 __pycache__/*
 agents/rainbow_10kit/*
 training/logs/*

@@ -50,13 +50,15 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
 
         # oberservation is currently a dict, extract the 'vectorized' object
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
+        beliefs_prob_dict = observations['beliefs_prob_dict']
         mask_valid_actions = self.get_mask_legal_moves(observation)
         score = np.array(self._env.state.score())
         custom_rewards =  {'hint_reward' : 0,
                            'play_reward' : 0,
                            'discard_reward' : 0 }
         
-        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'score': score, 'custom_rewards' : custom_rewards}
+        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'score': score, 
+               'custom_rewards' : custom_rewards, 'beliefs_prob_dict' : beliefs_prob_dict}
 
         return TimeStep(StepType.FIRST, reward, 1, obs)
 
@@ -78,10 +80,12 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         reward = np.asarray(reward, dtype=np.float32)
 
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
+        beliefs_prob_dict = observations['beliefs_prob_dict']
         mask_valid_actions = self.get_mask_legal_moves(observation)
         # stores current game score
         score = np.array(self._env.state.score())
-        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'score': score, 'custom_rewards' : custom_rewards}
+        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'score': score, 
+               'custom_rewards' : custom_rewards, 'beliefs_prob_dict' : beliefs_prob_dict}
 
         if done:
             self._episode_ended = True

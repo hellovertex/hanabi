@@ -5,8 +5,13 @@ from .lstm_util import *
 def build_network(observation, masks, nactions, input_states, input_states_v = None, 
                   input_fc_layers = [128], lstm_layers = [128,],
                   nenvs = 8, nsteps = 128, v_net = 'shared', 
-                  layer_norm = False,  noisy_fc = True, noisy_lstm = True,):
-    
+                  layer_norm = False,  noisy_fc = False, noisy_lstm = False, noisy_heads = False,):
+    print('Building network:')
+    print('FC:', input_fc_layers, 'LSTM:', lstm_layers)
+    print('noisy_fc : %s, noisy_lstm : %s, noisy_heads: %s' %(noisy_fc, noisy_lstm, noisy_heads))
+    print('Value network is %s' % v_net)
+    print('nenvs : %d, nsteps : %d' %(nenvs, nsteps) )
+    print('Layer norm :', layer_norm)
     noise_list = []
     h = observation
     if v_net == 'shared':
@@ -29,9 +34,15 @@ def build_network(observation, masks, nactions, input_states, input_states_v = N
             h = lstm_outputs
         else:
             states, init_state = None, None
-
-        policy = multilayer_fc(h, [nactions], scope = 'policy', activation = None)
-        value = multilayer_fc(h, [1], scope = 'value', activation = None)
+        if noisy_heads:
+            policy, noise_p = multilayer_fc_noisy(h, [nactions], scope = 'policy', activation = None)
+            value, noise_v = multilayer_fc_noisy(h, [1], scope = 'value', activation = None, noise = noise_p)
+            noise_list.extend(noise_p)
+            
+        else:
+            policy = multilayer_fc(h, [nactions], scope = 'policy', activation = None)
+            value = multilayer_fc(h, [1], scope = 'value', activation = None, noise = noise_p)
+            
         return policy, value, noise_list, states, init_state, None, None
     
     elif v_net == 'copy':
@@ -44,7 +55,6 @@ def build_network(observation, masks, nactions, input_states, input_states_v = N
             h_v = multilayer_fc(h, input_fc_layers, scope = 'fc_net_v')
             noise_p = noise_v = []
         noise_list.extend(noise_p)
-        noise_list.extend(noise_v)
         if len(lstm_layers):
             assert input_states_v is not None, 'Specify input states for value network'
             
@@ -67,15 +77,19 @@ def build_network(observation, masks, nactions, input_states, input_states_v = N
                 noise_v = noise_v = []
                 
             noise_list.extend(noise_p)
-            noise_list.extend(noise_v)
             h_p = lstm_outputs_p
             h_v = lstm_outputs_v
         else:
             states_p, init_state_p = None, None
             states_v, init_state_v = None, None
-            
-        policy = multilayer_fc(h_p, [nactions], scope = 'policy', activation = None, layer_norm = False)
-        value = multilayer_fc(h_v, [1], activation = None, scope = 'value', layer_norm = False)
+       
+        if noisy_heads:
+            policy, noise_p = multilayer_fc_noisy(h_p, [nactions], scope = 'policy', activation = None)
+            value, noise_v = multilayer_fc_noisy(h_v, [1], scope = 'value', activation = None, noise = noise_p)
+            noise_list.extend(noise_p)
+        else:
+            policy = multilayer_fc(h_p, [nactions], scope = 'policy', activation = None, layer_norm = False)
+            value = multilayer_fc(h_v, [1], activation = None, scope = 'value', layer_norm = False)
 
         return policy, value, noise_list, states_p, init_state_p, states_v, init_state_v
         

@@ -17,9 +17,10 @@ REWARDS_KEYS = ['baseline', 'play0', 'play1', 'play2', 'play3', 'play4',
 
 
 class Model(object):
-    def __init__(self, nactions, nobs, nplayers, nenvs, nsteps,  sess, scope = '',
+    def __init__(self, nactions, nobs, nplayers, nenvs,  nsteps,  sess, scope = '',
                  fc_input_layers  = [128], lstm_layers = [128],
-                 v_net = 'shared', noisy_fc = True, noisy_lstm = True, layer_norm = True,
+                 v_net = 'shared', noisy_fc = True, noisy_lstm = True, noisy_heads = True, 
+                 layer_norm = True,
                  gamma = 0.99, ent_coef = 0.01, vf_coef = 0.5, cliprange = 0.2, rewards_config = {},
                  max_grad_norm = None, k = 8,  lr = 0.001, lr_half_period = int(1e6), anneal_lr = True,
                  normalize_advs = True, epsilon = 1e-5, path = './experiments/PBT/'):
@@ -37,7 +38,7 @@ class Model(object):
             self.use_lstm = True
         else:
             self.use_lstm = False
-        self.lr = lr
+        self.init_lr = lr
         self.gamma = gamma
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
@@ -49,7 +50,7 @@ class Model(object):
         
         with tf.variable_scope(scope):
             # CREATE VARIABLES AFFECTING TRAINING
-            self.lr = tf.Variable(lr, dtype = tf.float32, name = 'learning_rate', trainable = False)
+            self.lr = tf.Variable(self.init_lr, dtype = tf.float32, name = 'learning_rate', trainable = False)
             self.k = tf.Variable(k, dtype = tf.int32, name = 'k', trainable = False)
             self.cliprange = tf.Variable(cliprange, dtype = tf.float32, name = 'cliprange', trainable = False)
             self.vf_coef = tf.Variable(vf_coef, dtype = tf.float32, name = 'value_loss_coef', trainable = False)
@@ -187,7 +188,7 @@ class Model(object):
         with open(self.path + '/rewards_dict.pkl', 'wb') as f:
             pickle.dump(self.rewards_config, f)
             
-    def load_model(self, new_lr = False):
+    def load_model(self, reset_lr = False):
         ckpt = tf.train.get_checkpoint_state(self.path + 'model/')
         if ckpt is None:
             print('Could not load model "%s" at %s' % (self.scope, self.path + 'model/'))
@@ -195,8 +196,9 @@ class Model(object):
             self.saver.restore(self.sess, ckpt.model_checkpoint_path)
             with open(self.path + 'rewards_dict.pkl', 'rb') as f:
                 self.rewards_config = pickle.load(f)
-            if new_lr:
-                self.sess.run([self.lr.assign(new_lr)])
+            if reset_lr:
+                print('Resetting lr to %f!' % self.init_lr)
+                self.sess.run([self.lr.assign(self.init_lr)])
             train_epochs, ts, lr, k, cliprange = self.sess.run([self.train_epochs, self.timesteps,
                                                                  self.lr, self.k, self.cliprange])
             print('Successfully loaded model "%s":' % self.scope)

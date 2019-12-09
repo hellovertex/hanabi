@@ -2,7 +2,7 @@ import numpy as np
 from collections import defaultdict
 from tf_agents_lib import parallel_py_environment
 from .utils import parse_timestep, discount_with_dones
-from .lstm_player import Player
+from .lstm_player_B import Player
 
 class Game():
     def __init__(self, nplayers, nenvs, load_env, wait_rewards = True):
@@ -19,7 +19,7 @@ class Game():
         
     def reset(self, rewards_config = {},):
         
-        self.obs, _, self.legal_moves, self.ep_done, self.scores, self.ep_custom_rewards, _ =\
+        self.obs, _, self.legal_moves, self.ep_done, self.scores, self.ep_custom_rewards, self.beliefs_prob_dict =\
         parse_timestep(self.env.reset(rewards_config))
         self.current_player = 0
         self.steps_per_player = np.zeros(self.nplayers)
@@ -30,23 +30,23 @@ class Game():
         self.last_episodes_stats = defaultdict(list)
         for p in self.players:
             p.reset()
-
+        self.prev_actions = -np.ones(self.nenvs, dtype = 'int')
+        self.prev_obs = np.zeros((self.nenvs, 171))
             
            
     def play_turn(self,):
         # current player plays one turn
         player = self.players[self.current_player]
-        #print('player', player.num)
         actions, probs, alogps, values = player.step(self.legal_moves, self.obs, self.prev_dones[self.current_player], 
-                                                       self.prev_rewards[self.current_player])
+                                                     self.prev_rewards[self.current_player],
+                                                     self.prev_actions, self.prev_obs, self.beliefs_prob_dict)
 
-        
+        self.prev_actions = actions
+        self.prev_obs = np.copy(self.obs)
         self.steps_per_player[player.num] += 1
         ts = self.env.step(np.array(actions))
-        obs, rewards, legal_moves, dones, scores, custom_rewards, _ = parse_timestep(ts)
-        #print(obs, rewards, legal_moves,dones, scores)
-        #print('R', rewards)
-        #print('D', dones)
+        obs, rewards, legal_moves, dones, scores, custom_rewards, beliefs_prob_dict = parse_timestep(ts)
+
         for k in self.ep_custom_rewards:
             self.ep_custom_rewards[k] =  self.ep_custom_rewards[k] + custom_rewards[k]
 
@@ -66,7 +66,7 @@ class Game():
         self.current_player = (self.current_player + 1) % self.nplayers
         self.obs, self.legal_moves, self.ep_done = obs, legal_moves, dones
 
-    def eval_results(self, episodes_per_env = 6, noisescale = 1):
+    def eval_results(self, episodes_per_env = 6, noisescale = 1,):
         # runs the game untll gall envs collect enough data for training
         self.reset()
         self.players[0].generate_noise(noisescale = noisescale)
@@ -83,7 +83,11 @@ class Game():
                         record_env[j] = False
                     self.finish_episode(j, record_env[j])
                     episodes_done[j] += 1
-
+                        
+        all_data = self.collect_data()
+        obses = all_data[0]
+        actions = all_data[1]
+        probs = all_data[2]
         return self.last_episodes_stats
     
     def play_untill_train(self, nepisodes = 90, nsteps = None, noisescale = 1):
@@ -112,12 +116,14 @@ class Game():
                     episodes_done += 1
                     if nsteps is None:
                         ready = episodes_done >= nepisodes
-                        
+
         return self.last_episodes_stats
-    
+ 
     def finish_episode(self, j, record = True):
         # Updates last reward for env j. Moves data froms players' episode buffer to history buffer
         R, L = self.ep_stats[:, j]
+        self.prev_obs[j] = -1
+        self.prev_actions[j] = -1
         if record:
             for k in self.ep_custom_rewards:
                 self.last_episodes_stats[k].append(self.ep_custom_rewards[k][j])
@@ -140,10 +146,9 @@ class Game():
     def collect_data(self, player_nums = 'all'):
         if player_nums == 'all':
             player_nums = list(range(self.nplayers))
-        (mb_obses, mb_actions, mb_probs, mb_alogps, mb_legal_moves, mb_values, 
+        (mb_obses, mb_obses_ext, mb_actions, mb_probs, mb_alogps, mb_legal_moves, mb_values, 
          mb_returns, mb_dones, mb_masks, mb_states, mb_states_v, mb_noise) = \
-        [], [], [], [], [], [], [], [], [], [], [], []
-        
+        [], [], [], [], [], [], [], [], [], [], [], [], []
         ts_take = int(np.min(self.steps_per_player)) - 1
         
         #print('TS TAKE', ts_take)
@@ -154,6 +159,7 @@ class Game():
             (obses, obses_ext, actions, probs, alogps, legal_moves, values, 
                 returns, dones, masks, states, states_v, noise) = p.get_training_data(ts_take)
             mb_obses.append(obses)
+            mb_obses_ext.append(obses_ext)
             mb_actions.append(actions)
             mb_probs.append(probs)
             mb_alogps.append(alogps)
@@ -171,7 +177,7 @@ class Game():
             if states_v[0] is not None:
                 mb_states_v = np.concatenate(mb_states_v, 1)
         #print('Game output states shape', np.shape(states), np.shape(states_v))
-        return (np.concatenate(mb_obses),np.concatenate(mb_obses), np.concatenate(mb_actions), np.concatenate(mb_probs), 
-                np.concatenate(mb_alogps), np.concatenate(mb_legal_moves), np.concatenate(mb_values), 
-                np.concatenate(mb_returns),np.concatenate(mb_dones), np.concatenate(mb_masks),
-                np.array(mb_states), np.array(mb_states_v), np.concatenate(mb_noise))
+        return (np.concatenate(mb_obses), np.concatenate(mb_obses_ext), np.concatenate(mb_actions), 
+                np.concatenate(mb_probs), np.concatenate(mb_alogps), np.concatenate(mb_legal_moves), 
+                np.concatenate(mb_values), np.concatenate(mb_returns),np.concatenate(mb_dones), 
+                np.concatenate(mb_masks), np.array(mb_states), np.array(mb_states_v), np.concatenate(mb_noise))
