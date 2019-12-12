@@ -11,7 +11,33 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""RL environment for Hanabi, using an API similar to OpenAI Gym."""
+"""RL environment for Hanabi, using an API similar to OpenAI Gym.
+
+Abstract class Environment requires two functions:
+    reset(), which (re)sets the environment using a dictionary config, and
+    step(), which applies an action the the environment at its current state.
+Class HanabiEnv implements this base class.
+
+Flags that define which additional rewards are provided as well as flags for open hands are set here and included
+into the environment at HanabiEnv init, again using config dictionary on custom_environment.rewards.RewardMetrics
+and custom_environment.state_space.ObservationAugmenter.
+
+Game dynamics are provided by creating a field game in an HanabiEnv which is
+a pyhanabi.HanabiGame instantiated with the config dictionary. Observations onto this game instance are created by an
+instance of pyhanabi.ObservationEncoder loaded with the game instance.
+
+HanabiEnv.reset creates a blank game and ObservationAugmenter. HanabiEnv.step applies an action to the game. Also,
+custom rewards and full observations are added here. Both functions return a full description of the game state 'obs'
+which should consequently not be shown directly do an agent.
+"Personalized" observations for each agent are created by ._make_observation_all_players
+"Full" observations of the game state are created by ._extract_dict_from_backend
+Action objects are created from a dict of moves by ._build_move
+
+make() contains some pre-set config dictionaries as a convenient wrapper to create a HanabiEnv.
+
+class Agent provides an interface to a HanabiAgent that can interact with the HanabiEnv. Such an agent can be reset
+using reset() and during a step() it decides on an action by act(), which given an observation produces an action.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -80,7 +106,7 @@ OPEN_HANDS = False
 # Their input will be ranging from 0 to num_colors + num_ranks where
 # 0 means: card is played/discarded/forgotten,
 # [1 to num_colors] are color values and [num_colors+1 to num_colors + rank] mean rank values
-USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = False
+USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = False #todo: what do these flags mean?
 USE_AUGMENTED_BINARY_INPUTS_WHEN_WRAPPING_ENV = False
 
 
@@ -131,7 +157,8 @@ class HanabiEnv(Environment):
         config['num_colors'] = self.game.num_colors()
         config['num_ranks'] = self.game.num_ranks()
 
-        self.reward_metrics = RewardMetrics(config)
+        #todo: augment config here with gin configurable function
+        self.reward_metrics = RewardMetrics(config) #TODO: unzip kwargs?
         self.augment_input = USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV
         self.augment_input_using_binary = USE_AUGMENTED_BINARY_INPUTS_WHEN_WRAPPING_ENV
         self.observation_augmenter = ObservationAugmenter(config, use_binary=self.augment_input_using_binary)
@@ -394,7 +421,7 @@ class HanabiEnv(Environment):
 
         # ----------------- Custom Reward ---------------- #
 
-        reward = 3
+        reward = 3 #todo: why?
         prev_player_hands = self.state.player_hands()
         # needed for hamming distance
         cur_pid = self.state.cur_player()  # absolute pid
@@ -655,6 +682,24 @@ def make(environment_name="Hanabi-Full", num_players=2, pyhanabi_path=None):
                     1,
                 "observation_type":
                     pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value
+            })
+    elif environment_name == "Hanabi-Small-Seer":
+        return HanabiEnv(
+            config={
+                "colors":
+                    2,
+                "ranks":
+                    5,
+                "players":
+                    num_players,
+                "hand_size":
+                    2,
+                "max_information_tokens":
+                    3,
+                "max_life_tokens":
+                    1,
+                "observation_type":
+                    pyhanabi.AgentObservationType.SEER.value
             })
     elif environment_name == "Hanabi-Very-Small":
         return HanabiEnv(

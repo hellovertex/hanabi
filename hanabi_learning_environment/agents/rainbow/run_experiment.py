@@ -21,6 +21,8 @@
 """Run methods for training a DQN agent on Atari.
 
 Methods in this module are usually referenced by |train.py|.
+This module mainly takes care of integrating the entry-point at train.py, environment functionality from rl_env and
+logging functionality from logger.Logger, as well as doing the checkpointing.
 """
 
 from __future__ import absolute_import
@@ -33,7 +35,9 @@ from third_party.dopamine import checkpointer
 from third_party.dopamine import iteration_statistics
 import dqn_agent
 import gin.tf
-import rl_env
+import sys
+sys.path.insert(0, '/home/ma/uni/hanabi/hanabi/')
+from hanabi_learning_environment import rl_env
 import numpy as np
 import rainbow_agent
 import tensorflow as tf
@@ -132,6 +136,8 @@ def create_environment(game_type='Hanabi-Full', num_players=2):
 def create_obs_stacker(environment, history_size=4):
   """Creates an observation stacker.
 
+  Last history_size observations as produced by environment are stacked to be fed into NN.
+
   Args:
     environment: environment object.
     history_size: int, number of steps to stack.
@@ -147,7 +153,8 @@ def create_obs_stacker(environment, history_size=4):
 
 @gin.configurable
 def create_agent(environment, obs_stacker, agent_type='DQN'):
-  """Creates the Hanabi agent.
+  """Creates the Hanabi agent using e.g. dqn_agent.py or rainbow_agent.py to which it passes input and output size,
+  while these provide the interior functionality of the agent.
 
   Args:
     environment: The environment.
@@ -494,8 +501,10 @@ def run_experiment(agent,
 
   for iteration in range(start_iteration, num_iterations):
     start_time = time.time()
+    #all the action happens here, results saved in statistics which is then processed by the logger
     statistics = run_one_iteration(agent, environment, obs_stacker, iteration,
                                    training_steps)
+    #logging etc. happens here
     tf.logging.info('Iteration %d took %d seconds', iteration,
                     time.time() - start_time)
     start_time = time.time()

@@ -1,3 +1,10 @@
+"""
+Augments a given player's observation of a HanabiGame with additional observations concatenated to the vectorized
+observation.
+
+This happens inside augment_observation
+"""
+
 import numpy as np
 from custom_environment.utils import abs_position_player_target, color_char_to_idx, get_cards_touched_by_hint
 from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD, COLOR_CHAR

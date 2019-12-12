@@ -1,12 +1,37 @@
+"""Implements various custom rewards.
+
+A RewardMetrics object is added to a HanabiEnv. The "partial" reward functions are called each .step(),
+depending on flags set i.e. which custom rewards are used.
+
+"""
 import numpy as np
+# import gin.tf
 
 from custom_environment.utils import get_cards_touched_by_hint, card_is_last_copy, get_card_played_or_discarded
 from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD, COLOR_CHAR
 from collections import namedtuple
 
-# todo @gin.configurable
+#todo: where is custom state space and reward set into the config dict? trace lifeline of config.
+# make this a gin.configurable?
 class RewardMetrics(object):
+    """RewardMetrics object providing custom rewards to be provided to an agent from within a HanabiEnvironment.
+    """
     def __init__(self, extended_game_config, history_size=2):
+        """Creates a RewardMetrics object with given extended_game_config.
+
+                Args:
+                  extended_game_config: dict, With parameters for the custom rewards. Takes the following
+                    keys and values.
+                      - colors: int, Number of colors \in [2,5].
+                      - ranks: int, Number of ranks \in [2,5].
+                      - players: int, Number of players \in [2,5].
+                      - hand_size: int, Hand size \in [4,5].
+                      - per_card_reward: bool, whether or not to use individual rewards per card #todo: what?
+                      - _custom_reward=.2: float, weight for custom reward, seems like not yet used?
+                      - _penalty_last_hint_token_used=.2: float, weight for custom reward
+                """
+        print(extended_game_config) #todo: hopefully this gives the "entire" config, as it is the last time the config
+        # is touched?
         # Game-type related stats
         self.config = extended_game_config
         self.num_players = self.config['players']

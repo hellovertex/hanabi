@@ -1,28 +1,59 @@
 # coding=utf-8
-# Copyright 2018 The Dopamine Authors and Google LLC.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-#
-#
-# This file is a fork of the original Dopamine code incorporating changes for
-# the multiplayer setting and the Hanabi Learning Environment.
+
 #
 """The entry point for running a Rainbow agent on Hanabi.
 
 Provides information from commandline arguments and gin config to configure experiment with
 functionality from run_experiment.py. The environment is created using rl_env.make() and the experiment then started
 with run_experiment.run_experiment()
+
+Configuration of the experiment is handled in the following way:
+The configuration for the GAME DYNAMICS are stored in the dict configs which gets used by HanabiGame, HanabiEnv,
+RewardMetrics and ObservationAugmenter at several points:
+rl_env.make chooses a pre-set config dictionary depending on the environment name (specified in gin file) containing
+    colors
+    ranks
+    players
+    hand_size
+    max_information_tokens
+    max_life_tokens
+    observation_type
+Let's call these the default set of configuration parameters included in config.
+rl_env.HanabiEnv also uses (but doesn't seem to require)
+    seed
+    random_start_player
+in its init, config is also passed to
+ -  pyhanabi.HanabiGame() where config is called params and the two new params are apparently set to default values
+    inside hanabi_lib.NewGame
+ -  RewardMetrics() that also requires the following configs corresponding to the custom reward scheme
+        per_card_reward
+        _custom_reward=.2
+        _penalty_last_hint_token_used=.2
+ -  ObservationAugmenter() which doesn't require additional configuration settings
+
+However, the rl_env.make's environment name is a gin configurable, so the gin configs sort of wrap at least the
+default set of configurations as far as a corresponding dict is defined to a environment name in rl_env.make.
+
+The configuration for the AGENT on the other hand are set as gin.configs in the file provided by the parsed command
+line arguments. This includes in the case of the Rainbow agent
+ -  the template, i.e. the blueprint of layers
+ -  RainbowAgents' hyperparameters regarding the learning
+as well as e.g. the ObservationStacker's depth.
+
+The most convenient way to provide parameters to RewardMetrics (ObservationAugmenter doesn't need any) is to make
+these gin.configurable too.
+Two problems:
+    using gin we can't append per-card_reward, _custom_reward and _penalty_last_hint_token_used to the dict
+        (only overwrite config dict). idea: set default values in reward.RewardMetric init
+    the flags to use custom rewards are set as global variables at the beginning of rl_env. idea: make function
+        handle it, make this function gin configurable
+
+these to the dict, but also we can't
+make the hard-coded params
+
+Sascha's train_ppo_custom_env.py sets the config dict from a lists of vals as global vars in the beginning,
+looping over all combinations to construct a specific config. This config is then used to create environments etc.
+etc.
 """
 
 from __future__ import absolute_import
