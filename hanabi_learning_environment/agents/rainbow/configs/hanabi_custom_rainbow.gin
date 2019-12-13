@@ -16,11 +16,11 @@ WrappedReplayMemory.replay_capacity = 50000
 
 run_experiment.training_steps = 10000
 run_experiment.num_iterations = 10005
-run_experiment.checkpoint_every_n = 50
-run_one_iteration.evaluate_every_n = 10
+run_experiment.checkpoint_every_n = 500
+run_one_iteration.evaluate_every_n = 25
 
 # Small Hanabi.
-create_environment.game_type = 'Hanabi-Small'
+create_environment.game_type = 'Hanabi-Small-Seer'
 
 create_agent.agent_type = 'Rainbow'
 create_obs_stacker.history_size = 1
