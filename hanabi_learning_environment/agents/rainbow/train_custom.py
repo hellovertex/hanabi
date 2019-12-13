@@ -44,16 +44,18 @@ The most convenient way to provide parameters to RewardMetrics (ObservationAugme
 these gin.configurable too.
 Two problems:
     using gin we can't append per-card_reward, _custom_reward and _penalty_last_hint_token_used to the dict
-        (only overwrite config dict). idea: set default values in reward.RewardMetric init
+        (only overwrite config dict). for now, this is solved by adding a default value True for per_card_reward in
+        the initialization of RewardMetrics
     the flags to use custom rewards are set as global variables at the beginning of rl_env. idea: make function
         handle it, make this function gin configurable
-
-these to the dict, but also we can't
-make the hard-coded params
 
 Sascha's train_ppo_custom_env.py sets the config dict from a lists of vals as global vars in the beginning,
 looping over all combinations to construct a specific config. This config is then used to create environments etc.
 etc.
+
+todo: okay basically seems to work,
+    find print statements and make them more informative,
+    also try to set levels to the logging business
 """
 
 from __future__ import absolute_import
@@ -109,11 +111,11 @@ def launch_experiment():
   if FLAGS.base_dir == None:
     raise ValueError('--base_dir is None: please provide a path for '
                      'logs and checkpoints.')
-
   run_experiment.load_gin_configs(FLAGS.gin_files, FLAGS.gin_bindings)
   experiment_logger = logger.Logger('{}/logs'.format(FLAGS.base_dir))
 
   environment = run_experiment.create_environment()
+  return
   obs_stacker = run_experiment.create_obs_stacker(environment)
   agent = run_experiment.create_agent(environment, obs_stacker)
 

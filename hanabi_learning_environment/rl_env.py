@@ -47,6 +47,9 @@ from pyhanabi import color_char_to_idx
 from custom_environment.state_space import ObservationAugmenter
 from custom_environment.reward import RewardMetrics
 from custom_environment.utils import REVEAL_RANK, REVEAL_COLOR, PLAY, DISCARD
+import gin.tf
+import tensorflow as tf
+
 import numpy as np
 
 MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
@@ -94,19 +97,27 @@ class Environment(object):
 
 
 #  ------------------------ Reward Flags -----------------------------
-USE_HINT_REWARD = False
-USE_PLAY_REWARD = True
-USE_DISCARD_REWARD = True
+@gin.configurable
+def set_reward_flags(use_hint_reward = False,
+                     use_play_reward = True,
+                     use_discard_reward = True):
+    return(use_hint_reward,
+           use_play_reward,
+           use_discard_reward)
 
 #  ------------------------ state space Flags -----------------------------
-OPEN_HANDS = False
-# If this flag is set to True, it will add neurons for each card in each hand.
-# Their input will be ranging from 0 to num_colors + num_ranks where
-# 0 means: card is played/discarded/forgotten,
-# [1 to num_colors] are color values and [num_colors+1 to num_colors + rank] mean rank values
-USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV = False #todo: what do these flags mean?
-USE_AUGMENTED_BINARY_INPUTS_WHEN_WRAPPING_ENV = False
-
+@gin.configurable
+def set_stateSpace_flags(open_hands = False,
+                         use_augmented_network_inputs_when_wrapping_env = False,
+                         use_augmented_binary_inputs_when_wrapping_env=False):
+    # todo: what do these flags mean?
+    # If OPEN HANDS this flag is set to True, it will add neurons for each card in each hand.
+    # Their input will be ranging from 0 to num_colors + num_ranks where
+    # 0 means: card is played/discarded/forgotten,
+    # [1 to num_colors] are color values and [num_colors+1 to num_colors + rank] mean rank values
+    return(open_hands,
+           use_augmented_network_inputs_when_wrapping_env,
+           use_augmented_binary_inputs_when_wrapping_env)
 
 class HanabiEnv(Environment):
     """RL interface to a Hanabi environment.
@@ -142,6 +153,16 @@ class HanabiEnv(Environment):
               - seed: int, Random seed.
               - random_start_player: bool, Random start player.
         """
+        #set flags for custom rewards, these used to be global variables but this way they are not gin configurable
+        self.USE_HINT_REWARD, \
+        self.USE_PLAY_REWARD, \
+        self.USE_DISCARD_REWARD = set_reward_flags()
+
+        self.OPEN_HANDS, \
+        self.augment_input, \
+        self.augment_input_using_binary = set_stateSpace_flags()
+
+        #now setting up config
         assert isinstance(config, dict), "Expected config to be of type dict."
         self.game = pyhanabi.HanabiGame(config)
 
@@ -155,13 +176,21 @@ class HanabiEnv(Environment):
         config['num_colors'] = self.game.num_colors()
         config['num_ranks'] = self.game.num_ranks()
 
-        #todo: augment config here with gin configurable function
-        self.reward_metrics = RewardMetrics(config) #TODO: unzip kwargs?
-        self.augment_input = USE_AUGMENTED_NETWORK_INPUTS_WHEN_WRAPPING_ENV
-        self.augment_input_using_binary = USE_AUGMENTED_BINARY_INPUTS_WHEN_WRAPPING_ENV
+        self.reward_metrics = RewardMetrics(config)
         self.observation_augmenter = ObservationAugmenter(config, use_binary=self.augment_input_using_binary)
 
-        self.OPEN_HANDS = OPEN_HANDS
+        tf.logging.info('HINT FLAGS\nuse hint reward: %s\nuse play reward: %s\nuse disc. rewa.:%s',
+                        self.USE_HINT_REWARD,
+                        self.USE_PLAY_REWARD, self.USE_DISCARD_REWARD)
+
+        tf.logging.info('STATE FLAGS\nopen hands: %s\naugmented input: %s\nbinary augm.:%s', self.OPEN_HANDS,
+                        self.augment_input, self.augment_input_using_binary)
+
+        tf.logging.info('CONFIGS\n' + str(config))
+
+        tf.logging.info('REWARD METRICS\nper_card_reward: %s\ncustom reward: %s\n penalty if last '
+                        'hint token was used: %s', self.reward_metrics.per_card_reward,
+                        self.reward_metrics._custom_reward, self.reward_metrics._penalty_last_hint_token_used)
 
     def reset(self, config=None):
         r"""Resets the environment for a new game.
@@ -429,11 +458,11 @@ class HanabiEnv(Environment):
         vectorized_old = self.observation_encoder.encode(old_obs_next_player)
 
 
-        if USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
+        if self.USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
             reward += self.reward_metrics.maybe_change_hint_reward(action, self.state)
-        if USE_PLAY_REWARD and (action.type() == PLAY):
+        if self.USE_PLAY_REWARD and (action.type() == PLAY):
             reward += self.reward_metrics.maybe_change_play_reward(action, self.state)
-        if USE_DISCARD_REWARD and (action.type() == DISCARD):
+        if self.USE_DISCARD_REWARD and (action.type() == DISCARD):
             reward += self.reward_metrics.maybe_change_discard_reward(action, self.state)
 
         # -------------- Custom Reward END --------------- #
@@ -461,7 +490,7 @@ class HanabiEnv(Environment):
 
         # -------------- state space END --------------- #
 
-        if USE_HINT_REWARD:
+        if self.USE_HINT_REWARD:
             if action.type() in [REVEAL_COLOR, REVEAL_RANK]:
                 vectorized = observation['player_observations'][next_pid]['vectorized']
                 # we compute this after stepping, for simplicity (to have the new observation readily computed)
@@ -477,7 +506,7 @@ class HanabiEnv(Environment):
                 #print(reward)  # 6.0
         # if reward was not modified, default to standard reward
         # if reward is None:  used for when reward was not initially set to 3
-        if not(USE_HINT_REWARD or USE_PLAY_REWARD or USE_DISCARD_REWARD):
+        if not(self.USE_HINT_REWARD or self.USE_PLAY_REWARD or self.USE_DISCARD_REWARD):
             reward = self.state.score() - last_score
 
         info = {}

@@ -26,7 +26,7 @@ class RewardMetrics(object):
                       - ranks: int, Number of ranks \in [2,5].
                       - players: int, Number of players \in [2,5].
                       - hand_size: int, Hand size \in [4,5].
-                      - per_card_reward: bool, whether or not to use individual rewards per card #todo: what?
+                      - per_card_reward=True: bool, whether or not to use individual rewards per card #todo: what?
                       - _custom_reward=.2: float, weight for custom reward, seems like not yet used?
                       - _penalty_last_hint_token_used=.2: float, weight for custom reward
                 """
@@ -43,15 +43,15 @@ class RewardMetrics(object):
         # Custom reward params
         self._custom_reward = None
         self._penalty_last_hint_token_used = None
-        self.per_card_reward = self.config['per_card_reward']
+
         # Load custom reward params from train_eval script config, default to .2 for each param
-        attrs = ['_custom_reward', '_penalty_last_hint_token_used']
-        default_attr = .2
-        for attr in attrs:
+        attrs = ['per_card_reward', '_custom_reward', '_penalty_last_hint_token_used']
+        default_vals = [True, .2, .2]
+        for attr, def_val in zip(attrs, default_vals):
             if attr in self.config:
                 setattr(self, attr, self.config[attr])
             else:
-                setattr(self, attr, default_attr)
+                setattr(self, attr, def_val)
 
         self.history_size = history_size
         self.history = list()  # stores last hints [may have some (PLAY or DISCARD) actions in between]
