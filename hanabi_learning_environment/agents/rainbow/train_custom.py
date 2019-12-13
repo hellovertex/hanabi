@@ -1,7 +1,13 @@
 # coding=utf-8
-
 #
 """The entry point for running a Rainbow agent on Hanabi.
+
+example call:
+python hanabi_learning_environment/agents/rainbow/train_custom.py
+--gin_files hanabi_learning_environment/agents/rainbow/configs/hanabi_custom_rainbow.gin
+--base_dir training/rainbow_training/
+--checkpoint_dir checkpoints
+--logging_dir logs gs
 
 Provides information from commandline arguments and gin config to configure experiment with
 functionality from run_experiment.py. The environment is created using rl_env.make() and the experiment then started
