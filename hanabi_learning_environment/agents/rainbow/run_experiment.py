@@ -41,6 +41,7 @@ import rainbow_agent
 import tensorflow as tf
 LENIENT_SCORE = False
 
+# tf.logging.set_verbosity('INFO')
 
 class ObservationStacker(object):
   """Class for stacking agent observations."""
@@ -336,7 +337,7 @@ def run_one_episode(agent, environment, obs_stacker):
 
   agent.end_episode(reward_since_last_action)
 
-  tf.logging.info('EPISODE: %d %g', step_number, total_reward)
+  tf.logging.debug('EPISODE: %d %g', step_number, total_reward)
   return step_number, total_reward
 
 
