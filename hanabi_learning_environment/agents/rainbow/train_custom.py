@@ -2,12 +2,14 @@
 #
 """The entry point for running a Rainbow agent on Hanabi.
 
-example call:
-python hanabi_learning_environment.agents.rainbow.train_custom
+example call from base directory (hanabi):
+python -m hanabi_learning_environment.agents.rainbow.train_custom
 --gin_files hanabi_learning_environment/agents/rainbow/configs/hanabi_custom_rainbow.gin
---base_dir training/rainbow_training/
+--base_dir training/rainbow_training
 --checkpoint_dir checkpoints
---logging_dir logs gs
+--logging_dir logs
+
+importantly, don't end filepaths with '/'
 
 Provides information from commandline arguments and gin config to configure experiment with
 functionality from run_experiment.py. The environment is created using rl_env.make() and the experiment then started
@@ -61,7 +63,6 @@ etc.
 
 todo: okay basically seems to work,
     find print statements in custom reward scheme and make them more informative,
-    also try to set levels to the logging business
     make 'per_card_reward', '_custom_reward' and '_penalty_last_hint_token_used't gin configurables, too
 """
 

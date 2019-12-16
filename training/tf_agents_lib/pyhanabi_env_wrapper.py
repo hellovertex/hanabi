@@ -109,6 +109,7 @@ class PyhanabiEnvWrapper(PyEnvironmentBaseWrapper):
         if environment.augment_input:
             # observation is augmented, so adjsut the obs_spec accordingly
             if environment.augment_input_using_binary:
+                #HERE THE SIZE OF THE AUGMENTED INPUT IS CALCULATED
                 maybe_additional_inputs += environment.game.num_players() * environment.game.hand_size() \
                                            * (environment.game.num_colors() + environment.game.num_ranks())
             else:
