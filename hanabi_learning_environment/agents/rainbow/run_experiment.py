@@ -35,13 +35,10 @@ from third_party.dopamine import checkpointer
 from third_party.dopamine import iteration_statistics
 import dqn_agent
 import gin.tf
-import sys
-sys.path.insert(0, '/home/ma/uni/hanabi/hanabi/')
 from hanabi_learning_environment import rl_env
 import numpy as np
 import rainbow_agent
 import tensorflow as tf
-
 LENIENT_SCORE = False
 
 

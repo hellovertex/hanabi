@@ -3,7 +3,7 @@
 """The entry point for running a Rainbow agent on Hanabi.
 
 example call:
-python hanabi_learning_environment/agents/rainbow/train_custom.py
+python hanabi_learning_environment.agents.rainbow.train_custom
 --gin_files hanabi_learning_environment/agents/rainbow/configs/hanabi_custom_rainbow.gin
 --base_dir training/rainbow_training/
 --checkpoint_dir checkpoints
@@ -60,8 +60,9 @@ looping over all combinations to construct a specific config. This config is the
 etc.
 
 todo: okay basically seems to work,
-    find print statements and make them more informative,
+    find print statements in custom reward scheme and make them more informative,
     also try to set levels to the logging business
+    make 'per_card_reward', '_custom_reward' and '_penalty_last_hint_token_used't gin configurables, too
 """
 
 from __future__ import absolute_import
@@ -121,7 +122,6 @@ def launch_experiment():
   experiment_logger = logger.Logger('{}/logs'.format(FLAGS.base_dir))
 
   environment = run_experiment.create_environment()
-  return
   obs_stacker = run_experiment.create_obs_stacker(environment)
   agent = run_experiment.create_agent(environment, obs_stacker)
 
