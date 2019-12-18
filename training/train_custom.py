@@ -3,8 +3,8 @@
 """The entry point for running a Rainbow agent on Hanabi.
 
 example call from base directory (hanabi):
-python -m hanabi_learning_environment.agents.rainbow.train_custom
---gin_files hanabi_learning_environment/agents/rainbow/configs/hanabi_custom_rainbow.gin
+python -m training.train_custom
+--gin_files training/rainbow_training/configs/hanabi_custom_rainbow.gin
 --base_dir training/rainbow_training
 --checkpoint_dir checkpoints
 --logging_dir logs
@@ -62,7 +62,13 @@ looping over all combinations to construct a specific config. This config is the
 etc.
 
 todo: okay basically seems to work,
-    find print statements in custom reward scheme and make them more informative,
+    how many iterations are necessary?
+    pull train_custom.py out of rainbow environment
+    script to load trained agent
+    activate additional rewards, see whether it works
+        find print statements in custom reward scheme and make them more informative,
+        train Rainbow seer/private/6 combinations of rewards, DQN private 6 combinations of rewards
+    write script to train rewards consecutively
     make 'per_card_reward', '_custom_reward' and '_penalty_last_hint_token_used't gin configurables, too
 """
 
@@ -73,7 +79,7 @@ from __future__ import print_function
 from absl import app
 from absl import flags
 
-from third_party.dopamine import logger
+from hanabi_learning_environment.agents.rainbow.third_party.dopamine import logger
 
 import run_experiment
 
