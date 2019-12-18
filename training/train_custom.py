@@ -63,7 +63,6 @@ etc.
 
 todo: okay basically seems to work,
     how many iterations are necessary?
-    pull train_custom.py out of rainbow environment
     script to load trained agent
     activate additional rewards, see whether it works
         find print statements in custom reward scheme and make them more informative,
@@ -79,9 +78,11 @@ from __future__ import print_function
 from absl import app
 from absl import flags
 
+# import hanabi_learning_environment.agents.rainbow
+
 from hanabi_learning_environment.agents.rainbow.third_party.dopamine import logger
 
-import run_experiment
+from hanabi_learning_environment.agents.rainbow import run_experiment
 
 FLAGS = flags.FLAGS
 

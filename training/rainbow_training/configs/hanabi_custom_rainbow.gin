@@ -1,5 +1,5 @@
-import rainbow_agent
-import run_experiment
+import hanabi_learning_environment.agents.rainbow.rainbow_agent
+import hanabi_learning_environment.agents.rainbow.run_experiment
 
 # This configures the Rainbow agent.
 AGENT_CLASS_2 = @RainbowAgent
