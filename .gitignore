@@ -1,3 +1,9 @@
+.ipynb_checkpoints/
+baselines/
+experiments/
+training/bad_min_train_example.py
+training/rainbow/
+gui
 tut/
 training/logs/
 training/summaries/
