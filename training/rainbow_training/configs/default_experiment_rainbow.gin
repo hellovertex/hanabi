@@ -1,5 +1,9 @@
-import hanabi_learning_environment.agents.rainbow.rainbow_agent
-import hanabi_learning_environment.agents.rainbow.run_experiment
+#import hanabi_learning_environment.agents.rainbow.rainbow_agent
+#import hanabi_learning_environment.agents.rainbow.run_experiment
+
+import dqn_agent
+import rainbow_agent
+import run_experiment
 
 # This configures the Rainbow agent.
 AGENT_CLASS_2 = @RainbowAgent
@@ -28,20 +32,10 @@ create_obs_stacker.history_size = 1
 rainbow_template.layer_size=128
 rainbow_template.num_layers=2
 
-RainbowAgent.gamma = 0.99
-RainbowAgent.update_horizon = 1
-RainbowAgent.num_atoms = 51
-RainbowAgent.min_replay_history = 500 # agent steps
-RainbowAgent.target_update_period = 500 # agent steps
-RainbowAgent.epsilon_train = 0.0
-RainbowAgent.epsilon_eval = 0.0
-RainbowAgent.epsilon_decay_period = 1000 # agent steps
-RainbowAgent.tf_device = '/gpu:0'  # '/cpu:*' use for non-GPU version
-
 # Configure manual rewards and visibility
-set_reward_flags.use_hint_reward    = False
-set_reward_flags.use_play_reward    = False
-set_reward_flags.use_discard_reward = False
+#set_reward_flags.use_hint_reward    = False
+#set_reward_flags.use_play_reward    = False
+#set_reward_flags.use_discard_reward = False
 
 
 

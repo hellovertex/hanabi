@@ -31,7 +31,7 @@ import random
 
 import gin.tf
 import numpy as np
-#import replay_memory
+import replay_memory
 import tensorflow as tf
 
 
@@ -85,11 +85,10 @@ def dqn_template(state, num_actions, layer_size=512, num_layers=1):
   return net
 
 
-
+@gin.configurable
 class DQNAgent(object):
   """A compact implementation of the multiplayer DQN agent."""
-
-
+  @gin.configurable
   def __init__(self,
                num_actions=None,
                observation_size=None,

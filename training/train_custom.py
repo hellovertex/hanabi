@@ -4,7 +4,7 @@
 
 example call from base directory (hanabi):
 python -m training.train_custom
---gin_files training/rainbow_training/configs/hanabi_custom_rainbow.gin
+--gin_files training/rainbow_training/configs/default_experiment_rainbow.gin
 --base_dir training/rainbow_training
 --checkpoint_dir checkpoints
 --logging_dir logs
@@ -61,9 +61,27 @@ Sascha's train_ppo_custom_env.py sets the config dict from a lists of vals as gl
 looping over all combinations to construct a specific config. This config is then used to create environments etc.
 etc.
 
+Where do the print statements and logs come from?
+in run experiment, after every iteration run_experiment logs at INFO level
+    -how long the iteration took
+    -how long the logging took
+    -how long the checkpointing took
+and at the same time run_one_iteration logs at INFO level
+    -average training steps per second
+    -average per episode return
+If the current step is an evaluation step, this function also logs at INFO level
+    -average eval episode length
+    -average eval return
+run_one_episode also logs at DEBUG level
+    -current episode length
+    -current episode return
+
+
+
 todo: okay basically seems to work,
     how many iterations are necessary?
-    script to load trained agent
+    script to load trained agent -> best try it out by loading two checkpoints, let them play a round against each other
+    does agent contain hyperparameters, like configs?
     activate additional rewards, see whether it works
         find print statements in custom reward scheme and make them more informative,
         train Rainbow seer/private/6 combinations of rewards, DQN private 6 combinations of rewards
@@ -79,10 +97,14 @@ from absl import app
 from absl import flags
 
 # import hanabi_learning_environment.agents.rainbow
+import sys
+sys.path.append("./hanabi_learning_environment/agents/rainbow")
 
-from hanabi_learning_environment.agents.rainbow.third_party.dopamine import logger
+from third_party.dopamine import logger
+import run_experiment
 
-from hanabi_learning_environment.agents.rainbow import run_experiment
+# from hanabi_learning_environment.agents.rainbow.third_party.dopamine import logger
+# from hanabi_learning_environment.agents.rainbow import run_experiment
 
 FLAGS = flags.FLAGS
 
