@@ -34,6 +34,7 @@ class Client:
          https://github.com/Zamiell/hanabi-live. They compute actions offline
          and send back the corresponding json-encoded action on their turn."""
         # Hanabi playing agent
+        # note that the used Agent class must be imported in this file
         self.agent = eval(conf.AGENT_CLASSES[client_config['agent_class']]['class'])(agent_config)
         time.sleep(1)
         # Opens a websocket on url:80
