@@ -59,27 +59,27 @@ There you see how to run evaluation games with the trained agents and plot their
 ### GUI Setup (server on localhost)
 These instructions have been tested using Ubuntu 18.04.1 LTS.
 ```
+unzip the gui/server/go.zip to "$HOME/" [do not change directory]
+
 Install Golang:
 	sudo add-apt-repository ppa:longsleep/golang-backports
 	(if you don't do this, it will install a version of Golang that is very old)
 	sudo apt update
 	sudo apt install golang-go -y
-	mkdir "$HOME/go"
 	export GOPATH=$HOME/go && echo 'export GOPATH=$HOME/go' >> ~/.profile
 	export PATH=$PATH:$GOPATH/bin && echo 'export PATH=$PATH:$GOPATH/bin' >> ~/.profile
 Install MariaDB:
 	sudo apt install mariadb-server -y
 	sudo mysql_secure_installation
 	Follow the prompts.
-Unpack the server to GOPATH:
-    unzip the gui/server/go.zip to "$GOPATH/"
+
 Set up a database user and import the database schema:
 	sudo mysql -u root -p
 	    CREATE DATABASE hanabi;
 	    CREATE USER 'hanabiuser'@'localhost' IDENTIFIED BY 'pass';
 	    GRANT ALL PRIVILEGES ON hanabi.* to 'hanabiuser'@'localhost';
 	    FLUSH PRIVILEGES;
-	./install/install_database_schema.sh
+$HOME/go/src/github.com/Zamiell/hanabi-live/install/install_database_schema.sh
 
 COMPILE:
 	cd "$HOME/go/src/github.com/Zamiell/hanabi-live/src/"
