@@ -57,7 +57,7 @@ class RainbowAgent(object):
 
         tf.reset_default_graph()
         project_path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-        self.base_dir = project_path + '/evaluation/trained_models/'
+        self.base_dir = project_path + '/agents/rainbow_10kit/'
 
         self.observation_size = agent_config["observation_size"]
         self.num_players = agent_config["num_players"]
