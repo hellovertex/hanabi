@@ -28,7 +28,7 @@ def get_agent_config(game_config: Dict, agent: str):
             'observation_size': get_observation_size(game_config),
             'num_actions': get_num_actions(game_config),
             'num_players': game_config['num_total_players'],
-            'history_size':1
+            'history_size': 1
         }, **game_config)
     elif agent == 'simple':
         return {

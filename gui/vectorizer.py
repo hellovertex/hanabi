@@ -590,7 +590,6 @@ class ObservationVectorizer(object):
 
         return True
 
-
 class LegalMovesVectorizer(object):
     '''
     // Uid mapping.  h=hand_size, p=num_player_knowledgeplayers, c=colors, r=ranks

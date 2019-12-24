@@ -1,3 +1,4 @@
+evaluation/trained_models/*
 hanabi_learning_environment/*
 .ipynb_checkpoints/
 baselines/

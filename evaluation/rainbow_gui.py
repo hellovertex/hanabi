@@ -22,8 +22,8 @@ class RainbowPlayer(object):
 
         self.observation_size = agent_config["observation_size"]
         self.num_players = agent_config["num_players"]
-        self.history_size = agent_config["history_size"]
-        self.vectorized_observation_shape = agent_config["observation_size"]
+        # self.history_size = agent_config["history_size"]
+        # self.vectorized_observation_shape = agent_config["observation_size"]
         self.num_actions = agent_config["max_moves"]
 
         self.experiment_logger = logger.Logger(self.base_dir+'/logs')
