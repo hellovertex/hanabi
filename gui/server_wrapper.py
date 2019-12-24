@@ -82,8 +82,7 @@ class GameStateWrapper:
             hand_size=self.hand_size,
             max_information_tokens=self.max_info_tokens,
             max_life_tokens=self.max_life_tokens,
-            max_moves=self.max_moves,
-            variant=self.variant
+            max_moves=self.max_moves
         )
 
         self.caller_is_admin = False  # flag is used to determine one RL agent that keeps track of human players

@@ -169,13 +169,12 @@ class ObservationVectorizer(object):
         self.max_moves = self.env.max_moves
         self.bits_per_card = self.num_colors * self.num_ranks
         self.max_deck_size = 0
-        self.variant = self.env.variant
         # start of the vectorized observation
         self.offset = None
 
         for color in range(self.num_colors):
             for rank in range(self.num_ranks):
-                self.max_deck_size += self.env.num_cards(color, rank, self.variant)
+                self.max_deck_size += self.env.num_cards(rank)
         """ Bit lengths """
         # Compute total state length
         self.hands_bit_length = (self.num_players - 1) * self.hand_size * self.bits_per_card + self.num_players
@@ -375,7 +374,7 @@ class ObservationVectorizer(object):
                 num_discarded = counts[c * self.num_ranks + r]
                 for i in range(int(num_discarded)):
                     self.obs_vec[self.offset + i] = 1
-                self.offset += self.env.num_cards(c, r, self.variant)
+                self.offset += self.env.num_cards(r)
 
         assert self.offset - (self.hands_bit_length + self.board_bit_length + self.discard_pile_bit_length) == 0
         return True

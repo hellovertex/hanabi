@@ -235,7 +235,8 @@ class EnvMock:
         self.max_moves = max_moves
         self.variant = variant
 
-    def num_cards(self, color, rank, variant):
+    @staticmethod
+    def num_cards(self, rank):
         """ Input: Color string in "RYGWB" and rank in [0,4]
         Output: How often deck contains card with given color and rank, i.e. 1-cards will be return 3"""
         if rank == 0:
