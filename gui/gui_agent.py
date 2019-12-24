@@ -9,6 +9,15 @@ import numpy as np
 from agents.rainbow_copy.third_party.dopamine import checkpointer, logger
 import agents.rainbow_copy.rainbow_agent as rainbow
 
+# PPOAgent imports
+from tf_agents.policies import py_tf_policy
+from hanabi_learning_environment import rl_env
+from training.tf_agents_lib.pyhanabi_env_wrapper import PyhanabiEnvWrapper
+from tf_agents.environments import tf_py_environment
+from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork
+from training.tf_agents_lib.masked_networks import MaskedValueEvalNetwork
+from tf_agents.agents.ppo.ppo_agent import PPOAgent
+
 
 # make sure other project files find the config from wherever they are being called
 path = os.path.dirname(sys.modules['__main__'].__file__)
@@ -30,7 +39,7 @@ AGENT_CLASSES = {
     """
     'simple': 'SimpleAgent',  # as in deepminds hanabi-learning-environment
     'rainbow': 'RainbowAgent',  # as in deepminds hanabi-learning-environment
-    'ppo': 'PPOAgent'
+    'ppo': 'PPOGuiAgent'
 }
 
 
@@ -102,39 +111,39 @@ class RainbowAgent(object):
 
         return action_dict
 
-def load_networks(tf_env):
-    """ Initializes actor and value networks for ppo agent """
-    actor_net = MaskedActorDistributionNetwork(  # set up actor network as trained before
-        tf_env.observation_spec(),
-        tf_env.action_spec(),
-        fc_layer_params=(150, 75)
-    )
-    value_net = MaskedValueEvalNetwork(  # set up value network as trained before
-        tf_env.observation_spec(), fc_layer_params=(150, 75)
-    )
-    return actor_net, value_net
 
-class PPOAgent(GUIAgent):
+class PPOGuiAgent(GUIAgent):
 
-    def __init__(self, train_dir):
+    def __init__(self, ckpt_dir, config):
         # --- Tf session --- #
         tf.reset_default_graph()
         self.sess = tf.Session()
         tf.compat.v1.enable_resource_variables()
 
         # --- Environment Stub--- #
-        env = rl_env.make(environment_name=FLAGS.game_type, num_players=FLAGS.num_players)
+        env = rl_env.HanabiEnv(config=config['game_config'])
         wrapped_env = PyhanabiEnvWrapper(env)
         tf_env = tf_py_environment.TFPyEnvironment(wrapped_env)
+        time_step_spec = tf_env.time_step_spec()
+        observation_spec = tf_env.observation_spec()
+        action_spec = tf_env.action_spec()
+        del env, wrapped_env, tf_env
 
         with self.sess.as_default():
             # --- Init Networks --- #
-            actor_net, value_net = load_networks(tf_env)
+            actor_net = MaskedActorDistributionNetwork(  # set up actor network as trained before
+                observation_spec(),
+                action_spec(),
+                fc_layer_params=(150, 75)
+            )
+            value_net = MaskedValueEvalNetwork(  # set up value network as trained before
+                observation_spec(), fc_layer_params=(150, 75)
+            )
 
             # --- Init agent --- #
             agent = PPOAgent(  # set up ppo agent with tf_agents
-                tf_env.time_step_spec(),
-                tf_env.action_spec(),
+                time_step_spec(),
+                action_spec(),
                 actor_net=actor_net,
                 value_net=value_net,
                 train_step_counter=tf.compat.v1.train.get_or_create_global_step(),
@@ -145,7 +154,7 @@ class PPOAgent(GUIAgent):
             self.policy = py_tf_policy.PyTFPolicy(agent.policy)
             self.policy.initialize(None)
             # --- restore from checkpoint --- #
-            self.policy.restore(policy_dir=train_dir, assert_consumed=False)
+            self.policy.restore(policy_dir=ckpt_dir, assert_consumed=False)
 
             # Run tf graph
             self.sess.run(agent.initialize())

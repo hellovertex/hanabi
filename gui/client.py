@@ -362,7 +362,8 @@ def get_client_config_from_args(cmd_args, game_config, agent: int) -> Dict:
         'colors': game_config['colors'],
         'ranks': game_config['ranks'],
         'hand_size': gui_utils.get_hand_size(players),
-        'max_moves': gui_utils.get_num_actions(game_config)
+        'max_moves': gui_utils.get_num_actions(game_config),
+        'game_config': game_config
     }
     return client_config
 
