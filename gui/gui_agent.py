@@ -102,10 +102,55 @@ class RainbowAgent(object):
 
         return action_dict
 
+def load_networks(tf_env):
+    """ Initializes actor and value networks for ppo agent """
+    actor_net = MaskedActorDistributionNetwork(  # set up actor network as trained before
+        tf_env.observation_spec(),
+        tf_env.action_spec(),
+        fc_layer_params=(150, 75)
+    )
+    value_net = MaskedValueEvalNetwork(  # set up value network as trained before
+        tf_env.observation_spec(), fc_layer_params=(150, 75)
+    )
+    return actor_net, value_net
 
 class PPOAgent(GUIAgent):
+
     def __init__(self, train_dir):
-        pass
+        # --- Tf session --- #
+        tf.reset_default_graph()
+        self.sess = tf.Session()
+        tf.compat.v1.enable_resource_variables()
+
+        # --- Environment Stub--- #
+        env = rl_env.make(environment_name=FLAGS.game_type, num_players=FLAGS.num_players)
+        wrapped_env = PyhanabiEnvWrapper(env)
+        tf_env = tf_py_environment.TFPyEnvironment(wrapped_env)
+
+        with self.sess.as_default():
+            # --- Init Networks --- #
+            actor_net, value_net = load_networks(tf_env)
+
+            # --- Init agent --- #
+            agent = PPOAgent(  # set up ppo agent with tf_agents
+                tf_env.time_step_spec(),
+                tf_env.action_spec(),
+                actor_net=actor_net,
+                value_net=value_net,
+                train_step_counter=tf.compat.v1.train.get_or_create_global_step(),
+                normalize_observations=False
+            )
+
+            # --- init policy --- #
+            self.policy = py_tf_policy.PyTFPolicy(agent.policy)
+            self.policy.initialize(None)
+            # --- restore from checkpoint --- #
+            self.policy.restore(policy_dir=train_dir, assert_consumed=False)
+
+            # Run tf graph
+            self.sess.run(agent.initialize())
 
     def act(self, observation):
-        pass
+        with self.sess.as_default():
+            policy_step = self.policy.action(observation)
+            return policy_step.action
