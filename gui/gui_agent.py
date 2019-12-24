@@ -42,6 +42,10 @@ AGENT_CLASSES = {
     'ppo': 'PPOGuiAgent'
 }
 
+# todo make checkpoint paths configurable
+ppo_ckpt_dir = '/agents/ppo/'
+rainbow_ckpt_dir = '/agents/rainbow/'
+
 
 class GUIAgent(object):
     """
@@ -66,6 +70,7 @@ class RainbowAgent(object):
 
         tf.reset_default_graph()
         project_path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+        # todo make this configurable
         self.base_dir = project_path + '/agents/rainbow_10kit/'
 
         self.observation_size = agent_config["observation_size"]
@@ -114,7 +119,7 @@ class RainbowAgent(object):
 
 class PPOGuiAgent(GUIAgent):
 
-    def __init__(self, ckpt_dir, config):
+    def __init__(self, config, ckpt_dir):
         # --- Tf session --- #
         tf.reset_default_graph()
         self.sess = tf.Session()
