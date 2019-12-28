@@ -37,7 +37,7 @@ class Client:
     def __init__(self, url: str, cookie: str, client_config: Dict, agent_config: Dict):
 
         # Hanabi playing agent
-        # note that the used Agent class must be imported in this file
+        # note that the used Agent class must be imported here
         self.agent = eval(AGENT_CLASSES[client_config['agent_class']])(agent_config)
         time.sleep(1)
         # Opens a websocket on url:80
@@ -162,8 +162,7 @@ class Client:
         pass
 
     def run(self, gameID=None):
-            """ Basically the main workhorse.
-            This implements the event-loop where we play Hanabi """
+            """ This implements the event-loop where we play Hanabi """
 
             # Client automatically sets gameID to the last opened game [see self.on_message()]
             if gameID is None:
@@ -418,6 +417,22 @@ def init_args(argparser):
         default=1
     )
     argparser.add_argument(
+        '-c',
+        '--num_colors',
+        help='Number of colors used in the game. Only use in AGENTS_ONLY mode (-n=0), as it determines the game variant, '
+             '\n c.f.'
+             'https://github.com/Zamiell/hanabi-live/blob/master/docs/VARIANTS.md',
+        default=5)
+    argparser.add_argument(
+        '-a',
+        '--agent_classes',
+        help='Expects agent-class keywords as specified in client_config.py. Example: \n client.py -a simple rainbow_copy '
+             'simple \n will run a game with 2 SimpleAgent instances and 1 RainbowAgent instance. Default is simple '
+             'simple, i.e. running with 2 SimpleAgent instances',
+        nargs='+',
+        type=str,
+        default=['simple', 'simple'])
+    argparser.add_argument(
         '-e',
         '--num_episodes',
         help='Number of games that will be played until agents idle. Default is e=1. -e flag will only be parsed when '
@@ -430,15 +445,7 @@ def init_args(argparser):
     change etc, so you can run the client with -e 1 which will make them finish this particular game and then idle so you
     can restart with another parametrization. Unfortunately that is the only way to handle 'hanging' games (to finish them
     first) """
-    argparser.add_argument(
-        '-a',
-        '--agent_classes',
-        help='Expects agent-class keywords as specified in client_config.py. Example: \n client.py -a simple rainbow_copy '
-             'simple \n will run a game with 2 SimpleAgent instances and 1 RainbowAgent instance. Default is simple '
-             'simple, i.e. running with 2 SimpleAgent instances',
-        nargs='+',
-        type=str,
-        default=['simple', 'simple'])
+
     # argparser.add_argument('-r', '--remote_address', default=None)
     argparser.add_argument(
         '-r',
@@ -472,13 +479,7 @@ def init_args(argparser):
         help='Sets table password for AGENTS_ONLY mode, i.e. when -n is set to 0. Default password is set to '
              '"big_python", so usually you should not worry about providing -p value.',
         default='')
-    argparser.add_argument(
-        '-g',
-        '--game_variant',
-        help='Example: "Three Suits" or "No Variant". Needed for servers table creation, so make sure to '
-             'not make typos here. Sets a  game_variant for the agent opening a lobby in AGENTS_ONLY mode, '
-             'i.e. when -n is set to 0.',
-        default='No Variant')
+
 
     args = argparser.parse_args()
 

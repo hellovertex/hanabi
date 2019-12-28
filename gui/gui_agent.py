@@ -17,7 +17,7 @@ from tf_agents.environments import tf_py_environment
 from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork
 from training.tf_agents_lib.masked_networks import MaskedValueEvalNetwork
 from tf_agents.agents.ppo.ppo_agent import PPOAgent
-
+from tf_agents.trajectories.time_step import TimeStep
 
 # make sure other project files find the config from wherever they are being called
 path = os.path.dirname(sys.modules['__main__'].__file__)
@@ -43,7 +43,7 @@ AGENT_CLASSES = {
 }
 
 # todo make checkpoint paths configurable
-ppo_ckpt_dir = '/agents/ppo/'
+ppo_ckpt_dir = '/home/hellovertex/Documents/github.com/hellovertex/hanabi/training/summaries/this_is_where_the_current_tfevent_files_will_get_stored/'
 rainbow_ckpt_dir = '/agents/rainbow/'
 
 
@@ -58,13 +58,13 @@ class GUIAgent(object):
         assert cls.__name__ in AGENT_CLASSES.values()
         return super(GUIAgent, cls).__new__(cls)
 
-    def act(self, observation):
+    def act(self, observation_dict):
         """ Expects pyhanabi observation dict
         Returns action as dict or int"""
         raise NotImplementedError
 
 
-class RainbowAgent(object):
+class RainbowAgent(GUIAgent):
 
     def __init__(self, agent_config):
 
@@ -107,19 +107,19 @@ class RainbowAgent(object):
         print("Initialized Model weights at start iteration: {}".format(start_iteration))
         print("---------------------------------------------------\n")
 
-    def act(self, observation):
+    def act(self, observation_dict):
         # Returns Integer Action
-        action_int = self.agent._select_action(observation["vectorized"], observation["legal_moves_as_int_formated"])
+        action_int = self.agent._select_action(observation_dict["vectorized"], observation_dict["legal_moves_as_int_formated"])
 
         # Decode it back to dictionary object
-        action_dict = observation["legal_moves"][np.where(np.equal(action_int, observation["legal_moves_as_int"]))[0][0]]
+        action_dict = observation_dict["legal_moves"][np.where(np.equal(action_int, observation_dict["legal_moves_as_int"]))[0][0]]
 
         return action_dict
 
 
 class PPOGuiAgent(GUIAgent):
 
-    def __init__(self, config, ckpt_dir):
+    def __init__(self, config, ckpt_dir=ppo_ckpt_dir):
         # --- Tf session --- #
         tf.reset_default_graph()
         self.sess = tf.Session()
@@ -164,7 +164,16 @@ class PPOGuiAgent(GUIAgent):
             # Run tf graph
             self.sess.run(agent.initialize())
 
-    def act(self, observation):
+    def act(self, observation_dict):
+        NULL = 1
+
+        # create tf_agents Timestep for tf_agents policy
+        obs = {'state': observation_dict['vectorized'], 'mask': observation_dict['legal_moves_as_int_formated']}
+        observation = TimeStep(step_type=NULL, reward=NULL, discount=NULL, observation=obs)
         with self.sess.as_default():
+            # compute tf_agents PolicyStep
             policy_step = self.policy.action(observation)
-            return policy_step.action
+            # convert integer action back to action dictioary
+            action_int = policy_step.action
+            action_dict = observation_dict["legal_moves"][np.where(np.equal(action_int, observation_dict["legal_moves_as_int"]))[0][0]]
+            return action_dict

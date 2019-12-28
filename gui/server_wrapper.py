@@ -1,5 +1,5 @@
 import ast
-from typing import Optional, List, Set, Dict
+from typing import List, Union
 import copy
 import os
 import sys
@@ -526,8 +526,8 @@ class GameStateWrapper:
 
         return legal_moves
 
-    def parse_action_to_msg(self, action: dict) -> str:
-        """ Takes an action dictionary as gotten from pyhanabi
+    def parse_action_to_msg(self, action: Union[dict, int]) -> str:
+        """ Takes an action dictionary as gotten from gui_agent
         converts it to action string for GUI server """
         # one of ['REVEAL_COLOR', 'REVEAL_RANK', 'PLAY', 'DISCARD']
 

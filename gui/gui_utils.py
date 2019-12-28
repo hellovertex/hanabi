@@ -5,6 +5,7 @@ import json_to_pyhanabi
 from typing import Optional, Set, List
 import enum
 
+
 # Just for convenience, copied from pyhanabi
 class HanabiMoveType(enum.IntEnum):
     """Move types, consistent with hanabi_lib/hanabi_move.h."""
@@ -14,6 +15,7 @@ class HanabiMoveType(enum.IntEnum):
     REVEAL_COLOR = 3
     REVEAL_RANK = 4
     DEAL = 5
+
 
 def get_agent_config(game_config: Dict, agent: str):
     """ Performs look-up for agent in config.AGENT_CLASSES and returns individual config. The agent config must
@@ -149,11 +151,3 @@ def parse_rank_server(rank):
             rank += 1
 
     return str(rank)
-
-
-def get_target_from_offset(offset, agent_pos, num_players):
-
-    """ Returns player index as desired by server. That means offset comes from an agents computation """
-    # make up for the fact, that we changed the order of the agents, s.t. self always is at first position
-
-    return str((offset + agent_pos) % num_players)
