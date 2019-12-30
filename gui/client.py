@@ -10,6 +10,7 @@ from typing import Dict
 import requests
 import websocket
 import threading
+import enum
 import time
 import re
 from itertools import count
@@ -25,6 +26,14 @@ BROWSERS = [
 ]
 
 
+class ClientMode(enum.IntEnum):
+    AGENTS_ONLY = 0
+    WITH_ONE_HUMAN_PLAYER = 1
+    WITH_TWO_HUMAN_PLAYERS = 2
+    WITH_THREE_HUMAN_PLAYERS = 3
+    WITH_FOUR_HUMAN_PLAYERS = 4
+
+
 class Client:
     """ Client wrapped around the instances of GuiAgents, so they can play on Zamiels server
          https://github.com/Zamiell/hanabi-live. They compute actions offline
@@ -38,6 +47,7 @@ class Client:
 
         # Hanabi playing agent
         # note that the used Agent class must be imported here
+        if client_config['']
         self.agent = eval(AGENT_CLASSES[client_config['agent_class']])(agent_config)
         time.sleep(1)
         # Opens a websocket on url:80
@@ -414,7 +424,7 @@ def init_args(argparser):
              'play for 1 round and then idle. You can watch the replay by using the "watch specific replay" option '
              'from the server with the ID of the game (that is being sent to lobby chat after game is finished).',
         type=int,
-        default=1
+        default=ClientMode.WITH_ONE_HUMAN_PLAYER
     )
     argparser.add_argument(
         '-c',
