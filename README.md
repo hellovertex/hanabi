@@ -1,4 +1,4 @@
-# NIP_Hanabi_2019
+# Hanabi Research
 ## Installation (tested on Ubuntu 18.04)
 In order to get everything up and running please first run the follwing commands:
 ```
@@ -56,7 +56,7 @@ jupyter-notebook AdHocViz.ipynb
 ```
 There you see how to run evaluation games with the trained agents and plot their performances.
 ## Interact with trained agents via Graphical User Interface
-### GUI Setup (server on localhost)
+### GUI Setup (server on localhost) taken from https://github.com/Zamiell/hanabi-live/
 These instructions have been tested using Ubuntu 18.04.1 LTS.
 ```
 unzip the gui/server/go.zip to "$HOME/" [do not change directory]
