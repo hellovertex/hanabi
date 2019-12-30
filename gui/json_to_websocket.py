@@ -36,13 +36,13 @@ def _get_table_params(config: Dict) -> Dict:
     # to let our agents play remotely on Zamiels server, lol. But lets assume that this is very unlikely to happen.
     game_config = dict()
     game_config['name'] = config['table_name']
-    game_config['variant'] = config['variant']
+    game_config['variant'] = utils.parse_variant(config)
     game_config['timed'] = 'false'
     game_config['baseTime'] = 120
     game_config['timePerTurn'] = 20
     game_config['speedrun'] = 'false'
     game_config['deckPlays'] = 'false'
-    game_config['emptyClues'] = str(config['empty_clues']).lower()  # parse bool flag to str
+    game_config['emptyClues'] = 'false'
     game_config['characterAssignments'] = 'false'
     game_config['correspondence'] = 'false'
     game_config['password'] = config['table_pw']

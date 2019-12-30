@@ -236,7 +236,7 @@ class EnvMock:
         self.variant = variant
 
     @staticmethod
-    def num_cards(self, rank):
+    def num_cards(rank):
         """ Input: Color string in "RYGWB" and rank in [0,4]
         Output: How often deck contains card with given color and rank, i.e. 1-cards will be return 3"""
         if rank == 0:

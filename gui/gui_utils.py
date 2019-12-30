@@ -17,6 +17,11 @@ class HanabiMoveType(enum.IntEnum):
     DEAL = 5
 
 
+def parse_variant(config: Dict) -> str:
+    """ Takes game variant string as required by GUI server and returns game_config Dict as required by pyhanabi"""
+    pass
+
+
 def get_agent_config(game_config: Dict, agent: str):
     """ Performs look-up for agent in config.AGENT_CLASSES and returns individual config. The agent config must
     always be derived from the game_config. If it cannot be computed from it, its not an OpenAI Gym compatible agent.

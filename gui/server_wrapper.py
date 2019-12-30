@@ -64,7 +64,6 @@ class GameStateWrapper:
         # rl_env.HanabiEnvobservation._extract_from_dict()-method, but we need a history so we add this here.
         # Similarly, it could be added by appending obs_dict['last_moves'] = observation.last_moves() in said method.
         self.last_moves = list()
-        self.variant = game_config['variant']
         self.num_colors = game_config['colors']
         self.num_ranks = game_config['ranks']
         self.max_moves = game_config['max_moves']
