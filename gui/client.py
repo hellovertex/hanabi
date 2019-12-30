@@ -97,7 +97,6 @@ class Client:
         # Tell the Client, where in the process of joining/playing we are
         self.gottaJoinGame = False
         self.gameHasStarted = False
-        self.game_ended = False
 
         # configuration needed for hosting a lobby
         self.config = client_config
@@ -146,7 +145,7 @@ class Client:
 
         # END GAME
         if message.startswith('gameOver'):
-            self.game_ended = True
+            self.game.game_ended = True
 
     def _update_latest_game_id(self, message):
         """ Set joingame-flags for self.run(), s.t. it joins created games whenever possible"""
@@ -242,9 +241,9 @@ class Client:
                             self.ws.send(self.game.parse_action_to_msg(a))
 
                         # leave replay lobby when game has ended
-                        if self.game_ended:
+                        if self.game.finished:
                             self.ws.send(cmd.gameUnattend())
-                            self.game_ended = False
+                            self.game.finished = False
                             self.gameHasStarted = False
                             self.episodes_played += 1
 

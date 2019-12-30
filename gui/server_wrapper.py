@@ -74,7 +74,21 @@ class GameStateWrapper:
         # ################################################ #
         """
 
-        self.env = json_to_pyhanabi.create_env_mock(
+
+        self.finished = False
+        self.caller_is_admin = False  # flag is used to determine one RL agent that keeps track of human players
+        # environment observations in order to be able to keep the vectorized observations synchronized
+        if self.agent_name[-2:] == '00':
+            self.caller_is_admin = True  # admin is the first instance of the client class
+        self.idx_human_player = -1  # used to determine whenever human is target of a card hint and thus when
+        # hints will be out of sync with vectorizer environment state
+        self.vectorizer_is_synced = False  # if human player got card hints, the other vectorizer instances must know
+        vectorizer, legal_moves_vectorizer = self._init_vectorizer()
+        self.vectorizer = vectorizer
+        self.legal_moves_vectorizer = legal_moves_vectorizer
+
+    def _init_vectorizer(self):
+        env = json_to_pyhanabi.create_env_mock(
             num_players=self.num_players,
             num_colors=self.num_colors,
             num_ranks=self.num_ranks,
@@ -83,16 +97,9 @@ class GameStateWrapper:
             max_life_tokens=self.max_life_tokens,
             max_moves=self.max_moves
         )
-
-        self.caller_is_admin = False  # flag is used to determine one RL agent that keeps track of human players
-        # environment observations in order to be able to keep the vectorized observations synchronized
-        if self.agent_name[-2:] == '00':
-            self.caller_is_admin = True  # admin is the first instance of the client class
-        self.idx_human_player = -1  # used to determine whenever human is target of a card hint and thus when
-        # hints will be out of sync with vectorizer environment state
-        self.vectorizer_is_synced = False  # if human player got card hints, the other vectorizer instances must know
-        self.vectorizer = gui_vectorizer.ObservationVectorizer(self.env)
-        self.legal_moves_vectorizer = gui_vectorizer.LegalMovesVectorizer(self.env)
+        vectorizer = gui_vectorizer.ObservationVectorizer(env)
+        legal_moves_vectorizer = gui_vectorizer.LegalMovesVectorizer(env)
+        return vectorizer, legal_moves_vectorizer
 
     def reset(self):
         self.observed_hands = list()
@@ -107,6 +114,10 @@ class GameStateWrapper:
         self.agents_turn = False
         self.deck_size = self.max_deck_size
         self.order = 0
+        vectorizer, legal_moves_vectorizer = self._init_vectorizer()
+        self.vectorizer = vectorizer
+        self.legal_moves_vectorizer = legal_moves_vectorizer
+
         return
 
     def init_players(self, notify_msg: str):
