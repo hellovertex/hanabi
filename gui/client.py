@@ -55,8 +55,6 @@ class Client:
         # Hanabi playing agent
         # note that the used Agent class must be imported here
         # if client_config['']
-        self.agent = eval(AGENT_CLASSES[client_config['agent_class']])(agent_config)
-        time.sleep(1)
         # Opens a websocket on url:80
         self.ws = websocket.WebSocketApp(url=url,
                                          on_message=lambda ws, msg: self.on_message(ws, msg),
@@ -368,7 +366,7 @@ def get_client_config_from_args(cmd_args, game_config, agent: int) -> Dict:
         'life_tokens': game_config['max_life_tokens'],
         'info_tokens': game_config['max_information_tokens'],
         'deck_size': deck_size,
-        'wait_move': cmd_args.wait_move,
+        'wait_move': 1,
         'colors': game_config['colors'],
         'ranks': game_config['ranks'],
         'hand_size': gui_utils.get_hand_size(players),
@@ -407,104 +405,96 @@ def get_configs_from_args(cmd_args) -> Dict:
 
 def init_args():
     argparser = argparse.ArgumentParser()
+    subparsers = argparser.add_subparsers(dest='subparser_name')
 
-    argparser.add_argument(
-        '-n',
-        '--num_humans',
-        help='Number of human players expected at the table. Default is n=1. If n=0, the client will enter AGENTS_ONLY '
-             'mode, where agents create a table for themselves and play a number of games specified with -e flag. For'
-             'instance by calling "client.py -n=0 -e=1 -a simple simple", 2 simple agents will create a lobby and '
-             'play for 1 round and then idle. You can watch the replay by using the "watch specific replay" option '
-             'from the server with the ID of the game (that is being sent to lobby chat after game is finished).',
-        type=int,
-        default=ClientMode.AGENTS_ONLY  # one agent will host the game automatically, AI agents play without human
-    )
-    argparser.add_argument(
-        '-c',
-        '--num_colors',
-        help='Number of colors used in the game. '
-             'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.\n c.f.'
-             'https://github.com/Zamiell/hanabi-live/blob/master/docs/VARIANTS.md',
-        default=GameVariants.FIVE_SUITS)
-    argparser.add_argument(
-        '-a',
-        '--agent_classes',
-        help='Expects agent-class keywords as specified in client_config.py. Example: \n client.py -a simple rainbow_copy '
-             'simple \n will run a game with 2 SimpleAgent instances and 1 RainbowAgent instance. Default is simple '
-             'simple, i.e. running with 2 SimpleAgent instances',
-        nargs='+',
-        type=str,
-        required=True,  # default=['simple', 'simple']
-    )
-    argparser.add_argument(
-        '-i',
-        '--info_tokens',
-        help='Number of info_tokens used in the game. '
-             'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.',
-        default=8)
-    argparser.add_argument(
-        '-l',
-        '--life_tokens',
-        help='Number of life_tokens used in the game. '
-             'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.',
-        default=3)
-    argparser.add_argument(
-        '-e',
-        '--num_episodes',
-        help='Number of games that will be played until agents idle. Default is e=1. -e flag will only be parsed when '
-             '-n flag is set to 0, i.e. in AGENTS_ONLY mode',
-        default=1,
-        type=int
-    )
-    """ If you have terminated the client while a game was running, the default behaviour will make the agents return to
-    the game when the client is restarted. However, this is not always desired for instance when the number of players
-    change etc, so you can run the client with -e 1 which will make them finish this particular game and then idle so you
-    can restart with another parametrization. Unfortunately that is the only way to handle 'hanging' games (to finish them
-    first) """
+    a_parser = subparsers.add_parser('agents_only')
+    a_parser.set_defaults()
+    b_parser = subparsers.add_parser('with_human')
 
-    # argparser.add_argument('-r', '--remote_address', default=None)
-    #argparser.add_argument(
-    #    '-r',
-    #    '--remote_address',
-    #    help='Set this to an ipv4 address, when playing on a remote server or on a private subnet (with multiple '
-    #         'humans). For example -r 192.168.178.26 when you want to connect your friends machines in a private '
-    #         'subnet to the machine running the server at 192.168.178.26 or -r hanabi.live when you want to play on '
-    #         'the official server. Unfortunately, it currently does not work with eduroam.',
-    #    default='localhost'
-    #)
-    argparser.add_argument(
-        '-w',
-        '--wait_move',
-        help='Setting -w 2 will make each agent wait for 2 seconds before acting. Default is w=1. Is used to make the '
-             'game feel more natural.',
-        default=1)
-    #argparser.add_argument(
-    #    '-v',
-    #    '--verbose',
-    #    help='Enabling --verbose, will enable verbose mode and print the whole game state instead of just the actions.',
-    #    action='store_true')
-    argparser.add_argument(
-        '-t',
-        '--table_name',
-        help='When running the client in AGENTS_ONLY mode, i.e. when setting -n to 0, you can pass a table name with '
-             'this flag. Default is "AI_room". Usually there is no need to do this though.',
-        default='AIroom')
-    argparser.add_argument(
-        '-p',
-        '--table_pw',
-        help='Sets table password for AGENTS_ONLY mode, i.e. when -n is set to 0. Default password is set to '
-             '"big_python", so usually you should not worry about providing -p value.',
-        default='')
+    def _add_args():
+        a_parser.add_argument(
+            '-c',
+            '--num_colors',
+            help='Number of colors used in the game. '
+                 'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.\n c.f.'
+                 'https://github.com/Zamiell/hanabi-live/blob/master/docs/VARIANTS.md',
+            default=5)
+        a_parser.add_argument(
+            '-i',
+            '--info_tokens',
+            help='Number of info_tokens used in the game. '
+                 'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.',
+            default=8)
+        a_parser.add_argument(
+            '-l',
+            '--life_tokens',
+            help='Number of life_tokens used in the game. '
+                 'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.',
+            default=3)
+        a_parser.add_argument(
+            '-a',
+            '--agent_classes',
+            nargs='+',
+            type=str,
+            required=True,
+            default=['simple', 'simple']
+        )
+        a_parser.add_argument(
+            '-e',
+            '--num_episodes',
+            help='Number of games that will be played until agents idle. Default is e=1. -e flag will only be parsed when '
+                 '-n flag is set to 0, i.e. in AGENTS_ONLY mode',
+            default=1,
+            type=int
+        )
+        a_parser.add_argument(
+            '-t',
+            '--table_name',
+            help='When running the client in AGENTS_ONLY mode, i.e. when setting -n to 0, you can pass a table name with '
+                 'this flag. Default is "AI_room". Usually there is no need to do this though.',
+            default='AIroom')
+        a_parser.add_argument(
+            '-p',
+            '--table_pw',
+            help='Sets table password for AGENTS_ONLY mode, i.e. when -n is set to 0. Default password is set to '
+                 '"big_python", so usually you should not worry about providing -p value.',
+            default='')
+        b_parser.add_argument(
+            '-n',
+            '--num_humans',
+            choices=[1, 2, 3, 4],
+            help='Number of human players expected at the table. Default is n=1. If n=0, the client will enter AGENTS_ONLY '
+                 'mode, where agents create a table for themselves and play a number of games specified with -e flag. For'
+                 'instance by calling "client.py -n=0 -e=1 -a simple simple", 2 simple agents will create a lobby and '
+                 'play for 1 round and then idle. You can watch the replay by using the "watch specific replay" option '
+                 'from the server with the ID of the game (that is being sent to lobby chat after game is finished).',
+            type=int,
+            default=1  # one agent will host the game automatically, AI agents play without human
+        )
+        b_parser.add_argument(
+            '-a',
+            '--agent_classes',
+            nargs='+',
+            type=str,
+            required=True,  # default=['simple', 'simple'],
+        )
 
+    _add_args()
     arguments = argparser.parse_args()
 
     def _commands_valid(args):
+
+        assert len(args.__dict__) > 0, 'Enter either "agents_only" or "with_human"'
         """ This function returns True, iff the user specified input does not break the rules of the game"""
-        # assert legal number of total players
-        assert 1 < args.num_humans + len(args.agent_classes) < 6
-        # assert table name only contains characters, as otherwise the server will complain
-        assert args.table_name.isalpha()
+        print(args)
+        if args.subparser_name == 'with_human':
+            # assert legal number of total players
+            assert 1 < args.num_humans + len(args.agent_classes) < 6
+        elif args.subparser_name == 'agents_only':
+            # assert table name only contains characters, as otherwise the server will complain
+            assert args.table_name.isalpha()
         # ... whatever else will come to my mind
+
         return True
 
     assert _commands_valid(arguments)
@@ -548,6 +538,7 @@ if __name__ == "__main__":
         # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
         client_thread = threading.Thread(target=c.run)
         process.append(client_thread)
+        time.sleep(.5)
 
     for thread in process:
         thread.start()
