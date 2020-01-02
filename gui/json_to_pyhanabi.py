@@ -225,15 +225,15 @@ def get_move_color(move):
 
 
 class EnvMock:
-    def __init__(self, num_players, num_colors, num_ranks, hand_size, max_information_tokens, max_life_tokens, max_moves, variant):
+    def __init__(self, num_players, num_colors, num_ranks, hand_size, max_information_tokens, max_life_tokens):
         self.num_players = num_players
         self.num_colors = num_colors
         self.num_ranks = num_ranks
         self.hand_size = hand_size
         self.max_information_tokens = max_information_tokens
         self.max_life_tokens = max_life_tokens
-        self.max_moves = max_moves
-        self.variant = variant
+        #self.max_moves = max_moves
+        #self.variant = variant
 
     @staticmethod
     def num_cards(rank):
@@ -249,15 +249,15 @@ class EnvMock:
             return 0
 
 
-def create_env_mock(num_players, num_colors, num_ranks, hand_size, max_information_tokens, max_life_tokens, max_moves, variant):
+def create_env_mock(num_players, num_colors, num_ranks, hand_size, max_information_tokens, max_life_tokens, max_moves=None, variant=None):
     num_players = num_players
     num_colors = num_colors
     num_ranks = num_ranks
     hand_size = hand_size
     max_information_tokens = max_information_tokens
     max_life_tokens = max_life_tokens
-    max_moves = max_moves
-    variant = "Hanabi-Full"
+    #max_moves = max_moves
+    #variant = variant
 
     return EnvMock(
         num_players=num_players,
@@ -265,9 +265,9 @@ def create_env_mock(num_players, num_colors, num_ranks, hand_size, max_informati
         num_ranks=num_ranks,
         hand_size=hand_size,
         max_information_tokens=max_information_tokens,
-        max_life_tokens=max_life_tokens,
-        max_moves=max_moves,
-        variant=variant
+        max_life_tokens=max_life_tokens
+        #max_moves=max_moves,
+        #variant=variant
     )
 
 

@@ -17,44 +17,48 @@ class HanabiMoveType(enum.IntEnum):
     DEAL = 5
 
 
-def parse_variant(config: Dict) -> str:
-    """ Takes game variant string as required by GUI server and returns game_config Dict as required by pyhanabi"""
-    pass
+class GameVariants(enum.IntEnum):
+    # number of colors in the deck
+    THREE_SUITS = 3
+    FOUR_SUITS = 4
+    FIVE_SUITS = 5
+    SIX_SUITS = 6
 
 
-def get_agent_config(game_config: Dict, agent: str):
-    """ Performs look-up for agent in config.AGENT_CLASSES and returns individual config. The agent config must
-    always be derived from the game_config. If it cannot be computed from it, its not an OpenAI Gym compatible agent.
-    New agents may be added here"""
+def variant_from_num_colors(num_colors: int) -> str:
 
-    if agent not in gui_agent.AGENT_CLASSES:
-        raise NotImplementedError
-
-    if agent == 'rainbow_copy' or agent == 'rainbow':
-        return dict({
-            'observation_size': get_observation_size(game_config),
-            'num_actions': get_num_actions(game_config),
-            'num_players': game_config['num_total_players'],
-            'history_size': 1
-        }, **game_config)
-    elif agent == 'simple':
-        return {
-            'players': game_config['num_total_players']
-        }
-    else:
-        raise NotImplementedError
+    if num_colors == 3:
+        return  "Three Suits"
+    elif num_colors == 4:
+        return "Four Suits"
+    elif num_colors == 5:
+        return "No Variant"
+    elif num_colors == 6:
+        return "Six Suits"
 
 
-def get_observation_size(game_config):
+def num_colors_from_variant(variant: str) -> int:
+    """ Takes game variant string as required by GUI server and returns corresponding number of colors"""
+    if variant == "No Variant":
+        return 5
+    elif variant == "Three Suits":
+        return 3
+    elif variant == "Four Suits":
+        return 4
+    elif variant == "Five Suits":
+        return 5
+    elif variant == "Six Suits":
+        return 6
+
+
+def get_observation_size(pyhanabi_config):
     """ Returns the len of the vectorized observation """
-    num_players = game_config['num_total_players']  # number of players ingame
-    num_colors = game_config['colors']
-    num_ranks = game_config['ranks']
-    hand_size = game_config['hand_size']
-    max_information_tokens = game_config['life_tokens']
-    max_life_tokens = game_config['info_tokens']
-    max_moves = game_config['max_moves']
-    variant = game_config['variant']
+    num_players = pyhanabi_config['players']  # number of players ingame
+    num_colors = pyhanabi_config['colors']
+    num_ranks = pyhanabi_config['ranks']
+    hand_size = pyhanabi_config['hand_size']
+    max_information_tokens = pyhanabi_config['max_life_tokens']
+    max_life_tokens = pyhanabi_config['max_information_tokens']
     env = json_to_pyhanabi.create_env_mock(
         num_players=num_players,
         num_colors=num_colors,
@@ -62,28 +66,19 @@ def get_observation_size(game_config):
         hand_size=hand_size,
         max_information_tokens=max_information_tokens,
         max_life_tokens=max_life_tokens,
-        max_moves=max_moves,
-        variant=variant
     )
 
     vec = gui_vectorizer.ObservationVectorizer(env)
-    legal_moves_vectorizer = gui_vectorizer.LegalMovesVectorizer(env)
     return vec.total_state_length
 
 
-def get_hand_size(players: int) -> int:
-    """ Returns number of cards in each players hand, depending on the number of players """
-    assert 1 < players < 6
-    return 4 if players > 3 else 5
-
-
-def get_num_actions(game_config):
+def get_num_actions(pyhanabi_config):
     """ total number of moves possible each turn (legal or not, depending on num_players and num_cards),
     i.e. MaxDiscardMoves + MaxPlayMoves + MaxRevealColorMoves + MaxRevealRankMoves """
-    num_players = game_config["players"]
-    hand_size = get_hand_size(num_players)
-    num_colors = game_config['colors']
-    num_ranks = game_config['ranks']
+    num_players = pyhanabi_config["players"]
+    hand_size = 4 if num_players > 3 else 5
+    num_colors = pyhanabi_config['colors']
+    num_ranks = pyhanabi_config['ranks']
 
 
     return 2 * hand_size + (num_players - 1) * num_colors + (num_players - 1) * num_ranks

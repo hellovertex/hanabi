@@ -5,9 +5,11 @@ from __future__ import print_function
 import tensorflow as tf
 import os, sys
 import numpy as np
+from abc import abstractmethod
 # Rainbow Agent imports from hle
 from agents.rainbow_copy.third_party.dopamine import checkpointer, logger
 import agents.rainbow_copy.rainbow_agent as rainbow
+import gui.gui_utils as utils
 
 # PPOAgent imports
 from tf_agents.policies import py_tf_policy
@@ -16,30 +18,28 @@ from training.tf_agents_lib.pyhanabi_env_wrapper import PyhanabiEnvWrapper
 from tf_agents.environments import tf_py_environment
 from training.tf_agents_lib.masked_networks import MaskedActorDistributionNetwork
 from training.tf_agents_lib.masked_networks import MaskedValueEvalNetwork
-from tf_agents.agents.ppo.ppo_agent import PPOAgent
+from tf_agents.agents.ppo.ppo_agent import PPOAgent as ppo
 from tf_agents.trajectories.time_step import TimeStep
 
 # make sure other project files find the config from wherever they are being called
 path = os.path.dirname(sys.modules['__main__'].__file__)
 
 # possible agent clients
-AGENT_CLASSES = {
-    """ 
+""" 
     AGENT_CLASSES:
-    
+
     provides the possible args for the clients agent type.
     E.g.
-        python client.py -n 0 -a simple simple rainbow
-    
+        python client.py agents_only -a simple simple rainbow
+
     will join 3 AI agents to the gui server lobby (2 simple agents and 1 rainbow agent).
-    Since -n=0, they do not expect human players and will start playing automatically, once their weights are fully loaded.
-    
-    You can add your own agents here
-    just make sure they match the imports in client.py and if not, simply add a corresponding import statement there
-    """
+
+    You can add your own agents after implementing them in this file 
+"""
+AGENT_CLASSES = {
     'simple': 'SimpleAgent',  # as in deepminds hanabi-learning-environment
     'rainbow': 'RainbowAgent',  # as in deepminds hanabi-learning-environment
-    'ppo': 'PPOGuiAgent'
+    'ppo': 'PPOAgent'  # as in tf_agents library
 }
 
 # todo make checkpoint paths configurable
@@ -61,6 +61,15 @@ class GUIAgent(object):
     def act(self, observation_dict):
         """ Expects pyhanabi observation dict
         Returns action as dict or int"""
+        raise NotImplementedError
+
+    @staticmethod
+    @abstractmethod
+    def load_config(pyhanabi_config):
+        """
+        Call this method before subclass instantiation to
+            - get the config for its __init__(...) at runtime
+        Expects pyhanabi observation dict, Returns agent config dict"""
         raise NotImplementedError
 
 
@@ -116,8 +125,17 @@ class RainbowAgent(GUIAgent):
 
         return action_dict
 
+    @staticmethod
+    def load_config(pyhanabi_config):
+        return dict({
+            'observation_size': utils.get_observation_size(pyhanabi_config),
+            'num_actions': utils.get_num_actions(pyhanabi_config),
+            'num_players': pyhanabi_config['players'],
+            'history_size': 1  # does it matter for eval?
+        }, **pyhanabi_config)
 
-class PPOGuiAgent(GUIAgent):
+
+class PPOAgent(GUIAgent):
 
     def __init__(self, config, ckpt_dir=ppo_ckpt_dir):
         # --- Tf session --- #
@@ -146,7 +164,7 @@ class PPOGuiAgent(GUIAgent):
             )
 
             # --- Init agent --- #
-            agent = PPOAgent(  # set up ppo agent with tf_agents
+            agent = ppo(  # set up ppo agent with tf_agents
                 time_step_spec(),
                 action_spec(),
                 actor_net=actor_net,
@@ -177,3 +195,60 @@ class PPOGuiAgent(GUIAgent):
             action_int = policy_step.action
             action_dict = observation_dict["legal_moves"][np.where(np.equal(action_int, observation_dict["legal_moves_as_int"]))[0][0]]
             return action_dict
+
+    @staticmethod
+    def load_config(pyhanabi_config):
+        # the PPOAgent does not require additional information for __init__
+        return pyhanabi_config
+
+
+class SimpleAgent(GUIAgent):
+
+    def __init__(self, config):
+        """Initialize the agent."""
+        self.config = config
+        # Extract max info tokens or set default to 8.
+        self.max_information_tokens = config.get('information_tokens', 8)
+
+    @staticmethod
+    def playable_card(card, fireworks):
+        """A card is playable if it can be placed on the fireworks pile."""
+        return card['rank'] == fireworks[card['color']]
+
+    def act(self, observation):
+        """Act based on an observation."""
+        if observation['current_player_offset'] != 0:
+            return None
+
+        # Check if there are any pending hints and play the card corresponding to
+        # the hint.
+        for card_index, hint in enumerate(observation['card_knowledge'][0]):
+            if hint['color'] is not None or hint['rank'] is not None:
+                return {'action_type': 'PLAY', 'card_index': card_index}
+
+        # Check if it's possible to hint a card to your colleagues.
+        fireworks = observation['fireworks']
+        if observation['information_tokens'] > 0:
+            # Check if there are any playable cards in the hands of the opponents.
+            for player_offset in range(1, observation['num_players']):
+                player_hand = observation['observed_hands'][player_offset]
+                player_hints = observation['card_knowledge'][player_offset]
+                # Check if the card in the hand of the opponent is playable.
+                for card, hint in zip(player_hand, player_hints):
+                    if self.playable_card(card, fireworks) and hint['color'] is None:
+                        return {
+                            'action_type': 'REVEAL_COLOR',
+                            'color': card['color'],
+                            'target_offset': player_offset
+                        }
+
+        # If no card is hintable then discard or play.
+        if observation['information_tokens'] < self.max_information_tokens:
+            return {'action_type': 'DISCARD', 'card_index': 0}
+        else:
+            return {'action_type': 'PLAY', 'card_index': 0}
+
+    @staticmethod
+    def load_config(pyhanabi_config):
+        # the PPOAgent does not require additional information for __init__
+        return pyhanabi_config

@@ -1,10 +1,9 @@
 #!/usr/bin/python3
 """ PROJECT LVL IMPORTS """
 from server_wrapper import GameStateWrapper
-from gui_agent import AGENT_CLASSES, RainbowAgent, PPOAgent
+from gui_agent import AGENT_CLASSES, RainbowAgent, PPOAgent, SimpleAgent
 import gui_utils
-import json_to_websocket as cmd
-from agents.simple_agent import SimpleAgent
+import json_to_websocket as json_utils
 """ PYTHON IMPORTS """
 from typing import Dict
 import requests
@@ -15,6 +14,7 @@ import time
 import re
 from itertools import count
 import argparse
+import os
 
 # Just to immitate clients that have compatible browsers
 BROWSERS = [
@@ -22,11 +22,15 @@ BROWSERS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/603.3.8 (KHTML, like Gecko)',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36'
-]
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36']
+# Each AI agent has its own "account" stored in the database, using the following password
+PWD = "01c77cf03d35866f8486452d09c067f538848058f12d8f005af1036740cccf98"
+# disable tensorflow logs
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # https://stackoverflow.com/questions/35911252/disable-tensorflow-debugging-information
 
 
 class ClientMode(enum.IntEnum):
+    # number of human players
     AGENTS_ONLY = 0
     WITH_ONE_HUMAN_PLAYER = 1
     WITH_TWO_HUMAN_PLAYERS = 2
@@ -34,27 +38,18 @@ class ClientMode(enum.IntEnum):
     WITH_FOUR_HUMAN_PLAYERS = 4
 
 
-class GameVariants(enum.IntEnum):
-    THREE_SUITS = 3
-    FOUR_SUITS = 4
-    FIVE_SUITS = 5
-    SIX_SUITS = 6
-
-
 class Client:
-    """ Client wrapped around the instances of GuiAgents, so they can play on Zamiels server
+    """ Client wrapped around the instances of gui_agents.GUIAgents, so they can play on Zamiels server
          https://github.com/Zamiell/hanabi-live. They compute actions offline
-         (assuming pyhanabi_dict with canonical encoding scheme for vectorized observation)
+         (assuming pyhanabi observation-dict with canonical encoding scheme for vectorized observation)
          and send back the corresponding json-encoded action on their turn."""
-    # counts how often this class has been instantiated, e.g. for determining first agent to open a lobby
+    # counts how often this class has been instantiated, e.g. for determining first agent who hosts a lobby
     # and makes them iterable
     _ids = count(0)
 
-    def __init__(self, url: str, cookie: str, client_config: Dict, agent_config: Dict):
-
+    def __init__(self, url: str, cookie: str, username, cmd_args):
         # Hanabi playing agent
-        # note that the used Agent class must be imported here
-        # if client_config['']
+        # note that the used Agent class must be imported here from gui_agent.py
         # Opens a websocket on url:80
         self.ws = websocket.WebSocketApp(url=url,
                                          on_message=lambda ws, msg: self.on_message(ws, msg),
@@ -71,53 +66,156 @@ class Client:
         self.daemon.start()  # [do this before self.run(), s.t. we can hand over the daemon to another Thread]
 
         # increment class instance counter
-        self.id = next(self._ids)
+        self.id = next(self._ids)  # first call to next(self._ids) will return 0
 
         # throttle to avoid race conditions
         self.throttle = 0.05  # 50 ms
 
         # Agents username as seen in the server lobby
-        assert 'username' in client_config
-        self.username = client_config['username']
-        self.agent = None
-        self.game = None
-        # In ClientMode.AGENTS_ONLY-mode the agents will host a game with given arguments
-        # Otherwise, a human will set up the game lobby, and we can only init the game after this is done
-        if self.config['num_human_players'] == 0:
-            self.agent = eval(AGENT_CLASSES[client_config['agent_class']])(agent_config)
-            self.game = GameStateWrapper(client_config)  # Stores observations for agent
+        self.username = username
 
-        if self.id == 0 and client_config['num_human_players'] == 0:
+        """ 
+        AGENTS_ONLY: agents config is derived exclusively from the command line arguments passed
+        WITH_HUMAN: agents config is derived from the params of the game create by human via GUI
+        """
+        client_mode = cmd_args.subparser_name
+        assert client_mode in ['agents_only', 'with_human']
+        # In agents_only-mode the agents will host a game with given arguments
+        # Otherwise, a human will set up the game lobby
+        if client_mode == 'agents_only':
+            self.mode = ClientMode.AGENTS_ONLY
+        # Else, mode will be equal to the number of human players
+        else:
+            assert hasattr(cmd_args, 'num_humans')
+            self.mode = ClientMode(cmd_args.num_humans)
+
+        # configuration needed for hosting/joining a lobby
+        self.config = self.load_client_config(cmd_args)
+
+        # instantiated later
+        self.game = None
+        self.agent_class = AGENT_CLASSES[cmd_args.agent_classes[self.id]]
+
+        # In agents only mode, we can instantiate the agents immediately
+        if self.mode == ClientMode.AGENTS_ONLY:
+            # In agents only mode, the pyhanabi_config can be determined from cmd_args
+            pyhanabi_config = self.load_pyhanabi_config(cmd_args)
+            # and we can load config for agent class using its static classmethod load_config()
+            agent_config = eval(self.agent_class).load_config(pyhanabi_config)
+            # to init agent <gui_agent.GUIAgent subclass>
+            self.agent = eval(self.agent_class)(agent_config)
+            # and game
+            self.game = GameStateWrapper(self.load_game_config(pyhanabi_config))
+        else:
+            self.agent = None  # Otherwise, we have to wait for the human player to create a game
+            self.game = None
+
+        # set agent admin for hosting game, if playing without humans
+        if self.id == 0 and self.mode == ClientMode.AGENTS_ONLY:
             self.game.caller_is_admin = True
-        # Will be set when server sends notification that a game has been created (auto-join always joins last game)
+
+        # Will be set when server sends notification that a game has been created
+        # (auto-join will always join latest game)
         self.gameID = None
 
         # Tell the Client, where in the process of joining/playing we are
         self.gottaJoinGame = False
         self.gameHasStarted = False
 
-        # configuration needed for hosting a lobby
-        self.config = client_config
-
         # current number of players in the lobby, used when our agent hosts lobby and wants to know when to start game
         self._num_players_in_lobby = -1
 
-        # the agents will play num_episodes and then idle
-        """ Note that you can watch all the replays from the server menu 'watch specific replay'.
-        The ID is logged in chat"""
-        self.num_episodes = self.config['num_episodes']
+
         self.episodes_played = 0
+        self.cmd_args = cmd_args
+
+    def load_client_config(self, args):
+        if self.mode == ClientMode.AGENTS_ONLY:
+            table_name = args.table_name
+            table_pw = args.table_pw
+            variant = gui_utils.variant_from_num_colors(args.num_colors)
+            num_episodes = args.num_episodes
+        else:  # table will be opened by human
+            table_name = ''
+            table_pw = ''
+            variant = ''
+            num_episodes = float("inf")
+        num_agents = len(args.agent_classes)
+        num_total_players = num_agents if self.mode == ClientMode.AGENTS_ONLY else num_agents + args.num_humans
+        return {'table_name': table_name,
+                'table_pw': table_pw,
+                'variant': variant,
+                'num_human_players': self.mode,
+                'num_total_players': num_total_players,
+                'num_episodes': num_episodes,
+                'agent_class': args.agent_classes[self.id],
+                'username': self.username,
+                'wait_move': 1}
+
+    def load_pyhanabi_config(self, cmd_args, table_params=None):
+        assert hasattr(args, 'subparser_name')
+        # can only get the pyhanabi config right from the command line arguments, if they specify
+        # the number of colors, ranks,... which is only the case for the agents_only mode
+        # with_human mode will not require these arguments, as they will be specified via the GUI by a human
+        assert cmd_args.subparser_name in ['agents_only', 'with_human']
+        if cmd_args.subparser_name == 'agents_only':
+            colors = cmd_args.num_colors
+        elif cmd_args.subparser_name == 'with_human':
+            assert isinstance(table_params, dict)
+            game_variant = table_params['variant']
+            colors = gui_utils.num_colors_from_variant(game_variant)
+        else:
+            raise ValueError
+
+        return {
+            'colors': colors,  # Number of colors in [1,5]
+            'ranks': 5,  # todo: can not change under the current server implementation
+            'players': self.config['num_total_players'],  # Number of total players in [2,5]
+            'hand_size': 4 if len(cmd_args.agent_classes) > 3 else 5,  # todo: can not change under the current server impl
+            'max_information_tokens': cmd_args.info_tokens,  # >= 0
+            'max_life_tokens': cmd_args.life_tokens,  # >= 1
+            'observation_type': cmd_args.observation_type,  # 0: Minimal observation, 1: First-order common knowledge obs,
+            'seed': -1,  # -1 to use system random device to get seed
+            'random_start_player': False  # todo: check proper mapping from server indices
+        }
+
+    def load_game_config(self, pyhanabi_config):
+        colors = pyhanabi_config['colors']
+        ranks = pyhanabi_config['ranks']
+        return {'username': self.username,
+                'num_total_players': self.config['num_total_players'],
+                'life_tokens': pyhanabi_config['max_life_tokens'],
+                'info_tokens': pyhanabi_config['max_information_tokens'],
+                'colors': colors,
+                'ranks': ranks,
+                'hand_size': pyhanabi_config['hand_size'],
+                'deck_size': sum([3,2,2,2,1][:ranks]) * colors,
+                'max_moves': gui_utils.get_num_actions(pyhanabi_config)}
 
     def on_message(self, ws, message):
         """ Forwards messages to game state wrapper and sets flags for self.run() """
         # JOIN GAME
-        # todo: print(message) if --verbose
         if message.strip().startswith('table') and not self.gameHasStarted:  # notification opened game
             self._update_latest_game_id(message)
-            # if not AGENTS_ONLY
-            # when the table is known, we can initialize the agents with the tables configuration
-            self.agent = eval(AGENT_CLASSES[client_config['agent_class']])(agent_config)
-            self.game = GameStateWrapper(client_config)  # Stores observations for agent
+            # if playing with humans
+            # when the game lobby is created,
+            # we can initialize the agents with the derived pyhanabi configuration
+            # and update the config for hosting/joining lobby
+            if not self.mode == ClientMode.AGENTS_ONLY:
+                # update config
+                table_params = json_utils.dict_from_response(response=message, msg_type='table')
+                self.config['table_name'] = table_params['name']
+                self.config['table_pw'] = ''
+                self.config['variant'] = table_params['variant']
+
+                # load agent with derived pyhanabi config
+                pyhanabi_config = self.load_pyhanabi_config(cmd_args=self.cmd_args, table_params=table_params)
+                agent_config = eval(self.agent_class).load_config(pyhanabi_config)
+                self.agent = eval(self.agent_class)(agent_config)
+
+                # create game object that will return agents_observations
+                game_config = self.load_game_config(pyhanabi_config)
+                self.game = GameStateWrapper(game_config)  # Stores observations for agent
 
         # HOSTED TABLE
         if message.startswith('game {') and self.id == 0:  # always first agent to host a table
@@ -125,11 +223,11 @@ class Client:
 
         # START GAME
         if message.strip().startswith('gameStart'):
-            self.ws.send(cmd.hello())  # ACK GAME START
+            self.ws.send(json_utils.hello())  # ACK GAME START
 
         # INIT GAME
         if message.strip().startswith('init'):
-            self.ws.send(cmd.ready())  # ACK GAME INIT
+            self.ws.send(json_utils.ready())  # ACK GAME INIT
             self.game.init_players(message)  # set list of players
             self.gameHasStarted = True
 
@@ -166,7 +264,7 @@ class Client:
 
     def _update_num_players_in_lobby(self, message: str):
         # parse dict
-        response = cmd.dict_from_response(message, msg_type='game')
+        response = json_utils.dict_from_response(message, msg_type='game')
 
         # update count of players in lobby
         if 'players' in response:
@@ -200,28 +298,28 @@ class Client:
 
             # While client is listening
             while self.ws.sock.connected:
-                # Loop to play the best game in the world :) as long as specified
-                while self.episodes_played < self.num_episodes:
+                # The agents will try to play num_episodes and then disconnect
+                while self.episodes_played < self.config['num_episodes']:
 
                     # EITHER HOST A TABLE (when 0 human players), always first client instance hosts game
                     if self.config['num_human_players'] == 0 and (self.id == 0):
                         # open a lobby
                         if not self.gameHasStarted:
-                            self.ws.send(cmd.gameCreate(self.config))
+                            self.ws.send(json_utils.gameCreate(self.config))
                             self.gameHasStarted = True  # This is a little trick, by which we avoid rejoining own lobby
                             # nothing will happen in the run() method,
                             # as all others involved flags are still set to False
 
                         # when all players have joined, start the game
                         if self._num_players_in_lobby == self.config['num_total_players']:
-                            self.ws.send(cmd.gameStart())
+                            self.ws.send(json_utils.gameStart())
 
                         time.sleep(1)
 
                     # OR JOIN GAME
                     elif self.gottaJoinGame and self.gameID:
                         time.sleep(self.throttle)
-                        self.ws.send(cmd.gameJoin(gameID=self.gameID))
+                        self.ws.send(json_utils.gameJoin(gameID=self.gameID))
                         self.gottaJoinGame = False
 
                     # PLAY GAME
@@ -240,7 +338,7 @@ class Client:
 
                         # leave replay lobby when game has ended
                         if self.game.finished:
-                            self.ws.send(cmd.gameUnattend())
+                            self.ws.send(json_utils.gameUnattend())
                             self.game.finished = False
                             self.gameHasStarted = False
                             self.episodes_played += 1
@@ -248,18 +346,17 @@ class Client:
                     time.sleep(1)
 
 
-def login(url, referer, username,
-          password="01c77cf03d35866f8486452d09c067f538848058f12d8f005af1036740cccf98", num_client=0):
+def login(url, referer, username, password=PWD, num_client=0):
     """ Make POST request to /login page"""
-    ses = requests.session()
+    sess = requests.session()
     # set up header
     # set useragent to chrome, s.t. we dont have to deal with the additional firefox warning
-    ses.headers[
+    sess.headers[
         'User-Agent'] = BROWSERS[num_client]  # to avoid caching errors we immitate different BROWSERS
-    ses.headers['Accept'] = '*/*'
-    ses.headers['Accept-Encoding'] = 'gzip, deflate'
-    ses.headers['Accept-Language'] = 'en-US,en;q=0.5'
-    ses.headers['Origin'] = url
+    sess.headers['Accept'] = '*/*'
+    sess.headers['Accept-Encoding'] = 'gzip, deflate'
+    sess.headers['Accept-Language'] = 'en-US,en;q=0.5'
+    sess.headers['Origin'] = url
 
     url = url + '/login'
     data = {
@@ -275,14 +372,14 @@ def login(url, referer, username,
         "X-Requested-With": "XMLHttpRequest"
     }
     # attempt login and save HTTP response
-    response = ses.post(url=url, data=data, headers=headers)
+    response = sess.post(url=url, data=data, headers=headers)
 
     # store cookie because we need them for web socket establishment
     cookie = response.headers['set-cookie']
 
     assert response.status_code == 200  # assert login was successful
 
-    return ses, cookie
+    return sess, cookie
 
 
 def upgrade_to_websocket(url, session, cookie):
@@ -309,8 +406,7 @@ def upgrade_to_websocket(url, session, cookie):
 
 
 def get_addrs(args):
-    """ We will use this in private networks, to avoid localhost-related bugs for now.
-    However, we have to get the localhost-settings running at some point."""
+    """ If no remote address is provided, the server is assumed to be running on localhost """
 
     # to play on Zamiels server or private subnets
     if args.remote_address is not None:
@@ -325,100 +421,24 @@ def get_addrs(args):
     return addr, referer, addr_ws
 
 
-def get_agent_name_from_cls(agent_class: str, id: int):
-    """ Input: agentclass as specified in the gui_agent.AGENT_CLASSES """
-    assert agent_class in AGENT_CLASSES
-
-    return AGENT_CLASSES[agent_class] + '0' + str(id)
-
-
-def get_pyhanabi_config_from_args(cmd_args) -> Dict:
-
-    # total number of players ingame
-    num_players = int(cmd_args.num_humans) + len(cmd_args.agent_classes)
-
-    # pyhanabi-like game_config
-    pyhanabi_config = {
-        'colors': cmd_args.num_colors,  # Number of colors in [1,5]
-        'ranks': 5,  # Number of ranks in [1,5]
-        'players': num_players,  # Number of total players in [2,5]
-        'max_information_tokens': 8,  # >= 0
-        'max_life_tokens': 3,  # >= 1
-        'observation_type': 1,  # 0: Minimal observation, 1: First-order common knowledge obs,
-        'seed': -1,  # -1 to use system random device to get seed
-        'random_start_player': True  # If true, start with random player, not 0
-    }
-    return pyhanabi_config
-
-
-def get_client_config_from_args(cmd_args, game_config, agent: int) -> Dict:
-    players = cmd_args.num_humans + len(cmd_args.agent_classes)
-    deck_size = (game_config['colors'] * 2 + 1) if game_config['ranks'] < 5 else (game_config['colors'] * 10)
-    client_config = {
-        'agent_class': cmd_args.agent_classes[agent],
-        'username': get_agent_name_from_cls(cmd_args.agent_classes[agent], agent),
-        'num_human_players': cmd_args.num_humans,
-        'num_total_players': players,
-        "players": players,
-        'table_name': cmd_args.table_name,
-        'table_pw': cmd_args.table_pw,
-        'num_episodes': cmd_args.num_episodes,
-        'life_tokens': game_config['max_life_tokens'],
-        'info_tokens': game_config['max_information_tokens'],
-        'deck_size': deck_size,
-        'wait_move': 1,
-        'colors': game_config['colors'],
-        'ranks': game_config['ranks'],
-        'hand_size': gui_utils.get_hand_size(players),
-        'max_moves': gui_utils.get_num_actions(game_config),
-        'game_config': game_config
-    }
-    return client_config
-
-
-def get_configs_from_args(cmd_args) -> Dict:
-    """ Returns a dictionary of configurations for each agent playing. Each configuration consits of a client_confi
-    and an agent_config as required by the corresponding agent class """
-    # loop each agent to get the config (depending on agents class etc)
-    configs = dict()
-
-    # Compute pyhanabi game_config common for all agents
-    num_agents = len(cmd_args.agent_classes)
-    pyhanabi_config = get_pyhanabi_config_from_args(cmd_args)
-
-    # Each agent needs config for his client instance and his agent instance
-    for i in range(num_agents):
-
-        # Config for client instance, e.g. username etc
-        client_config = get_client_config_from_args(cmd_args, pyhanabi_config, i)
-
-        # Config for agent instance, e.g. num_actions for rainbow_copy agent
-        conf = gui_utils.get_agent_config(client_config, cmd_args.agent_classes[i])
-
-        # concatenate with game_config
-        agent_config = dict(conf, **pyhanabi_config)
-
-        configs['agent'+'0'+str(i)] = {'agent_config': agent_config, 'client_config': client_config}
-
-    return configs
-
-
 def init_args():
     argparser = argparse.ArgumentParser()
     subparsers = argparser.add_subparsers(dest='subparser_name')
 
     a_parser = subparsers.add_parser('agents_only')
-    a_parser.set_defaults()
     b_parser = subparsers.add_parser('with_human')
 
     def _add_args():
+        # todo figure out how to share arguments (inherit from parent parser ?)
+        # ClientMode.AGENTS_ONLY
         a_parser.add_argument(
             '-c',
             '--num_colors',
+            choices=[3, 4, 5],  # server does not allow less than 3 colors
             help='Number of colors used in the game. '
                  'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.\n c.f.'
                  'https://github.com/Zamiell/hanabi-live/blob/master/docs/VARIANTS.md',
-            default=5)
+            default=gui_utils.GameVariants.FIVE_SUITS)
         a_parser.add_argument(
             '-i',
             '--info_tokens',
@@ -431,6 +451,13 @@ def init_args():
             help='Number of life_tokens used in the game. '
                  'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.',
             default=3)
+        a_parser.add_argument(
+            '-o',  # 0: Minimal observation, 1: First-order common knowledge obs, 2: SEER
+            '--observation_type',
+            choices=[0, 1, 2],
+            type=int,
+            default=1
+        )
         a_parser.add_argument(
             '-a',
             '--agent_classes',
@@ -459,6 +486,16 @@ def init_args():
             help='Sets table password for AGENTS_ONLY mode, i.e. when -n is set to 0. Default password is set to '
                  '"big_python", so usually you should not worry about providing -p value.',
             default='')
+        a_parser.add_argument(
+            '-r',
+            '--remote_address',
+            help='Set this to an ipv4 address, when playing on a remote server or on a private subnet (with multiple '
+                 'humans). For example -r 192.168.178.26 when you want to connect your friends machines in a private '
+                 'subnet to the machine running the server at 192.168.178.26 or -r hanabi.live when you want to play on '
+                 'the official server. Unfortunately, it currently does not work with eduroam.',
+        )
+
+        # ClientMode.WITH_HUMAN
         b_parser.add_argument(
             '-n',
             '--num_humans',
@@ -469,7 +506,7 @@ def init_args():
                  'play for 1 round and then idle. You can watch the replay by using the "watch specific replay" option '
                  'from the server with the ID of the game (that is being sent to lobby chat after game is finished).',
             type=int,
-            default=1  # one agent will host the game automatically, AI agents play without human
+            default=ClientMode.WITH_ONE_HUMAN_PLAYER
         )
         b_parser.add_argument(
             '-a',
@@ -477,6 +514,33 @@ def init_args():
             nargs='+',
             type=str,
             required=True,  # default=['simple', 'simple'],
+        )
+        b_parser.add_argument(
+            '-i',
+            '--info_tokens',
+            help='Number of info_tokens used in the game. '
+                 'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.',
+            default=8)
+        b_parser.add_argument(
+            '-l',
+            '--life_tokens',
+            help='Number of life_tokens used in the game. '
+                 'If not -n=ClientMode.AGENTS_ONLY, this will be ignored, as human hosts game.',
+            default=3)
+        b_parser.add_argument(
+            '-o',  # 0: Minimal observation, 1: First-order common knowledge obs, 2: SEER
+            '--observation_type',
+            choices=[0, 1, 2],
+            type=int,
+            default=1
+        )
+        b_parser.add_argument(
+            '-r',
+            '--remote_address',
+            help='Set this to an ipv4 address, when playing on a remote server or on a private subnet (with multiple '
+                 'humans). For example -r 192.168.178.26 when you want to connect your friends machines in a private '
+                 'subnet to the machine running the server at 192.168.178.26 or -r hanabi.live when you want to play on '
+                 'the official server. Unfortunately, it currently does not work with eduroam.',
         )
 
     _add_args()
@@ -486,7 +550,7 @@ def init_args():
 
         assert len(args.__dict__) > 0, 'Enter either "agents_only" or "with_human"'
         """ This function returns True, iff the user specified input does not break the rules of the game"""
-        print(args)
+
         if args.subparser_name == 'with_human':
             # assert legal number of total players
             assert 1 < args.num_humans + len(args.agent_classes) < 6
@@ -504,11 +568,10 @@ def init_args():
 
 if __name__ == "__main__":
     args = init_args()
-
-    # If agents play without human player, one of them will have to open a game lobby
-    # make it passworded by default, as this will not require changes when playing remotely
-    configs = get_configs_from_args(args)
-
+    print(f"-------------------------------------------------------------------------|\n"
+          f"Client started with following args:                                   |\n"
+          f"-------------------------------------------------------------------------\n"
+          f"{args}\n")
     # Returns subnet ipv4 in private network and localhost otherwise
     addr, referer, addr_ws = get_addrs(args)
 
@@ -519,30 +582,29 @@ if __name__ == "__main__":
     num_agents = len(args.agent_classes)
     for i in range(num_agents):
 
-        # get game config for current agent
-        config = configs['agent'+'0'+str(i)]
-        username = config['client_config']['username']
-        agent_config = config['agent_config']
-        client_config = config['client_config']
+        # set username equal to agent_class + number of agent
+        agent_name = AGENT_CLASSES[args.agent_classes[i]] + '0' + str(i)
 
         # Login to Zamiels server (session-based)
-        session, cookie = login(url='http://' + addr, referer=referer, username=username, num_client=i)
+        session, cookie = login(url='http://' + addr, referer=referer, username=agent_name, num_client=i)
 
         # Connect the agent to websocket url
         upgrade_to_websocket(url=addr_ws, session=session, cookie=cookie)
 
         # Start client (agent + websocket + rl_env game wrapper)
-        c = Client('ws://' + addr + '/ws', cookie, client_config, agent_config)
+        c = Client('ws://' + addr + '/ws', cookie, username=agent_name, cmd_args=args)
         clients.append(c)
 
         # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
         client_thread = threading.Thread(target=c.run)
         process.append(client_thread)
+        print(f"-------------------------------------------------------------------------|\n"
+              f"Joined {agent_name} :                                                    |\n"
+              f"-------------------------------------------------------------------------\n")
         time.sleep(.5)
 
     for thread in process:
         thread.start()
 
     # todo send gameJoin(gameID, password) when seelf.config['table_pw] is not '' for when -r is specified
-    # todo make formatting for --verbose mode and write wiki entry for client
     # self.config['table_pw'] shall not be '' if -r is specified

@@ -166,7 +166,6 @@ class ObservationVectorizer(object):
         self.hand_size = self.env.hand_size
         self.max_info_tokens = self.env.max_information_tokens
         self.max_life_tokens = self.env.max_life_tokens
-        self.max_moves = self.env.max_moves
         self.bits_per_card = self.num_colors * self.num_ranks
         self.max_deck_size = 0
         # start of the vectorized observation
@@ -607,7 +606,7 @@ class LegalMovesVectorizer(object):
         self.num_colors = self.env.num_colors
         self.hand_size = self.env.hand_size
         self.max_reveal_color_moves = (self.num_players - 1) * self.num_colors
-        self.num_moves = self.env.max_moves
+        self.num_moves = 2 * self.hand_size + (self.num_players - 1) * self.num_colors + (self.num_players - 1) * self.num_ranks
 
     def get_legal_moves_as_int(self, legal_moves):
         legal_moves_as_int = [-np.Inf for _ in range(self.num_moves)]

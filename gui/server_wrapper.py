@@ -30,7 +30,7 @@ class GameStateWrapper:
         self.players = None  # list of names of players currently ingame
         self.player_position = None  # agents absolute position at table
         self.agents_turn = False  # flag that is True whenever its our turn
-        self.hand_size = 4 if self.num_players > 3 else 5  # deal 5 cards when playing with 2 or 3 ppl
+        self.hand_size = game_config['hand_size']  # deal 5 cards when playing with 2 or 3 ppl
 
 
         """
