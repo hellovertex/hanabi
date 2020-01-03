@@ -15,6 +15,7 @@ import re
 from itertools import count
 import argparse
 import os
+import sys
 
 # Just to immitate clients that have compatible browsers
 BROWSERS = [
@@ -87,7 +88,7 @@ class Client:
         # Else, mode will be equal to the number of human players
         else:
             assert hasattr(cmd_args, 'num_humans')
-            self.mode = ClientMode(cmd_args.num_humans)
+            self.mode = cmd_args.num_humans
 
         # configuration needed for hosting/joining a lobby
         self.config = self.load_client_config(cmd_args)
@@ -106,8 +107,9 @@ class Client:
             self.agent = eval(self.agent_class)(agent_config)
             # and game
             self.game = GameStateWrapper(self.load_game_config(pyhanabi_config))
+        # Otherwise, we have to wait for the human player to create a game
         else:
-            self.agent = None  # Otherwise, we have to wait for the human player to create a game
+            self.agent = None
             self.game = None
 
         # set agent admin for hosting game, if playing without humans
@@ -121,6 +123,8 @@ class Client:
         # Tell the Client, where in the process of joining/playing we are
         self.gottaJoinGame = False
         self.gameHasStarted = False
+        self.game_created = False
+        self.game_paused = False
 
         # current number of players in the lobby, used when our agent hosts lobby and wants to know when to start game
         self._num_players_in_lobby = -1
@@ -153,7 +157,7 @@ class Client:
                 'wait_move': 1}
 
     def load_pyhanabi_config(self, cmd_args, table_params=None):
-        assert hasattr(args, 'subparser_name')
+        assert hasattr(cmd_args, 'subparser_name')
         # can only get the pyhanabi config right from the command line arguments, if they specify
         # the number of colors, ranks,... which is only the case for the agents_only mode
         # with_human mode will not require these arguments, as they will be specified via the GUI by a human
@@ -192,17 +196,32 @@ class Client:
                 'deck_size': sum([3,2,2,2,1][:ranks]) * colors,
                 'max_moves': gui_utils.get_num_actions(pyhanabi_config)}
 
+    def quit_game(self):
+        self.ws.send(json_utils.gameAbandon())
+        time.sleep(self.throttle)
+        # self.ws.send(json_utils.gameUnattend())
+        try:
+            self.ws.close()
+        except Exception:
+            print('close')
+        finally:
+            self.gameID = None
+            return
+
+        #time.sleep(self.throttle)
+        #self.ws.send(json_utils.gameAbandon())
+
     def on_message(self, ws, message):
         """ Forwards messages to game state wrapper and sets flags for self.run() """
-        # JOIN GAME
-        if message.strip().startswith('table') and not self.gameHasStarted:  # notification opened game
+        # NOTIFICATION GAME OPENED
+        if message.strip().startswith('table') and not self.gameHasStarted:
             # if playing with humans
             # when the game lobby is created,
             # we can initialize the agents with the derived pyhanabi configuration
             # and update the config for hosting/joining lobby
+            table_params = json_utils.dict_from_response(response=message, msg_type='table')
             if not self.mode == ClientMode.AGENTS_ONLY:
                 # update config
-                table_params = json_utils.dict_from_response(response=message, msg_type='table')
                 self.config['table_name'] = table_params['name']
                 self.config['table_pw'] = ''
                 self.config['variant'] = table_params['variant']
@@ -215,9 +234,10 @@ class Client:
                 # create game object that will return agents_observations
                 game_config = self.load_game_config(pyhanabi_config)
                 self.game = GameStateWrapper(game_config)  # Stores observations for agent
-            self._update_latest_game_id(message)
+            # self._maybe_abandon_old_unfinished_game(table_params)
+            self._update_latest_game_id_and_set_join_flag(message)
 
-        # HOSTED TABLE
+        # REFRESH CURRENT TABLE
         if message.startswith('game {') and self.id == 0:  # always first agent to host a table
             self._update_num_players_in_lobby(message)
 
@@ -241,9 +261,9 @@ class Client:
 
         # END GAME
         if message.startswith('gameOver'):
-            self.game.game_ended = True
+            self.game.finished = True
 
-    def _update_latest_game_id(self, message):
+    def _update_latest_game_id_and_set_join_flag(self, message):
         """ Set joingame-flags for self.run(), s.t. it joins created games whenever possible"""
         # To play another game after one is finished
         oldGameID = None
@@ -270,13 +290,18 @@ class Client:
         if 'players' in response:
             self._num_players_in_lobby = len(response['players'])
 
+    def _maybe_abandon_old_unfinished_game(self, table_params):
+        if self.username in table_params['players']:
+            # there is a hanging game, which we must leave to be able to join a new one
+            self.quit_game()
+
     @staticmethod
     def on_error(ws, error):
         print("Error: ", error)
 
     @staticmethod
     def on_close(ws):
-        print("### closed ###")
+        pass
 
     @staticmethod
     def on_open(ws):
@@ -305,19 +330,21 @@ class Client:
                     if self.config['num_human_players'] == 0 and (self.id == 0):
                         # open a lobby
                         if not self.gameHasStarted:
-                            self.ws.send(json_utils.gameCreate(self.config))
-                            self.gameHasStarted = True  # This is a little trick, by which we avoid rejoining own lobby
-                            # nothing will happen in the run() method,
-                            # as all others involved flags are still set to False
-
-                        # when all players have joined, start the game
+                            if not self.game_created:
+                                self.ws.send(json_utils.gameCreate(self.config))
+                                self.gottaJoinGame = False  # This is a little trick, by which we avoid rejoining own lobby
+                                # nothing will happen in the run() method,
+                                # as all others involved flags are still set to False
+                                self.game_created = True
+                            # when all players have joined, start the game
                         if self._num_players_in_lobby == self.config['num_total_players']:
-                            self.ws.send(json_utils.gameStart())
+                                self.ws.send(json_utils.gameStart())
 
                         time.sleep(1)
 
                     # OR JOIN GAME
                     elif self.gottaJoinGame and self.gameID:
+                        self.ws.send(json_utils.gameJoin(gameID=self.gameID))
                         time.sleep(self.throttle)
                         self.ws.send(json_utils.gameJoin(gameID=self.gameID))
                         self.gottaJoinGame = False
@@ -326,7 +353,7 @@ class Client:
                     if self.gameHasStarted:  # set in self.on_message() on servers init message
 
                         # ON AGENTS TURN
-                        if self.game.agents_turn:
+                        if self.game.agents_turn and not self.game_paused:
                             # wait to feel more human :D
                             time.sleep(self.config['wait_move'])
                             # Get observation
@@ -338,12 +365,13 @@ class Client:
 
                         # leave replay lobby when game has ended
                         if self.game.finished:
-                            self.ws.send(json_utils.gameUnattend())
+                            self.quit_game()
                             self.game.finished = False
                             self.gameHasStarted = False
                             self.episodes_played += 1
 
-                    time.sleep(1)
+                    time.sleep(.25)
+                time.sleep(.25)
 
 
 def login(url, referer, username, password=PWD, num_client=0):
@@ -568,44 +596,58 @@ def init_args():
 
 
 if __name__ == "__main__":
-    args = init_args()
-    print(f"---------------------------------------------------------------------------\n"
-          f"  Client started with following args:                                      \n"
-          f"---------------------------------------------------------------------------\n"
-          f"{args}\n")
-    # Returns subnet ipv4 in private network and localhost otherwise
-    addr, referer, addr_ws = get_addrs(args)
 
     clients = []
-    process = []
+    client_threads = []
 
-    # Run each client in a seperate thread
-    num_agents = len(args.agent_classes)
-    for i in range(num_agents):
+    try:
+        args = init_args()
+        print(f"---------------------------------------------------------------------------\n"
+              f"  Client started with following args:                                      \n"
+              f"---------------------------------------------------------------------------\n"
+              f"{args}\n")
+        # Returns subnet ipv4 in private network and localhost otherwise
+        addr, referer, addr_ws = get_addrs(args)
 
-        # set username equal to agent_class + number of agent
-        agent_name = AGENT_CLASSES[args.agent_classes[i]] + '0' + str(i)
+        # Run each client in a seperate thread
+        num_agents = len(args.agent_classes)
+        for i in range(num_agents):
+            # set username equal to agent_class + number of agent
+            agent_name = AGENT_CLASSES[args.agent_classes[i]] + '0' + str(i)
 
-        # Login to Zamiels server (session-based)
-        session, cookie = login(url='http://' + addr, referer=referer, username=agent_name, num_client=i)
+            # Login to Zamiels server (session-based)
+            session, cookie = login(url='http://' + addr, referer=referer, username=agent_name, num_client=i)
 
-        # Connect the agent to websocket url
-        upgrade_to_websocket(url=addr_ws, session=session, cookie=cookie)
+            # Connect the agent to websocket url
+            upgrade_to_websocket(url=addr_ws, session=session, cookie=cookie)
 
-        # Start client (agent + websocket + rl_env game wrapper)
-        c = Client('ws://' + addr + '/ws', cookie, username=agent_name, cmd_args=args)
-        clients.append(c)
+            # Start client (agent + websocket + rl_env game wrapper)
+            c = Client('ws://' + addr + '/ws', cookie, username=agent_name, cmd_args=args)
+            clients.append(c)
 
-        # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
-        client_thread = threading.Thread(target=c.run)
-        process.append(client_thread)
-        print(f"-------------------------------------------------------------------------\n"
-              f" Joined {agent_name} :                                                    \n"
-              f"-------------------------------------------------------------------------\n")
-        time.sleep(.5)
+            # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
+            client_thread = threading.Thread(target=c.run)
+            client_threads.append(client_thread)
+            print(f"-------------------------------------------------------------------------\n"
+                  f" Joined {agent_name} :                                                    \n"
+                  f"-------------------------------------------------------------------------\n")
+            time.sleep(.5)
 
-    for thread in process:
-        thread.start()
+        for thread in client_threads:
+            thread.start()
 
+        while True:
+            # needed to keep the main thread alive, because its the only one that can catch the KeyboardInterrupt Signal
+            # see https://stackoverflow.com/questions/19652446/python-program-with-thread-cant-catch-ctrlc
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        print('\n Terminating game...')
+        try:
+            for c in clients:
+                c.quit_game()
+            sys.exit(0)
+        except Exception:
+            print('\n Force websocket shutdown...')
     # todo send gameJoin(gameID, password) when seelf.config['table_pw] is not '' for when -r is specified
     # self.config['table_pw'] shall not be '' if -r is specified

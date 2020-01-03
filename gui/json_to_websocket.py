@@ -28,6 +28,11 @@ def gameUnattend():
     return 'gameUnattend {}'
 
 
+def gameAbandon():
+    """ This will remove agent from game """
+    return 'gameAbandon {}'
+
+
 def _get_table_params(config: Dict) -> Dict:
     """ This method is called when no human player is playing and an AI agent hosts a lobby.
     In order to open a game lobby he needs to send a json encoded lobby config, for which we get the params here."""

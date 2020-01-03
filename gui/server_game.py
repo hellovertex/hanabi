@@ -119,10 +119,10 @@ class GameStateWrapper:
 
         return
 
-    def init_players(self, notify_msg: str):
+    def init_players(self, notify_msg: str, reconnected=False):
         """ Sets self.players to a list of the players currently ingame and creates empty hands """
-
-        self.reset()
+        if not reconnected:
+            self.reset()
         player_dict = ast.literal_eval(notify_msg.split('init ')[1].replace(
                 'false', 'False').replace(
                 'list', 'List').replace(
