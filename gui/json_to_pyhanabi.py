@@ -215,7 +215,7 @@ def get_move_color(move):
     # ------------------------------------------------- # ''
 """
 # These are used to provide mocks for classes from pyhanabi.py
-# server_wrapper.py uses these mocks for computing game state (last_moves etc.)
+# server_game.py uses these mocks for computing game state (last_moves etc.)
 
 """
     # ------------------------------------------------- # ''

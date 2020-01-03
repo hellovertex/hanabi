@@ -73,6 +73,57 @@ class GUIAgent(object):
         raise NotImplementedError
 
 
+class SimpleAgent(GUIAgent):
+    """Example for how to implement a GUIAgent."""
+    def __init__(self, config):
+        self.config = config
+        # Extract max info tokens or set default to 8.
+        self.max_information_tokens = config.get('information_tokens', 8)
+
+    @staticmethod
+    def playable_card(card, fireworks):
+        """A card is playable if it can be placed on the fireworks pile."""
+        return card['rank'] == fireworks[card['color']]
+
+    def act(self, observation):
+        """Act based on a pyhanabi observation-dictionary."""
+        if observation['current_player_offset'] != 0:
+            return None
+
+        # Check if there are any pending hints and play the card corresponding to
+        # the hint.
+        for card_index, hint in enumerate(observation['card_knowledge'][0]):
+            if hint['color'] is not None or hint['rank'] is not None:
+                return {'action_type': 'PLAY', 'card_index': card_index}
+
+        # Check if it's possible to hint a card to your colleagues.
+        fireworks = observation['fireworks']
+        if observation['information_tokens'] > 0:
+            # Check if there are any playable cards in the hands of the opponents.
+            for player_offset in range(1, observation['num_players']):
+                player_hand = observation['observed_hands'][player_offset]
+                player_hints = observation['card_knowledge'][player_offset]
+                # Check if the card in the hand of the opponent is playable.
+                for card, hint in zip(player_hand, player_hints):
+                    if self.playable_card(card, fireworks) and hint['color'] is None:
+                        return {
+                            'action_type': 'REVEAL_COLOR',
+                            'color': card['color'],
+                            'target_offset': player_offset
+                        }
+
+        # If no card is hintable then discard or play.
+        if observation['information_tokens'] < self.max_information_tokens:
+            return {'action_type': 'DISCARD', 'card_index': 0}
+        else:
+            return {'action_type': 'PLAY', 'card_index': 0}
+
+    @staticmethod
+    def load_config(pyhanabi_config):
+        # the PPOAgent does not require additional information for __init__
+        return pyhanabi_config
+
+
 class RainbowAgent(GUIAgent):
 
     def __init__(self, agent_config):
@@ -195,58 +246,6 @@ class PPOAgent(GUIAgent):
             action_int = policy_step.action
             action_dict = observation_dict["legal_moves"][np.where(np.equal(action_int, observation_dict["legal_moves_as_int"]))[0][0]]
             return action_dict
-
-    @staticmethod
-    def load_config(pyhanabi_config):
-        # the PPOAgent does not require additional information for __init__
-        return pyhanabi_config
-
-
-class SimpleAgent(GUIAgent):
-
-    def __init__(self, config):
-        """Initialize the agent."""
-        self.config = config
-        # Extract max info tokens or set default to 8.
-        self.max_information_tokens = config.get('information_tokens', 8)
-
-    @staticmethod
-    def playable_card(card, fireworks):
-        """A card is playable if it can be placed on the fireworks pile."""
-        return card['rank'] == fireworks[card['color']]
-
-    def act(self, observation):
-        """Act based on an observation."""
-        if observation['current_player_offset'] != 0:
-            return None
-
-        # Check if there are any pending hints and play the card corresponding to
-        # the hint.
-        for card_index, hint in enumerate(observation['card_knowledge'][0]):
-            if hint['color'] is not None or hint['rank'] is not None:
-                return {'action_type': 'PLAY', 'card_index': card_index}
-
-        # Check if it's possible to hint a card to your colleagues.
-        fireworks = observation['fireworks']
-        if observation['information_tokens'] > 0:
-            # Check if there are any playable cards in the hands of the opponents.
-            for player_offset in range(1, observation['num_players']):
-                player_hand = observation['observed_hands'][player_offset]
-                player_hints = observation['card_knowledge'][player_offset]
-                # Check if the card in the hand of the opponent is playable.
-                for card, hint in zip(player_hand, player_hints):
-                    if self.playable_card(card, fireworks) and hint['color'] is None:
-                        return {
-                            'action_type': 'REVEAL_COLOR',
-                            'color': card['color'],
-                            'target_offset': player_offset
-                        }
-
-        # If no card is hintable then discard or play.
-        if observation['information_tokens'] < self.max_information_tokens:
-            return {'action_type': 'DISCARD', 'card_index': 0}
-        else:
-            return {'action_type': 'PLAY', 'card_index': 0}
 
     @staticmethod
     def load_config(pyhanabi_config):

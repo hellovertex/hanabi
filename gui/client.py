@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 """ PROJECT LVL IMPORTS """
-from server_wrapper import GameStateWrapper
+from server_game import GameStateWrapper
 from gui_agent import AGENT_CLASSES, RainbowAgent, PPOAgent, SimpleAgent
 import gui_utils
 import json_to_websocket as json_utils
@@ -196,7 +196,6 @@ class Client:
         """ Forwards messages to game state wrapper and sets flags for self.run() """
         # JOIN GAME
         if message.strip().startswith('table') and not self.gameHasStarted:  # notification opened game
-            self._update_latest_game_id(message)
             # if playing with humans
             # when the game lobby is created,
             # we can initialize the agents with the derived pyhanabi configuration
@@ -216,6 +215,7 @@ class Client:
                 # create game object that will return agents_observations
                 game_config = self.load_game_config(pyhanabi_config)
                 self.game = GameStateWrapper(game_config)  # Stores observations for agent
+            self._update_latest_game_id(message)
 
         # HOSTED TABLE
         if message.startswith('game {') and self.id == 0:  # always first agent to host a table
@@ -280,11 +280,11 @@ class Client:
 
     @staticmethod
     def on_open(ws):
-        """ Zamiels server doesnt require any hello-messages"""
+        """ Zamiells server doesnt require any hello-messages"""
         pass
 
     def run(self, gameID=None):
-            """ This implements the event-loop where we play Hanabi """
+            """ Implements the event-loop where Hanabi is played """
 
             # Client automatically sets gameID to the last opened game [see self.on_message()]
             if gameID is None:
@@ -409,7 +409,7 @@ def get_addrs(args):
     """ If no remote address is provided, the server is assumed to be running on localhost """
 
     # to play on Zamiels server or private subnets
-    if args.remote_address is not None:
+    if args.remote_address:
         addr = str(args.remote_address)
     else:
         addr = "localhost"
@@ -422,6 +422,7 @@ def get_addrs(args):
 
 
 def init_args():
+    # todo share arguments across subparsers to avoid repetitive code here
     argparser = argparse.ArgumentParser()
     subparsers = argparser.add_subparsers(dest='subparser_name')
 
@@ -548,7 +549,7 @@ def init_args():
 
     def _commands_valid(args):
 
-        assert len(args.__dict__) > 0, 'Enter either "agents_only" or "with_human"'
+        assert len(args.__dict__) > 1, 'Enter either client.py "agents_only" or client.py "with_human"'
         """ This function returns True, iff the user specified input does not break the rules of the game"""
 
         if args.subparser_name == 'with_human':
@@ -568,9 +569,9 @@ def init_args():
 
 if __name__ == "__main__":
     args = init_args()
-    print(f"-------------------------------------------------------------------------|\n"
-          f"Client started with following args:                                   |\n"
-          f"-------------------------------------------------------------------------\n"
+    print(f"---------------------------------------------------------------------------\n"
+          f"  Client started with following args:                                      \n"
+          f"---------------------------------------------------------------------------\n"
           f"{args}\n")
     # Returns subnet ipv4 in private network and localhost otherwise
     addr, referer, addr_ws = get_addrs(args)
@@ -598,8 +599,8 @@ if __name__ == "__main__":
         # append to lists, s.t. threads can be started later and their objects dont get removed from garbage collector
         client_thread = threading.Thread(target=c.run)
         process.append(client_thread)
-        print(f"-------------------------------------------------------------------------|\n"
-              f"Joined {agent_name} :                                                    |\n"
+        print(f"-------------------------------------------------------------------------\n"
+              f" Joined {agent_name} :                                                    \n"
               f"-------------------------------------------------------------------------\n")
         time.sleep(.5)
 
