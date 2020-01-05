@@ -132,12 +132,13 @@ class RainbowAgent(GUIAgent):
         project_path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
         # todo make this configurable
         self.base_dir = project_path + '/agents/rainbow_10kit/'
+        # self.base_dir = '/home/cawa/Documents/SoSe19/NIP/hanabi/agents/rainbow_10kit/'
 
         self.observation_size = agent_config["observation_size"]
         self.num_players = agent_config["num_players"]
         # self.history_size = agent_config["history_size"]
         # self.vectorized_observation_shape = agent_config["observation_size"]
-        self.num_actions = agent_config["max_moves"]
+        self.num_actions = agent_config["num_actions"]
 
         self.experiment_logger = logger.Logger(self.base_dir+'/logs')
 

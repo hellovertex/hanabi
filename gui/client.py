@@ -40,6 +40,11 @@ class ClientMode(enum.IntEnum):
 
 
 class Client:
+    # todo 5: sig_key_restart without pickle loading
+    # todo 2: fix repeated gameStart message
+    # todo 3: fix quit() and shutdown() routines, s.t. sig_keyboard_interrupt properly terminates program
+    # todo 4: fix weight loading of rainbow agent [x]
+    # todo 1: add handling for status message (clues, strikes, score_before_end) [x]
     """ Client wrapped around the instances of gui_agents.GUIAgents, so they can play on Zamiels server
          https://github.com/Zamiell/hanabi-live. They compute actions offline
          (assuming pyhanabi observation-dict with canonical encoding scheme for vectorized observation)
@@ -121,17 +126,23 @@ class Client:
         self.gameID = None
 
         # Tell the Client, where in the process of joining/playing we are
+        self.uninitialized = True
         self.gottaJoinGame = False
         self.gameHasStarted = False
         self.game_created = False
         self.game_paused = False
+        self.game_over = False
+        self.game_end_stats = None
 
         # current number of players in the lobby, used when our agent hosts lobby and wants to know when to start game
         self._num_players_in_lobby = -1
 
-
         self.episodes_played = 0
         self.cmd_args = cmd_args
+
+    def _maybe_abandon_old_games(self):
+        """ """
+        self.ws.send(json_utils.gameAbandon())
 
     def load_client_config(self, args):
         if self.mode == ClientMode.AGENTS_ONLY:
@@ -201,11 +212,15 @@ class Client:
         time.sleep(self.throttle)
         # self.ws.send(json_utils.gameUnattend())
         try:
+            #if self.episodes_played >= self.config['num_episodes']:
             self.ws.close()
+            # else:  # keep playing until number of episodes is fulfilled
+                # rejoin game
+            #    self.gottaJoinGame = True
+
         except Exception:
             print('close')
         finally:
-            self.gameID = None
             return
 
         #time.sleep(self.throttle)
@@ -257,6 +272,19 @@ class Client:
 
         # UPDATE GAME STATE
         if message.startswith('notify '):
+            response_msg = json_utils.dict_from_response(response=message, msg_type='notify')
+            if 'type' in response_msg and response_msg['type']=='status':
+                # Handle Clues
+                # clues are handled by game_state_wrapper. If for example -i=3 is passes, the agent will never able to go
+                # below 8-3 = 5 shown clue tokens
+                # Handle Strikes, set self.game_over
+                if self.game:
+                    if self.game.life_tokens == 0:
+                        self.game_over = True
+                        # get score at end of game
+                        # notify {"type":"status","clues":6,"score":1,"maxScore":25,"doubleDiscard":true}
+                        self.game_end_stats = response_msg
+
             self.game.update_state(message)
 
         # END GAME
@@ -301,19 +329,15 @@ class Client:
 
     @staticmethod
     def on_close(ws):
-        pass
+        print("### closed ###")
 
     @staticmethod
     def on_open(ws):
         """ Zamiells server doesnt require any hello-messages"""
         pass
 
-    def run(self, gameID=None):
+    def run(self):
             """ Implements the event-loop where Hanabi is played """
-
-            # Client automatically sets gameID to the last opened game [see self.on_message()]
-            if gameID is None:
-                gameID = self.gameID
 
             # Just in case, as we sometimes get delays in the beginning (idk why)
             conn_timeout = 5
@@ -322,7 +346,10 @@ class Client:
                 conn_timeout -= 1
 
             # While client is listening
-            while self.ws.sock.connected:
+            while self.ws.sock and self.ws.sock.connected:
+                if self.uninitialized:
+                    self._maybe_abandon_old_games()
+                    self.uninitialized = False
                 # The agents will try to play num_episodes and then disconnect
                 while self.episodes_played < self.config['num_episodes']:
 
@@ -332,9 +359,7 @@ class Client:
                         if not self.gameHasStarted:
                             if not self.game_created:
                                 self.ws.send(json_utils.gameCreate(self.config))
-                                self.gottaJoinGame = False  # This is a little trick, by which we avoid rejoining own lobby
-                                # nothing will happen in the run() method,
-                                # as all others involved flags are still set to False
+                                self.gottaJoinGame = False  # auto joins own game on creation
                                 self.game_created = True
                             # when all players have joined, start the game
                         if self._num_players_in_lobby == self.config['num_total_players']:
@@ -364,7 +389,8 @@ class Client:
                             self.ws.send(self.game.parse_action_to_msg(a))
 
                         # leave replay lobby when game has ended
-                        if self.game.finished:
+                        if self.game.finished or self.game_over:
+                            print(f'game ended with {self.game_end_stats} \n')
                             self.quit_game()
                             self.game.finished = False
                             self.gameHasStarted = False
@@ -646,8 +672,8 @@ if __name__ == "__main__":
         try:
             for c in clients:
                 c.quit_game()
-            sys.exit(0)
         except Exception:
             print('\n Force websocket shutdown...')
-    # todo send gameJoin(gameID, password) when seelf.config['table_pw] is not '' for when -r is specified
-    # self.config['table_pw'] shall not be '' if -r is specified
+        finally:
+            sys.exit(0)
+            # os.kill(...)
