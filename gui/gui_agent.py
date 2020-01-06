@@ -43,8 +43,10 @@ AGENT_CLASSES = {
 }
 
 # todo make checkpoint paths configurable
-ppo_ckpt_dir = '/home/hellovertex/Documents/github.com/hellovertex/hanabi/training/summaries/this_is_where_the_current_tfevent_files_will_get_stored/'
-rainbow_ckpt_dir = '/agents/rainbow/'
+# todo add abstract reset method for stateful agents
+root_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+ppo_ckpt_dir = root_dir + '/training/summaries/this_is_where_the_current_tfevent_files_will_get_stored/'
+rainbow_ckpt_dir = root_dir + '/agents/rainbow_10kit/'
 
 
 class GUIAgent(object):
@@ -129,10 +131,8 @@ class RainbowAgent(GUIAgent):
     def __init__(self, agent_config):
 
         tf.reset_default_graph()
-        project_path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-        # todo make this configurable
-        self.base_dir = project_path + '/agents/rainbow_10kit/'
-        # self.base_dir = '/home/cawa/Documents/SoSe19/NIP/hanabi/agents/rainbow_10kit/'
+        # project_path = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+        self.base_dir = rainbow_ckpt_dir
 
         self.observation_size = agent_config["observation_size"]
         self.num_players = agent_config["num_players"]

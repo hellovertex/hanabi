@@ -73,8 +73,6 @@ class GameStateWrapper:
         # -------------- USE PYHANABI MOCKS -------------- #
         # ################################################ #
         """
-
-        self.finished = False
         self.caller_is_admin = False  # flag is used to determine one RL agent that keeps track of human players
         # environment observations in order to be able to keep the vectorized observations synchronized
         if self.agent_name[-2:] == '00':

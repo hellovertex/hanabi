@@ -26,8 +26,6 @@ BROWSERS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36']
 # Each AI agent has its own "account" stored in the database, using the following password
 PWD = "01c77cf03d35866f8486452d09c067f538848058f12d8f005af1036740cccf98"
-# disable tensorflow logs
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # https://stackoverflow.com/questions/35911252/disable-tensorflow-debugging-information
 
 
 class ClientMode(enum.IntEnum):
@@ -40,11 +38,6 @@ class ClientMode(enum.IntEnum):
 
 
 class Client:
-    # todo 5: sig_key_restart without pickle loading
-    # todo 2: fix repeated gameStart message
-    # todo 3: fix quit() and shutdown() routines, s.t. sig_keyboard_interrupt properly terminates program
-    # todo 4: fix weight loading of rainbow agent [x]
-    # todo 1: add handling for status message (clues, strikes, score_before_end) [x]
     """ Client wrapped around the instances of gui_agents.GUIAgents, so they can play on Zamiels server
          https://github.com/Zamiell/hanabi-live. They compute actions offline
          (assuming pyhanabi observation-dict with canonical encoding scheme for vectorized observation)
@@ -59,12 +52,7 @@ class Client:
         # Opens a websocket on url:80
         self.ws = websocket.WebSocketApp(url=url,
                                          on_message=lambda ws, msg: self.on_message(ws, msg),
-                                         on_error=lambda ws, msg: self.on_error(ws, msg),
-                                         on_close=lambda ws, msg: self.on_close(ws),
                                          cookie=cookie)
-
-        # Set on_open seperately as it does crazy things otherwise #pythonWebsockets
-        self.ws.on_open = lambda ws: self.on_open(ws)
 
         # listen for incoming messages
         self.daemon = threading.Thread(target=self.ws.run_forever)
@@ -86,8 +74,7 @@ class Client:
         """
         client_mode = cmd_args.subparser_name
         assert client_mode in ['agents_only', 'with_human']
-        # In agents_only-mode the agents will host a game with given arguments
-        # Otherwise, a human will set up the game lobby
+
         if client_mode == 'agents_only':
             self.mode = ClientMode.AGENTS_ONLY
         # Else, mode will be equal to the number of human players
@@ -99,7 +86,6 @@ class Client:
         self.config = self.load_client_config(cmd_args)
 
         # instantiated later
-        self.game = None
         self.agent_class = AGENT_CLASSES[cmd_args.agent_classes[self.id]]
 
         # In agents only mode, we can instantiate the agents immediately
@@ -122,27 +108,46 @@ class Client:
             self.game.caller_is_admin = True
 
         # Will be set when server sends notification that a game has been created
-        # (auto-join will always join latest game)
-        self.gameID = None
+        # (auto-join observer will always join latest game)
+        self.game_id = None
 
         # Tell the Client, where in the process of joining/playing we are
-        self.uninitialized = True
-        self.gottaJoinGame = False
-        self.gameHasStarted = False
+        self._maybe_has_hanging_game = True
+        self.gotta_join_game = False
+        self.game_has_started = False
         self.game_created = False
-        self.game_paused = False
         self.game_over = False
+        self.game_finished = False
         self.game_end_stats = None
 
         # current number of players in the lobby, used when our agent hosts lobby and wants to know when to start game
         self._num_players_in_lobby = -1
-
         self.episodes_played = 0
         self.cmd_args = cmd_args
 
     def _maybe_abandon_old_games(self):
-        """ """
+        """ End game and leave replay lobby for clean restarts """
+        self.ws.send(json_utils.gameUnattend())
+        time.sleep(self.throttle)
         self.ws.send(json_utils.gameAbandon())
+        time.sleep(self.throttle)
+        self.ws.send(json_utils.gameUnattend())  # better safe than sorry
+
+    def _reset_game_flags(self):
+        self.game_has_started = False
+        self.game_created = False
+        self.game_over = False
+        self.game_finished = False
+        self.game_end_stats = None
+        self.game_id = None
+        self.gotta_join_game = True
+        if self.episodes_played >= self.config['num_episodes']:
+            self.gotta_join_game = False
+
+    def quit_game(self):
+        self._num_players_in_lobby = -1
+        self._maybe_abandon_old_games()
+        self._reset_game_flags()
 
     def load_client_config(self, args):
         if self.mode == ClientMode.AGENTS_ONLY:
@@ -207,89 +212,87 @@ class Client:
                 'deck_size': sum([3,2,2,2,1][:ranks]) * colors,
                 'max_moves': gui_utils.get_num_actions(pyhanabi_config)}
 
-    def quit_game(self):
-        self.ws.send(json_utils.gameAbandon())
-        time.sleep(self.throttle)
-        # self.ws.send(json_utils.gameUnattend())
+    def exit(self):
         try:
-            #if self.episodes_played >= self.config['num_episodes']:
             self.ws.close()
-            # else:  # keep playing until number of episodes is fulfilled
-                # rejoin game
-            #    self.gottaJoinGame = True
-
         except Exception:
             print('close')
         finally:
             return
 
-        #time.sleep(self.throttle)
-        #self.ws.send(json_utils.gameAbandon())
-
     def on_message(self, ws, message):
         """ Forwards messages to game state wrapper and sets flags for self.run() """
-        # NOTIFICATION GAME OPENED
-        if message.strip().startswith('table') and not self.gameHasStarted:
-            # if playing with humans
-            # when the game lobby is created,
-            # we can initialize the agents with the derived pyhanabi configuration
-            # and update the config for hosting/joining lobby
-            table_params = json_utils.dict_from_response(response=message, msg_type='table')
-            if not self.mode == ClientMode.AGENTS_ONLY:
-                # update config
-                self.config['table_name'] = table_params['name']
-                self.config['table_pw'] = ''
-                self.config['variant'] = table_params['variant']
 
-                # load agent with derived pyhanabi config
-                pyhanabi_config = self.load_pyhanabi_config(cmd_args=self.cmd_args, table_params=table_params)
-                agent_config = eval(self.agent_class).load_config(pyhanabi_config)
-                self.agent = eval(self.agent_class)(agent_config)
+        try:
+            # NOTIFICATION GAME OPENED
+            if message.strip().startswith('table') and not self.game_has_started:
+                # if playing with humans
+                # when the game lobby is created,
+                # we can initialize the agents with the derived pyhanabi configuration
+                # and update the config for hosting/joining lobby
+                table_params = json_utils.dict_from_response(response=message, msg_type='table')
+                if not self.mode == ClientMode.AGENTS_ONLY:
+                    # update config
+                    self.config['table_name'] = table_params['name']
+                    self.config['table_pw'] = ''
+                    self.config['variant'] = table_params['variant']
 
-                # create game object that will return agents_observations
-                game_config = self.load_game_config(pyhanabi_config)
-                self.game = GameStateWrapper(game_config)  # Stores observations for agent
-            # self._maybe_abandon_old_unfinished_game(table_params)
-            self._update_latest_game_id_and_set_join_flag(message)
+                    # load agent with derived pyhanabi config
+                    pyhanabi_config = self.load_pyhanabi_config(cmd_args=self.cmd_args, table_params=table_params)
+                    agent_config = eval(self.agent_class).load_config(pyhanabi_config)
+                    self.agent = eval(self.agent_class)(agent_config)
 
-        # REFRESH CURRENT TABLE
-        if message.startswith('game {') and self.id == 0:  # always first agent to host a table
-            self._update_num_players_in_lobby(message)
+                    # create game object that will return agents_observations
+                    game_config = self.load_game_config(pyhanabi_config)
+                    self.game = GameStateWrapper(game_config)  # Stores observations for agent
+                # SET JOIN GAME FLAG
+                self._update_latest_game_id_and_set_join_flag(message)
 
-        # START GAME
-        if message.strip().startswith('gameStart'):
-            self.ws.send(json_utils.hello())  # ACK GAME START
+            # REFRESH CURRENT TABLE
+            if message.startswith('game {') and self.id == 0:  # always first agent to host a table
+                self._update_num_players_in_lobby(message)
 
-        # INIT GAME
-        if message.strip().startswith('init'):
-            self.ws.send(json_utils.ready())  # ACK GAME INIT
-            self.game.init_players(message)  # set list of players
-            self.gameHasStarted = True
+            # START GAME
+            if message.strip().startswith('gameStart'):
+                self.ws.send(json_utils.hello())  # ACK GAME START
 
-        # CARDS DEALT
-        if message.startswith('notifyList '):
-            self.game.deal_cards(message)
+            # INIT GAME
+            if message.strip().startswith('init'):
+                self.ws.send(json_utils.ready())  # ACK GAME INIT
+                self.game.init_players(message)  # set list of players
+                self.game_has_started = True
 
-        # UPDATE GAME STATE
-        if message.startswith('notify '):
-            response_msg = json_utils.dict_from_response(response=message, msg_type='notify')
-            if 'type' in response_msg and response_msg['type']=='status':
-                # Handle Clues
-                # clues are handled by game_state_wrapper. If for example -i=3 is passes, the agent will never able to go
-                # below 8-3 = 5 shown clue tokens
-                # Handle Strikes, set self.game_over
-                if self.game:
-                    if self.game.life_tokens == 0:
-                        self.game_over = True
-                        # get score at end of game
+            # CARDS DEALT
+            if message.startswith('notifyList '):
+                self.game.deal_cards(message)
+
+            # UPDATE GAME STATE
+            if message.startswith('notify '):
+                response_msg = json_utils.dict_from_response(response=message, msg_type='notify')
+                if 'type' in response_msg and response_msg['type'] == 'status':
+                    # Handle Clues
+                    # clues are handled by game_state_wrapper. If for example -i=3 is passes, the agent will never able to go
+                    # below 8-3 = 5 shown clue tokens
+                    # Handle Strikes, set self.game_over
+                    if self.game:
+                        # update score, lifes, etc from
                         # notify {"type":"status","clues":6,"score":1,"maxScore":25,"doubleDiscard":true}
-                        self.game_end_stats = response_msg
+                        stats = {'remaining_life_tokens': self.game.life_tokens,
+                                 'remaining_info_tokens': self.game.information_tokens}
+                        self.game_end_stats = dict(response_msg, **stats)
+                        if self.game.life_tokens == 0:
+                            self.game_over = True
 
-            self.game.update_state(message)
+                self.game.update_state(message)
 
-        # END GAME
-        if message.startswith('gameOver'):
-            self.game.finished = True
+            # END GAME
+            if message.startswith('gameOver'):
+                self.game_finished = True
+
+        except Exception:
+            # ignore the callback errors from subthreads
+            print('...')
+            pass
 
     def _update_latest_game_id_and_set_join_flag(self, message):
         """ Set joingame-flags for self.run(), s.t. it joins created games whenever possible"""
@@ -297,18 +300,18 @@ class Client:
         oldGameID = None
 
         # If no game has been created yet, we will join the next one
-        if self.gameID is None:
-            self.gottaJoinGame = True
+        if self.game_id is None:
+            self.gotta_join_game = True
         else:
-            oldGameID = self.gameID
+            oldGameID = self.game_id
 
         # get current latest opened game lobby id
         tmp = message.split('id":')[1]
-        self.gameID = str(re.search(r'\d+', tmp).group())
+        self.game_id = str(re.search(r'\d+', tmp).group())
 
         # Update the latest/next game
-        if oldGameID is not None and self.gameID > oldGameID:
-            self.gottaJoinGame = True
+        if oldGameID is not None and self.game_id > oldGameID:
+            self.gotta_join_game = True
 
     def _update_num_players_in_lobby(self, message: str):
         # parse dict
@@ -318,68 +321,53 @@ class Client:
         if 'players' in response:
             self._num_players_in_lobby = len(response['players'])
 
-    def _maybe_abandon_old_unfinished_game(self, table_params):
-        if self.username in table_params['players']:
-            # there is a hanging game, which we must leave to be able to join a new one
-            self.quit_game()
-
-    @staticmethod
-    def on_error(ws, error):
-        print("Error: ", error)
-
-    @staticmethod
-    def on_close(ws):
-        print("### closed ###")
-
-    @staticmethod
-    def on_open(ws):
-        """ Zamiells server doesnt require any hello-messages"""
-        pass
-
     def run(self):
             """ Implements the event-loop where Hanabi is played """
 
-            # Just in case, as we sometimes get delays in the beginning (idk why)
-            conn_timeout = 5
+            # Just in case, as we sometimes get delays in the beginnings
+            conn_timeout = 3
             while not self.ws.sock.connected and conn_timeout:
                 time.sleep(1)
                 conn_timeout -= 1
 
             # While client is listening
             while self.ws.sock and self.ws.sock.connected:
-                if self.uninitialized:
+
+                if self._maybe_has_hanging_game:
                     self._maybe_abandon_old_games()
-                    self.uninitialized = False
+                    self._maybe_has_hanging_game = False
+
                 # The agents will try to play num_episodes and then disconnect
                 while self.episodes_played < self.config['num_episodes']:
 
                     # EITHER HOST A TABLE (when 0 human players), always first client instance hosts game
                     if self.config['num_human_players'] == 0 and (self.id == 0):
                         # open a lobby
-                        if not self.gameHasStarted:
+                        if not self.game_has_started:
                             if not self.game_created:
                                 self.ws.send(json_utils.gameCreate(self.config))
-                                self.gottaJoinGame = False  # auto joins own game on creation
+                                self.gotta_join_game = False  # auto joins own game on creation
                                 self.game_created = True
                             # when all players have joined, start the game
-                        if self._num_players_in_lobby == self.config['num_total_players']:
-                                self.ws.send(json_utils.gameStart())
+                            if self._num_players_in_lobby == self.config['num_total_players']:
+                                    self.ws.send(json_utils.gameStart())
+                                    self.game_has_started = True
 
                         time.sleep(1)
 
                     # OR JOIN GAME
-                    elif self.gottaJoinGame and self.gameID:
-                        self.ws.send(json_utils.gameJoin(gameID=self.gameID))
+                    elif self.gotta_join_game and self.game_id:
+                        self.ws.send(json_utils.gameJoin(gameID=self.game_id))
                         time.sleep(self.throttle)
-                        self.ws.send(json_utils.gameJoin(gameID=self.gameID))
-                        self.gottaJoinGame = False
+                        self.ws.send(json_utils.gameJoin(gameID=self.game_id))
+                        self.gotta_join_game = False
 
                     # PLAY GAME
-                    if self.gameHasStarted:  # set in self.on_message() on servers init message
+                    if self.game_has_started:  # set in self.on_message() on servers init message
 
                         # ON AGENTS TURN
-                        if self.game.agents_turn and not self.game_paused:
-                            # wait to feel more human :D
+                        if self.game.agents_turn:
+                            # wait to feel more human
                             time.sleep(self.config['wait_move'])
                             # Get observation
                             obs = self.game.get_agent_observation()
@@ -389,11 +377,14 @@ class Client:
                             self.ws.send(self.game.parse_action_to_msg(a))
 
                         # leave replay lobby when game has ended
-                        if self.game.finished or self.game_over:
-                            print(f'game ended with {self.game_end_stats} \n')
+                        if self.game_finished or self.game_over:
+                            if self.game_end_stats is not None and self.id == 0:
+
+                                print(f"---------------------------------------------------------------------------\n"
+                                      f'game {self.game_id} ended with {self.game_end_stats} \n'
+                                      f"---------------------------------------------------------------------------\n"
+                                      )
                             self.quit_game()
-                            self.game.finished = False
-                            self.gameHasStarted = False
                             self.episodes_played += 1
 
                     time.sleep(.25)
@@ -484,7 +475,7 @@ def init_args():
     b_parser = subparsers.add_parser('with_human')
 
     def _add_args():
-        # todo figure out how to share arguments (inherit from parent parser ?)
+        # todo share arguments (inherit from parent parser)
         # ClientMode.AGENTS_ONLY
         a_parser.add_argument(
             '-c',
@@ -623,6 +614,10 @@ def init_args():
 
 if __name__ == "__main__":
 
+    # https://stackoverflow.com/questions/35911252/disable-tensorflow-debugging-information
+    # disable tensorflow logs
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
     clients = []
     client_threads = []
 
@@ -635,7 +630,7 @@ if __name__ == "__main__":
         # Returns subnet ipv4 in private network and localhost otherwise
         addr, referer, addr_ws = get_addrs(args)
 
-        # Run each client in a seperate thread
+        # Run each client in a separate thread
         num_agents = len(args.agent_classes)
         for i in range(num_agents):
             # set username equal to agent_class + number of agent
@@ -662,16 +657,26 @@ if __name__ == "__main__":
         for thread in client_threads:
             thread.start()
 
-        while True:
+        episodes_to_play = (float("inf") if args.subparser_name == 'with_human' else args.num_episodes)
+
+        while clients[0].episodes_played < episodes_to_play:
             # needed to keep the main thread alive, because its the only one that can catch the KeyboardInterrupt Signal
             # see https://stackoverflow.com/questions/19652446/python-program-with-thread-cant-catch-ctrlc
             time.sleep(1)
 
+        # shutdown after all episodes are played
+        for c in clients:
+            c.exit()
+        for t in client_threads:
+            t.join()
+
     except KeyboardInterrupt:
-        print('\n Terminating game...')
+        print('\n Terminating game... You may have to press Ctrl + C again')
         try:
             for c in clients:
-                c.quit_game()
+                c.exit()
+            for t in client_threads:
+                t.join()
         except Exception:
             print('\n Force websocket shutdown...')
         finally:
