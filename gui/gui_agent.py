@@ -34,7 +34,7 @@ path = os.path.dirname(sys.modules['__main__'].__file__)
 
     will join 3 AI agents to the gui server lobby (2 simple agents and 1 rainbow agent).
 
-    You can add your own agents after implementing them in this file 
+    You can add your own agents after implementing them (subclassing GUIAgent) in this file 
 """
 AGENT_CLASSES = {
     'simple': 'SimpleAgent',  # as in deepminds hanabi-learning-environment
@@ -52,8 +52,8 @@ rainbow_ckpt_dir = root_dir + '/agents/rainbow_10kit/'
 class GUIAgent(object):
     """
     Abstract interface for GUI agents
-    Subclass instantiation must make sure, that the trained agents loaded,
-    are the ones that were trained for the very game variant that is played.
+    Subclass initialization must ensure to load checkpoints from agents,
+    that were trained for the game variant that is played (equal num_players, hand_size, etc.).
     """
 
     def __new__(cls, *args, **kwargs):
@@ -71,6 +71,7 @@ class GUIAgent(object):
         """
         Call this method before subclass instantiation to
             - get the config for its __init__(...) at runtime
+            - see for example RainbowAgent(GUIAgent)
         Expects pyhanabi observation dict, Returns agent config dict"""
         raise NotImplementedError
 
