@@ -70,7 +70,9 @@ class Client:
 
         """ 
         AGENTS_ONLY: agents config is derived exclusively from the command line arguments passed
-        WITH_HUMAN: agents config is derived from the params of the game create by human via GUI
+                     agents will create and play games all by themselves
+                     
+        WITH_HUMAN:  agents config is derived from the params of the game create by human via GUI
         """
         client_mode = cmd_args.subparser_name
         assert client_mode in ['agents_only', 'with_human']
@@ -91,17 +93,18 @@ class Client:
         # In agents only mode, we can instantiate the agents immediately
         if self.mode == ClientMode.AGENTS_ONLY:
             # In agents only mode, the pyhanabi_config can be determined from cmd_args
-            pyhanabi_config = self.load_pyhanabi_config(cmd_args)
+            self.pyhanabi_config = self.load_pyhanabi_config(cmd_args)
             # and we can load config for agent class using its static classmethod load_config()
-            agent_config = eval(self.agent_class).load_config(pyhanabi_config)
+            agent_config = eval(self.agent_class).load_config(self.pyhanabi_config)
             # to init agent <gui_agent.GUIAgent subclass>
             self.agent = eval(self.agent_class)(agent_config)
             # and game
-            self.game = GameStateWrapper(self.load_game_config(pyhanabi_config))
+            self.game = GameStateWrapper(self.load_game_config(self.pyhanabi_config))
         # Otherwise, we have to wait for the human player to create a game
         else:
             self.agent = None
             self.game = None
+            self.pyhanabi_config = None
 
         # set agent admin for hosting game, if playing without humans
         if self.id == 0 and self.mode == ClientMode.AGENTS_ONLY:
@@ -144,10 +147,18 @@ class Client:
         if self.episodes_played >= self.config['num_episodes']:
             self.gotta_join_game = False
 
+    def _maybe_reset_agent(self):
+        if hasattr(self.agent, 'reset'):
+            self.agent.reset()
+
     def quit_game(self):
         self._num_players_in_lobby = -1
         self._maybe_abandon_old_games()
         self._reset_game_flags()
+        self._maybe_reset_agent()
+        # create new game object for the next round
+        if self.episodes_played < self.config['num_episodes']:
+            self.game = GameStateWrapper(self.load_game_config(self.pyhanabi_config))
 
     def load_client_config(self, args):
         if self.mode == ClientMode.AGENTS_ONLY:
@@ -245,6 +256,7 @@ class Client:
                     # create game object that will return agents_observations
                     game_config = self.load_game_config(pyhanabi_config)
                     self.game = GameStateWrapper(game_config)  # Stores observations for agent
+
                 # SET JOIN GAME FLAG
                 self._update_latest_game_id_and_set_join_flag(message)
 
@@ -280,6 +292,7 @@ class Client:
                         stats = {'remaining_life_tokens': self.game.life_tokens,
                                  'remaining_info_tokens': self.game.information_tokens}
                         self.game_end_stats = dict(response_msg, **stats)
+                        # print(self.game_end_stats)
                         if self.game.life_tokens == 0:
                             self.game_over = True
 
@@ -322,7 +335,7 @@ class Client:
             self._num_players_in_lobby = len(response['players'])
 
     def run(self):
-            """ Implements the event-loop where Hanabi is played """
+            """ Implements tquit_gamehe event-loop where Hanabi is played """
 
             # Just in case, as we sometimes get delays in the beginnings
             conn_timeout = 3
@@ -673,6 +686,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print('\n Terminating game... You may have to press Ctrl + C again')
         try:
+            for c in clients:
+                c.quit_game()
+            time.sleep(.5)
             for c in clients:
                 c.exit()
             for t in client_threads:

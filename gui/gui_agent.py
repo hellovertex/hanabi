@@ -65,6 +65,10 @@ class GUIAgent(object):
         Returns action as dict or int"""
         raise NotImplementedError
 
+    def reset(self):
+        """ Resets the agent, such that it can play a new game without re-creating the agent """
+        raise NotImplementedError
+
     @staticmethod
     @abstractmethod
     def load_config(pyhanabi_config):
@@ -168,6 +172,9 @@ class RainbowAgent(GUIAgent):
         print("\n---------------------------------------------------")
         print("Initialized Model weights at start iteration: {}".format(start_iteration))
         print("---------------------------------------------------\n")
+
+    def reset(self):
+        tf.reset_default_graph()
 
     def act(self, observation_dict):
         # Returns Integer Action

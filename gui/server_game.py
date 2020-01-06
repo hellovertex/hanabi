@@ -111,10 +111,16 @@ class GameStateWrapper:
         self.agents_turn = False
         self.deck_size = self.max_deck_size
         self.order = 0
+        self.caller_is_admin = False  # flag is used to determine one RL agent that keeps track of human players
+        # environment observations in order to be able to keep the vectorized observations synchronized
+        if self.agent_name[-2:] == '00':
+            self.caller_is_admin = True  # admin is the first instance of the client class
+        self.idx_human_player = -1  # used to determine whenever human is target of a card hint and thus when
+        # hints will be out of sync with vectorizer environment state
+        self.vectorizer_is_synced = False  # if human player got card hints, the other vectorizer instances must know
         vectorizer, legal_moves_vectorizer = self._init_vectorizer()
         self.vectorizer = vectorizer
         self.legal_moves_vectorizer = legal_moves_vectorizer
-
         return
 
     def init_players(self, notify_msg: str, reconnected=False):
@@ -366,7 +372,9 @@ class GameStateWrapper:
         return scored, information_token
 
     # scored, information_token are bool
-    def append_to_last_moves(self, dict_action, deepcopy_card_nums, scored, information_token, deal_to_player, card_info_revealed):
+    def append_to_last_moves(self,
+                             dict_action,
+                             deepcopy_card_nums, scored, information_token, deal_to_player, card_info_revealed):
         """
         Mocks HanabiHistoryItems as gotten from pyhanabi. As these objects provide callables, we have to create these
         here.
@@ -446,10 +454,6 @@ class GameStateWrapper:
 
         return [list(reversed(clues)) for clues in card_knowledge]
 
-    def get_vectorized(self, observation):
-        """ calls vectorizer.ObservationVectorizer with envMock to get the vectorized observation """
-        return self.vectorizer.vectorize_observation(observation)
-
     def get_legal_moves_as_int(self, legal_moves):
         """ Parses legal moves, such that it is an input vector for our neural nets """
         legal_moves_as_int = self.legal_moves_vectorizer.get_legal_moves_as_int(legal_moves)
@@ -478,7 +482,7 @@ class GameStateWrapper:
         legal_moves_as_int, legal_moves_as_int_formated = self.get_legal_moves_as_int(observation['legal_moves'])
         observation["legal_moves_as_int"] = legal_moves_as_int
         observation["legal_moves_as_int_formated"] = legal_moves_as_int_formated
-        observation['vectorized'] = self.get_vectorized(observation)
+        observation['vectorized'] = self.vectorizer.vectorize_observation(observation)
         #print(f"CARD KNOWLEDGE AS SEEN BZ PLAYER {self.agent_name}")
         #print(observation['card_knowledge'])
         return observation
