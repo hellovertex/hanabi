@@ -130,6 +130,9 @@ class SimpleAgent(GUIAgent):
         # the PPOAgent does not require additional information for __init__
         return pyhanabi_config
 
+    def reset(self):
+        pass
+
 
 class RainbowAgent(GUIAgent):
 
