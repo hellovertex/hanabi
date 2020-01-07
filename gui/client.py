@@ -4,6 +4,7 @@ from server_game import GameStateWrapper
 from gui_agent import AGENT_CLASSES, RainbowAgent, PPOAgent, SimpleAgent
 import gui_utils
 import json_to_websocket as json_utils
+
 """ PYTHON IMPORTS """
 from typing import Dict
 import requests
@@ -38,6 +39,9 @@ class ClientMode(enum.IntEnum):
 
 
 class Client:
+    # todo to change the hand_size, we must change the server code.
+    #  Therefore it would be convenient to have a script that
+    #  1. automatically rewrites the servercode 2. compiles the server and 3. runs it
     """ Client wrapped around the instances of gui_agents.GUIAgents, so they can play on Zamiels server
          https://github.com/Zamiell/hanabi-live. They compute actions offline
          (assuming pyhanabi observation-dict with canonical encoding scheme for vectorized observation)
@@ -202,10 +206,12 @@ class Client:
             'colors': colors,  # Number of colors in [1,5]
             'ranks': 5,  # todo: can not change under the current server implementation
             'players': self.config['num_total_players'],  # Number of total players in [2,5]
-            'hand_size': 4 if len(cmd_args.agent_classes) > 3 else 5,  # todo: can not change under the current server impl
+            'hand_size': 4 if len(cmd_args.agent_classes) > 3 else 5,
+            # todo: can not change under the current server impl
             'max_information_tokens': cmd_args.info_tokens,  # >= 0
             'max_life_tokens': cmd_args.life_tokens,  # >= 1
-            'observation_type': cmd_args.observation_type,  # 0: Minimal observation, 1: First-order common knowledge obs,
+            'observation_type': cmd_args.observation_type,
+            # 0: Minimal observation, 1: First-order common knowledge obs,
             'seed': -1,  # -1 to use system random device to get seed
             'random_start_player': False  # todo: check proper mapping from server indices
         }
@@ -220,7 +226,7 @@ class Client:
                 'colors': colors,
                 'ranks': ranks,
                 'hand_size': pyhanabi_config['hand_size'],
-                'deck_size': sum([3,2,2,2,1][:ranks]) * colors,
+                'deck_size': sum([3, 2, 2, 2, 1][:ranks]) * colors,
                 'max_moves': gui_utils.get_num_actions(pyhanabi_config)}
 
     def exit(self):
@@ -335,73 +341,72 @@ class Client:
             self._num_players_in_lobby = len(response['players'])
 
     def run(self):
-            """ Implements tquit_gamehe event-loop where Hanabi is played """
+        """ Implements tquit_gamehe event-loop where Hanabi is played """
 
-            # Just in case, as we sometimes get delays in the beginnings
-            conn_timeout = 3
-            while not self.ws.sock.connected and conn_timeout:
-                time.sleep(1)
-                conn_timeout -= 1
+        # Just in case, as we sometimes get delays in the beginnings
+        conn_timeout = 3
+        while not self.ws.sock.connected and conn_timeout:
+            time.sleep(1)
+            conn_timeout -= 1
 
-            # While client is listening
-            while self.ws.sock and self.ws.sock.connected:
+        # While client is listening
+        while self.ws.sock and self.ws.sock.connected:
 
-                if self._maybe_has_hanging_game:
-                    self._maybe_abandon_old_games()
-                    self._maybe_has_hanging_game = False
+            if self._maybe_has_hanging_game:
+                self._maybe_abandon_old_games()
+                self._maybe_has_hanging_game = False
 
-                # The agents will try to play num_episodes and then disconnect
-                while self.episodes_played < self.config['num_episodes']:
+            # The agents will try to play num_episodes and then disconnect
+            while self.episodes_played < self.config['num_episodes']:
 
-                    # EITHER HOST A TABLE (when 0 human players), always first client instance hosts game
-                    if self.config['num_human_players'] == 0 and (self.id == 0):
-                        # open a lobby
-                        if not self.game_has_started:
-                            if not self.game_created:
-                                self.ws.send(json_utils.gameCreate(self.config))
-                                self.gotta_join_game = False  # auto joins own game on creation
-                                self.game_created = True
-                            # when all players have joined, start the game
-                            if self._num_players_in_lobby == self.config['num_total_players']:
-                                    self.ws.send(json_utils.gameStart())
-                                    self.game_has_started = True
+                # EITHER HOST A TABLE (when 0 human players), always first client instance hosts game
+                if self.config['num_human_players'] == 0 and (self.id == 0):
+                    # open a lobby
+                    if not self.game_has_started:
+                        if not self.game_created:
+                            self.ws.send(json_utils.gameCreate(self.config))
+                            self.gotta_join_game = False  # auto joins own game on creation
+                            self.game_created = True
+                        # when all players have joined, start the game
+                        if self._num_players_in_lobby == self.config['num_total_players']:
+                            self.ws.send(json_utils.gameStart())
+                            self.game_has_started = True
 
-                        time.sleep(1)
+                    time.sleep(1)
 
-                    # OR JOIN GAME
-                    elif self.gotta_join_game and self.game_id:
-                        self.ws.send(json_utils.gameJoin(gameID=self.game_id))
-                        time.sleep(self.throttle)
-                        self.ws.send(json_utils.gameJoin(gameID=self.game_id))
-                        self.gotta_join_game = False
+                # OR JOIN GAME
+                elif self.gotta_join_game and self.game_id:
+                    self.ws.send(json_utils.gameJoin(gameID=self.game_id))
+                    time.sleep(self.throttle)
+                    self.ws.send(json_utils.gameJoin(gameID=self.game_id))
+                    self.gotta_join_game = False
 
-                    # PLAY GAME
-                    if self.game_has_started:  # set in self.on_message() on servers init message
+                # PLAY GAME
+                if self.game_has_started:  # set in self.on_message() on servers init message
 
-                        # ON AGENTS TURN
-                        if self.game.agents_turn:
-                            # wait to feel more human
-                            time.sleep(self.config['wait_move'])
-                            # Get observation
-                            obs = self.game.get_agent_observation()
-                            # Compute action
-                            a = self.agent.act(obs)
-                            # Send to server
-                            self.ws.send(self.game.parse_action_to_msg(a))
+                    # ON AGENTS TURN
+                    if self.game.agents_turn:
+                        # wait to feel more human
+                        time.sleep(self.config['wait_move'])
+                        # Get observation
+                        obs = self.game.get_agent_observation()
+                        # Compute action
+                        a = self.agent.act(obs)
+                        # Send to server
+                        self.ws.send(self.game.parse_action_to_msg(a))
 
-                        # leave replay lobby when game has ended
-                        if self.game_finished or self.game_over:
-                            if self.game_end_stats is not None and self.id == 0:
+                    # leave replay lobby when game has ended
+                    if self.game_finished or self.game_over:
+                        if self.game_end_stats is not None and self.id == 0:
+                            print(f"---------------------------------------------------------------------------\n"
+                                  f'game {self.game_id} ended with {self.game_end_stats} \n'
+                                  f"---------------------------------------------------------------------------\n"
+                                  )
+                        self.quit_game()
+                        self.episodes_played += 1
 
-                                print(f"---------------------------------------------------------------------------\n"
-                                      f'game {self.game_id} ended with {self.game_end_stats} \n'
-                                      f"---------------------------------------------------------------------------\n"
-                                      )
-                            self.quit_game()
-                            self.episodes_played += 1
-
-                    time.sleep(.25)
                 time.sleep(.25)
+            time.sleep(.25)
 
 
 def login(url, referer, username, password=PWD, num_client=0):
