@@ -35,7 +35,7 @@ from third_party.dopamine import checkpointer
 from third_party.dopamine import iteration_statistics
 import dqn_agent
 import gin.tf
-from hanabi_learning_environment import rl_env
+from hanabi_learning_environment import rl_env #import rl_env_original as rl_env
 import numpy as np
 import rainbow_agent
 import tensorflow as tf
@@ -98,6 +98,15 @@ class ObservationStacker(object):
     """Returns the size of the observation vector after history stacking."""
     return self._observation_size * self._history_size
 
+def merge_reward_dicts(dict1,dict2):
+  """add contents of dict2 into dict1 in-place, if key doesn't exist, create it with value in dict2
+  used to accumulate custom rewards after each step of the game into dict1
+  """
+  try:
+    for key in dict2:
+      dict1[key] += dict2[key]
+  except KeyError:
+    dict1[key] = dict2[key]
 
 def load_gin_configs(gin_files, gin_bindings):
   """Loads gin configuration files.
@@ -308,14 +317,17 @@ def run_one_episode(agent, environment, obs_stacker):
 
   # Keep track of per-player reward.
   reward_since_last_action = np.zeros(environment.players)
+  custom_rewards = {} # custom rewards will be accumulated here
 
   while not is_done:
-    observations, reward, is_done, _ = environment.step(action.item())
+    observations, reward, is_done, curr_cust_rewards = environment.step(action.item())
 
     modified_reward = max(reward, 0) if LENIENT_SCORE else reward
     total_reward += modified_reward
 
     reward_since_last_action += modified_reward
+
+    merge_reward_dicts(custom_rewards, curr_cust_rewards)
 
     step_number += 1
     if is_done:
@@ -338,8 +350,8 @@ def run_one_episode(agent, environment, obs_stacker):
   agent.end_episode(reward_since_last_action)
 
   tf.logging.debug('EPISODE: %d %g', step_number, total_reward)
-  return step_number, total_reward
 
+  return step_number, total_reward, custom_rewards
 
 def run_one_phase(agent, environment, obs_stacker, min_steps, statistics,
                   run_mode_str):
@@ -363,12 +375,18 @@ def run_one_phase(agent, environment, obs_stacker, min_steps, statistics,
   sum_returns = 0.
 
   while step_count < min_steps:
-    episode_length, episode_return = run_one_episode(agent, environment,
+    episode_length, episode_return, custom_rewards = run_one_episode(agent, environment,
                                                      obs_stacker)
     statistics.append({
         '{}_episode_lengths'.format(run_mode_str): episode_length,
         '{}_episode_returns'.format(run_mode_str): episode_return
     })
+    #append custom returns to statistics
+    if not custom_rewards is None: #if custom return is not empty
+      for key in custom_rewards:
+        statistics.append({
+            '{}_episode_{}'.format(run_mode_str, key): custom_rewards[key]
+        })
 
     step_count += episode_length
     sum_returns += episode_return
@@ -418,18 +436,34 @@ def run_one_iteration(agent, environment, obs_stacker,
 
   # Also run an evaluation phase if desired.
   if evaluate_every_n is not None and iteration % evaluate_every_n == 0:
-    episode_data = []
+    episode_lengths = []
+    episode_returns = []
     agent.eval_mode = True
     # Collect episode data for all games.
+    custom_rewards = {}
     for _ in range(num_evaluation_games):
-      episode_data.append(run_one_episode(agent, environment, obs_stacker))
+      curr_length, curr_reward, curr_cust_rewards = run_one_episode(agent, environment, obs_stacker)
+      episode_lengths.append(curr_length)
+      episode_returns.append(curr_reward)
+      merge_reward_dicts(custom_rewards, curr_cust_rewards)
 
-    eval_episode_length, eval_episode_return = map(np.mean, zip(*episode_data))
-
+    eval_episode_length = np.mean(episode_lengths)
+    eval_episode_return = np.mean(episode_returns)
+    #custom_rewards is already accumulated, so just divide by length
+    for key,value in custom_rewards.items():
+      custom_rewards[key] = value/num_evaluation_games
+    print(custom_rewards)
+    #save evaluation phase results to statistics
     statistics.append({
         'eval_episode_lengths': eval_episode_length,
         'eval_episode_returns': eval_episode_return
     })
+    if not custom_rewards is None: #if custom return is not empty
+      for key in custom_rewards:
+        statistics.append({
+            'eval_episode_{}'.format(key): custom_rewards[key]
+        })
+
     tf.logging.info('Average eval. episode length: %.2f  Return: %.2f',
                     eval_episode_length, eval_episode_return)
   else:

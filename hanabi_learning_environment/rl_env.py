@@ -447,8 +447,9 @@ class HanabiEnv(Environment):
                 action))
 
         # ----------------- Custom Reward ---------------- #
-
-        reward = 3 #todo: why?
+        info = {} #reward provided by environment as well as custom rewards will be saved separately here to monitor
+        # learning
+        reward = 0
         prev_player_hands = self.state.player_hands()
         # needed for hamming distance
         cur_pid = self.state.cur_player()  # absolute pid
@@ -459,11 +460,17 @@ class HanabiEnv(Environment):
 
 
         if self.USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
-            reward += self.reward_metrics.maybe_change_hint_reward(action, self.state)
+            hint_reward = self.reward_metrics.maybe_change_hint_reward(action, self.state)
+            reward += hint_reward
+            info["hint_reward"] = hint_reward
         if self.USE_PLAY_REWARD and (action.type() == PLAY):
-            reward += self.reward_metrics.maybe_change_play_reward(action, self.state)
+            play_reward = self.reward_metrics.maybe_change_play_reward(action, self.state)
+            reward += play_reward
+            info["play_reward"] = play_reward
         if self.USE_DISCARD_REWARD and (action.type() == DISCARD):
-            reward += self.reward_metrics.maybe_change_discard_reward(action, self.state)
+            discard_reward = self.reward_metrics.maybe_change_discard_reward(action, self.state)
+            reward += discard_reward + 3 #TODO: discard_reward is not balanced yet,this is only a quick and dirty fix
+            info["discard_reward"] = discard_reward
 
         # -------------- Custom Reward END --------------- #
 
@@ -508,8 +515,10 @@ class HanabiEnv(Environment):
         # if reward is None:  used for when reward was not initially set to 3
         if not(self.USE_HINT_REWARD or self.USE_PLAY_REWARD or self.USE_DISCARD_REWARD):
             reward = self.state.score() - last_score
-
-        info = {}
+        else: #if we get here, some custom reward was used
+            info["ingame_reward"] = self.state.score() - last_score #so for monitoring purposes, we also save the
+            # ingame reward (i.e. "non-custom" reward). this is of course redundant, but allows us to sanity check
+            # whether custom rewards and the in game reward add up correctly
 
         return observation, reward, done, info
 

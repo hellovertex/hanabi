@@ -195,7 +195,10 @@ def summarize_data(data, summary_keys):
       # We allow reporting the same value multiple times when data is missing.
       # If there is no data for this iteration, use the previous'.
       if iter_key in data:
-        current_value = np.mean(data[iter_key][key])
+        try:
+          current_value = np.mean(data[iter_key][key])
+        except KeyError:
+          current_value = None
       summary[key].append(current_value)
 
   return summary
