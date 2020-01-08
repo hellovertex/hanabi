@@ -83,6 +83,7 @@ class Game():
     def play_turn(self, ):
         # current player plays one turn
         player = self.players[self.current_player]
+        # self.obs contains the public belief
         actions, probs, alogps, values = player.step(self.legal_moves, self.obs, self.prev_dones[self.current_player],
                                                      self.prev_rewards[self.current_player],
                                                      self.prev_actions, self.prev_obs, self.beliefs_prob_dict)
@@ -90,8 +91,9 @@ class Game():
         self.prev_actions = actions
         self.prev_obs = np.copy(self.obs)
         self.steps_per_player[player.num] += 1
-        # todo ts contains augmented_observations returned from pub_mdp.PubMDP.step
+        # todo ts must contain augmented_observations returned from pub_mdp.PubMDP.step
         ts = self.env.step(np.array(actions))
+        # todo new: parse_timestep could also contain the publicbelief update
         obs, rewards, legal_moves, dones, scores, custom_rewards, beliefs_prob_dict = parse_timestep(ts)
 
         for k in self.ep_custom_rewards:
