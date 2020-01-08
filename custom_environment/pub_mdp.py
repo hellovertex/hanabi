@@ -15,7 +15,7 @@ class PubMDP(object):
     c.f. 'Bayesian action decoder for deep multi-agent reinforcement learning' (Foerster et al.)
     (https://arxiv.org/abs/1811.01458)"""
 
-    def __init__(self, game_config, public_policy=None, alpha=.1, tf_sess=None):
+    def __init__(self, game_config, public_policy=None, alpha=.1, tf_sess=None, use_beliefs=False):
         """
             See definition of augment_observation() at the bottom of this file to understand how this class works
         """
@@ -25,7 +25,7 @@ class PubMDP(object):
         self.num_colors = game_config['colors']
         self.num_ranks = game_config['ranks']
         self.num_players = game_config['players']
-        self.hand_size = game_config['hand_size']
+        self.hand_size = self.env.game.hand_size()
         self.num_slots = self.num_players * self.hand_size
         self.num_cards = self.num_colors * self.num_ranks + 1  # add 1 for None-card in last round
         # C(f): 0-1 vector of length (colors * ranks) containing public card counts
@@ -71,6 +71,7 @@ class PubMDP(object):
         self.len_s_bad = self.len_public_features + len(hint_mask_flattened)
         # print(f'INSIDE INIT, WE DETERMINED LEN_PUB_FEATURES = {self.len_public_features}')
         self.tf_sess = tf_sess
+        self.use_beliefs = use_beliefs
 
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
@@ -473,7 +474,7 @@ class PubMDP(object):
                 'vectorized': s_bad}
 
     # LVL 0
-    def reset(self):
+    def reset(self, rewards_config=None):
         """
         Returns initial HLE observation + initial public belief state, i.e.
         calls self.env.reset() and augments the resulting observation
@@ -492,7 +493,7 @@ class PubMDP(object):
         self._episode_ended = False
         self.last_time_step = None
         self.debug_utils_counter = 0
-        obs = self.env.reset()
+        obs = self.env.reset(rewards_config)
 
         return self._make_observation_all_players(obs)
 
@@ -515,39 +516,40 @@ class PubMDP(object):
         """ Returns the shape of a vectorized augmented observation as seen by an agent
         Equals observations_spec in case of wrapping it with tf agents
         """
-        len_hle_observation = self.env.vectorized_observation_shape()[0]
-        #print(f'len hle obs inside vecshapefn = {len_hle_observation}')
-        #print(f'lens_bad obs inside vecshapefn = {self.len_s_bad}')
-        return (len_hle_observation + self.len_s_bad, )  # currently 214
+        len_total = self.env.vectorized_observation_shape()[0]
+        if self.use_beliefs:
+            len_total += self.len_s_bad
+        return (len_total, )  # currently 214
 
     # LVL 1
     def _make_observation_all_players(self, hle_observations):
         """ Takes HLE observations and augments them by public state. """
-        # pid = hle_observations['current_player']
-        public_belief_state = self.compute_public_state(hle_observations)
-        s_bad_vectorized = public_belief_state['vectorized']  # self.public_features, self.V2.flatten()
-        # len(self.public_features) ==
-        # for each agent, the observations consists of:
-        # hle_observation + public belief state + private features
-        # the private features are contained in the hle_observations however
-        # so we only add zeros our own hand to the public belief state and append to hle_observation
+        if self.use_beliefs:
+            # pid = hle_observations['current_player']
+            public_belief_state = self.compute_public_state(hle_observations)
+            s_bad_vectorized = public_belief_state['vectorized']  # self.public_features, self.V2.flatten()
+            # len(self.public_features) ==
+            # for each agent, the observations consists of:
+            # hle_observation + public belief state + private features
+            # the private features are contained in the hle_observations however
+            # so we only add zeros our own hand to the public belief state and append to hle_observation
 
 
-        for player_dict in hle_observations['player_observations']:
-            """ 
-            Appends to each players vectorized HLE observation, the public state s_bad={f_pub, B}.
-            The private features need not explicitly be included, because they are present in the HLE observationa
-            already. When reconstructing them for likelihood sampling, we just need to compute the bit versions of 
-            the sampled cards. 
-            """
+            for player_dict in hle_observations['player_observations']:
+                """ 
+                Appends to each players vectorized HLE observation, the public state s_bad={f_pub, B}.
+                The private features need not explicitly be included, because they are present in the HLE observationa
+                already. When reconstructing them for likelihood sampling, we just need to compute the bit versions of 
+                the sampled cards. 
+                """
 
-            # append vectorized s_bad to hle observation
-            #print(f'len hle obs inside make_obs_all_players = {len( player_dict["vectorized"])}')
-            #print(f'len(s_bad_vectorized) = {len(s_bad_vectorized)}')
-            #print(f's_bad_vectorized = {s_bad_vectorized}')
-            player_dict['vectorized'] = np.append(s_bad_vectorized, player_dict['vectorized'])
+                # append vectorized s_bad to hle observation
+                #print(f'len hle obs inside make_obs_all_players = {len( player_dict["vectorized"])}')
+                #print(f'len(s_bad_vectorized) = {len(s_bad_vectorized)}')
+                #print(f's_bad_vectorized = {s_bad_vectorized}')
+                player_dict['vectorized'] = np.append(s_bad_vectorized, player_dict['vectorized'])
 
 
-        hle_observations['s_bad'] = public_belief_state
+            hle_observations['s_bad'] = public_belief_state
         return hle_observations
 

@@ -1,7 +1,7 @@
 import numpy as np
 import pickle
 
-from .network import Network
+from network import Network
 
 import tensorflow as tf
 from tf_agents.utils import tensor_normalizer as tens_norm

@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from .util import *
+import util
 
 
 def build_network(observation, nactions, input_fc_layers=[256, 256],
@@ -9,31 +9,31 @@ def build_network(observation, nactions, input_fc_layers=[256, 256],
     h = observation
     if v_net == 'shared':
         if noisy_fc:
-            h, noise = multilayer_fc_noisy(h, input_fc_layers, scope='fc_net', layer_norm=layer_norm)
+            h, noise = util.multilayer_fc_noisy(h, input_fc_layers, scope='fc_net', layer_norm=layer_norm)
         else:
-            h = multilayer_fc(h, input_fc_layers, scope='fc_net', layer_norm=layer_norm)
+            h = util.multilayer_fc(h, input_fc_layers, scope='fc_net', layer_norm=layer_norm)
             noise = []
         noise_list.extend(noise)
 
-        policy = multilayer_fc(h, [nactions], scope='policy', activation=None)
-        value = multilayer_fc(h, [1], scope='value', activation=None)
+        policy = util.multilayer_fc(h, [nactions], scope='policy', activation=None)
+        value = util.multilayer_fc(h, [1], scope='value', activation=None)
         noise_list.extend(noise)
 
 
     elif v_net == 'copy':
 
         if noisy_fc:
-            h_p, noise_p = multilayer_fc_noisy(h, input_fc_layers, scope='fc_net_p')
-            h_v, noise_v = multilayer_fc_noisy(h, input_fc_layers, scope='fc_net_v', noise=noise_p)
+            h_p, noise_p = util.multilayer_fc_noisy(h, input_fc_layers, scope='fc_net_p')
+            h_v, noise_v = util.multilayer_fc_noisy(h, input_fc_layers, scope='fc_net_v', noise=noise_p)
         else:
-            h_p = multilayer_fc(h, input_fc_layers, scope='fc_net_p')
-            h_v = multilayer_fc(h, input_fc_layers, scope='fc_net_v')
+            h_p = util.multilayer_fc(h, input_fc_layers, scope='fc_net_p')
+            h_v = util.multilayer_fc(h, input_fc_layers, scope='fc_net_v')
             noise_p = noise_v = []
         noise_list.extend(noise_p)
         noise_list.extend(noise_v)
 
-        policy = multilayer_fc(h_p, [nactions], scope='policy', activation=None)
-        value = multilayer_fc(h_v, [1], activation=None, scope='value')
+        policy = util.multilayer_fc(h_p, [nactions], scope='policy', activation=None)
+        value = util.multilayer_fc(h_v, [1], activation=None, scope='value')
 
     return policy, value, noise_list
 

@@ -30,7 +30,7 @@ import gin
 import numpy as np
 import tensorflow as tf
 
-from . import py_environment
+from tf_agents_lib import py_environment
 from tf_agents.utils import nest_utils
 
 

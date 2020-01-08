@@ -1,4 +1,4 @@
-from tf_agents.environments.wrappers import PyEnvironmentBaseWrapper
+from tf_agents_lib.wrappers import PyEnvironmentBaseWrapper
 from tf_agents.trajectories.time_step import TimeStep, StepType
 from tf_agents.specs.array_spec import BoundedArraySpec, ArraySpec
 import numpy as np
@@ -40,7 +40,7 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
 
         return mask.astype(np.float32)
 
-    def _reset(self):
+    def _reset(self, rewards_config=None):
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
         # i.e. ['step_type', 'reward', 'discount', 'observation']
         self._episode_ended = False

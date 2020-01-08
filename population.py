@@ -4,7 +4,7 @@ import numpy as np
 import random
 import os
 
-from .util import write_into_buffer, train_model
+from util import write_into_buffer, train_model
 from model import Model
 
 

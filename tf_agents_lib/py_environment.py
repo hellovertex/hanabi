@@ -123,7 +123,7 @@ class PyEnvironment(object):
     """Returns the current timestep."""
     return self._current_time_step
 
-  def reset(self, config = {}):
+  def reset(self, config=None):
     """Starts a new sequence and returns the first `TimeStep` of this sequence.
 
     Note: Subclasses cannot override this directly. Subclasses implement

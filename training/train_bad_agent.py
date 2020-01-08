@@ -42,8 +42,9 @@ tf.reset_default_graph()
 sess = tf.Session()
 
 # starts game with bad_agent.Player instances
-game = game.Game(num_players=env_config['num_players'],
+game = game.Game(num_players=env_config['players'],
                  num_envs=num_envs, env_config=env_config, wait_rewards=True)
+
 
 #population = population.Population(nactions, nobs, 2, sess, nmodels,
 #                                   model_config_base, rewards_weights_base, random_attributes,

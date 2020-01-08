@@ -1,7 +1,7 @@
 import numpy as np
 from collections import defaultdict
 from tf_agents_lib import parallel_py_environment
-from .bad_agent import Player
+from bad_agent import Player
 from hanabi_learning_environment import rl_env
 from custom_environment.pub_mdp import PubMDP
 from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
@@ -44,11 +44,10 @@ def load_specs(config):
     obs_spec = env.observation_spec()
     num_actions = action_spec.maximum + 1 - action_spec.minimum
     obs_size = obs_spec['state'].shape[0]
-    num_players = config['num_players']
 
-    print('GAME PARAMETERS: \n  observation length = %d\n  number of actions = %d\n  number of players = %d' %
-          (obs_size, num_actions, num_players))
-    return obs_size, num_actions, num_players
+    print(f'GAME PARAMETERS: \n  observation length = {obs_size}\n  number of actions = {num_actions}\n')
+
+    return obs_size, num_actions
 
 
 class Game():
@@ -67,7 +66,7 @@ class Game():
         self.total_steps = 0
         self.reset()
 
-    def reset(self, rewards_config={}, ):
+    def reset(self, rewards_config=None, ):
 
         self.obs, _, self.legal_moves, self.ep_done, self.scores, self.ep_custom_rewards, self.beliefs_prob_dict = \
             parse_timestep(self.env.reset(rewards_config))
