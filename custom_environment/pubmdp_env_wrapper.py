@@ -52,7 +52,12 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         # oberservation is currently a dict, extract the 'vectorized' object
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
-        obs = {'state': obs_vec, 'mask': mask_valid_actions}
+        score = np.array(self.pub_mdp.env.state.score())
+        custom_rewards = {'hint_reward': 0,
+                          'play_reward': 0,
+                          'discard_reward': 0}
+
+        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'score': score, 'custom_rewards': custom_rewards}
 
         timestep = TimeStep(StepType.FIRST, reward, discount, obs)
 
@@ -67,7 +72,7 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
             return self.reset()
 
         action = int(action)
-        observations, reward, done, info = self.pub_mdp.step(action)
+        observations, reward, done, custom_rewards = self.pub_mdp.step(action)
         observation = observations['player_observations'][observations['current_player']]
         # print(f'observation inside step function = {observation}')
 
@@ -75,9 +80,8 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
 
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
-        obs = {'state': obs_vec, 'mask': mask_valid_actions}
-        # print(f'observation state inside step function = {obs["state"]}')
-        # print(f'observation state inside step function = {obs["state"].shape}')
+        score = np.array(self.pub_mdp.env.state.score())
+        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'score': score, 'custom_rewards': custom_rewards}
 
         if done:
             self._episode_ended = True

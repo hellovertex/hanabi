@@ -2,10 +2,8 @@ import numpy as np
 from collections import defaultdict
 from tf_agents_lib import parallel_py_environment
 from bad_agent import Player
-from hanabi_learning_environment import rl_env
 from custom_environment.pub_mdp import PubMDP
 from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
-from tf_agents_lib.pyhanabi_env_wrapper import PyhanabiEnvWrapper
 
 
 def parse_timestep(ts):
@@ -18,10 +16,10 @@ def parse_timestep(ts):
         lm = [-1e10 if lmi < 0 else 0 for lmi in lm]
         legal_moves[i] = lm
     obs = ts[3]['state']
-    beliefs_prob_dict = ts[3]['beliefs_prob_dict']
+    #beliefs_prob_dict = ts[3]['beliefs_prob_dict']
     score = ts[3]['score']
     custom_rewards = ts[3]['custom_rewards']
-    return obs, rewards, legal_moves, dones, score, custom_rewards, beliefs_prob_dict
+    return obs, rewards, legal_moves, dones, score, custom_rewards, None#beliefs_prob_dict
 
 
 def _load_hanabi_pub_mdp(game_config):
