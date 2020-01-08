@@ -197,7 +197,8 @@ def summarize_data(data, summary_keys):
       if iter_key in data:
         try:
           current_value = np.mean(data[iter_key][key])
-        except KeyError:
+        except KeyError: #if for current interation no value was logged for a key, put None but print out warning
+          print("WARNING: iteration {} doesn't have a value for {}. Set to None.".format(i, key))
           current_value = None
       summary[key].append(current_value)
 
