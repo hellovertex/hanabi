@@ -54,13 +54,8 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         mask_valid_actions = self.get_mask_legal_moves(observation)
         obs = {'state': obs_vec, 'mask': mask_valid_actions}
 
-        # (48, ) int64
-        #print(mask_valid_actions.shape, mask_valid_actions.dtype)
         timestep = TimeStep(StepType.FIRST, reward, discount, obs)
-        self.pub_mdp.last_time_step = timestep
-        # print(f'timestep from resetting = {timestep}')
-        # print(f'timesteps obs from resetting = {timestep.observation["state"].shape}')
-        #print(f'obs spec {self.observation_spec()}')
+
         return timestep
 
     def _step(self, action):

@@ -71,6 +71,7 @@ class PubMDP(object):
         self.len_s_bad = self.len_public_features + len(hint_mask_flattened)
         # print(f'INSIDE INIT, WE DETERMINED LEN_PUB_FEATURES = {self.len_public_features}')
         self.tf_sess = tf_sess
+
     def _get_idx_candidate_count(self, last_move):
         """ Returns for PLAY or DISCARD moves, the index of the played card with respect to self.candidate_counts
         :arg
