@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 GAMES = ['Hanabi-Small-Seer']  # @param
 
 parameter_set = collections.OrderedDict([
-    ('agent', ['000dqn','010dqn','001dqn','011dqn']),
+    ('agent', ['log_info']),#,'010dqn','001dqn','011dqn']),
     ('game', GAMES),
 ])
 
@@ -43,18 +43,20 @@ sample_data = utils.read_experiment(
     os.path.abspath('../training'),
     parameter_set=parameter_set,
     job_descriptor='{}',
-    #summary_keys=['train_episode_returns', 'train_episode_lengths', 'eval_episode_returns', 'eval_episode_lengths'])
-    summary_keys = ['train_episode_returns', 'eval_episode_returns'])
+    summary_keys = ['train_episode_returns', 'train_episode_hint_reward', 'train_episode_play_reward',
+                    'train_episode_discard_reward', 'train_episode_ingame_reward',
+                    'eval_episode_returns', 'eval_episode_ingame_reward'])
 
 #sample_data['agent'] = 'Tiny DQN'
-sample_data['run_number'] = 1
-sample_data['eval_episode_returns'][sample_data['eval_episode_returns']==-1] = np.NaN #replace -1 with NaN for nicer plotting
+sample_data['run_number'] = 1 #nicer plotting
+sample_data['eval_episode_returns'][sample_data['eval_episode_returns']==-1] = np.NaN  #replace -1 with NaN for nicer
+# plotting
 #sample_data['eval_episode_lengths'][sample_data['eval_episode_lengths']==-1] = np.NaN
 
 fig,ax = plt.subplots()
 sns.tsplot(data=sample_data, time='iteration', unit='run_number',
-         condition='agent', value='train_episode_returns', ax=ax)
-plt.scatter(sample_data.iteration, sample_data.eval_episode_returns, color='red')
+         condition='agent', value='train_episode_ingame_reward', ax=ax)
+# plt.scatter(sample_data.iteration, sample_data.eval_episode_returns, color='red')
 plt.title("returns over episodes")
 plt.show()
 
