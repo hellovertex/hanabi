@@ -1,20 +1,15 @@
 import numpy as np
 from collections import defaultdict
+from abc import ABC, abstractmethod
 import game
 
-class PublicAgent():
-    def __init__(self):
-        # maybe store model here and update public belief from within game
-        pass
-
-
-class Player():
-    def __init__(self, num, num_envs, func_parse_timestep=game.parse_timestep, tmp_arg='network'):
+class Player(ABC):
+    def __init__(self, num, num_envs):
         # params
         self.num = num
         self.nenvs = num_envs
         self.reset()
-        self.func_parse_timestep = func_parse_timestep
+        self.func_parse_timestep = game.parse_timestep
 
     def assign_model(self, model, belief_model=None):
         self.model = model
@@ -29,6 +24,7 @@ class Player():
         # print('states after assignment', self.states, self.states_v)
         self.reset()
 
+    @abstractmethod
     def reset(self):
         self.history_buffer = [defaultdict(list) for _ in range(self.nenvs)]
         self.waiting = [False for _ in range(self.nenvs)]

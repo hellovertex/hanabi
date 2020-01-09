@@ -75,6 +75,7 @@ class Population:
 
     def run_training(self, game, timesteps, summary_every=20000):
         for i in range(self.nmodels):
+            # each model has its own public agent
             model = self.models[i]
             for player in game.players:
                 player.assign_model(model)
