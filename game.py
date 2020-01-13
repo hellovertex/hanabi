@@ -6,8 +6,10 @@ from custom_environment.pub_mdp import PubMDP
 from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
 
 
-def parse_timestep(ts):
+
+def parse_timestep(ts, actions=None, network=None):
     # parse timestep, returns vectors for observation, rewards, legal_moves, dones
+
     dones = ts[0] == 2
     rewards = ts[1]
     legal_moves = ts[3]['mask']
@@ -20,7 +22,6 @@ def parse_timestep(ts):
     score = ts[3]['score']
     custom_rewards = ts[3]['custom_rewards']
     return obs, rewards, legal_moves, dones, score, custom_rewards, None#beliefs_prob_dict
-
 
 
 def _load_hanabi_pub_mdp(game_config):
@@ -50,7 +51,8 @@ def load_specs(config):
 
 
 class Game():
-    def __init__(self, num_players, num_envs, env_config, wait_rewards=True):
+    printed = False
+    def __init__(self, population_size, num_envs, env_config, wait_rewards=True):
         # create env
         self.env = load_env(env_config, num_envs)
         obs_size, num_actions = load_specs(env_config)
@@ -59,19 +61,19 @@ class Game():
 
         # save params
         self.num_envs = num_envs
-        self.num_players = num_players
+        self.num_players = population_size
         self.wait_rewards = wait_rewards
         self.public_agent = bad_agent.Player(0, num_envs)
         self.players = [bad_agent.Player(i, num_envs) for i in range(1, self.num_players + 1)]
         self.total_steps = 0
         self.reset()
 
-    def reset(self, rewards_config=None, ):
+    def reset(self, rewards_config={}, ):
 
         self.obs, _, self.legal_moves, self.ep_done, self.scores, self.ep_custom_rewards, self.beliefs_prob_dict = \
             parse_timestep(self.env.reset(rewards_config))
         self.current_player = 0
-        self.steps_per_player = np.zeros(self.num_players)
+        self.steps_per_player = np.zeros(self.num_players + 1)
         self.prev_rewards = np.zeros((self.num_players, self.num_envs))
         self.prev_dones = np.ones((self.num_players, self.num_envs), dtype='bool')
         self.ep_stats = np.zeros((2, self.num_envs))
@@ -99,11 +101,19 @@ class Game():
 
         # todo make parse_timestep a func_arg to make public agent applicable
         # todo Q: how to access public agent from here
-        obs, rewards, legal_moves, dones, scores, custom_rewards, beliefs_prob_dict = func_parse_timestep(ts)
+        network = player.model.step_network
 
+        obs, rewards, legal_moves, dones, scores, custom_rewards, beliefs_prob_dict = parse_timestep(ts, actions, network)
+        if not self.printed:
+            print(f'actions are {actions}')
+            print(f'sampled actions are {network.sample_action}')
+            self.printed = True
         # it will have the observed action, together with the previous agents observation
         # need to cut private observation and sample it instead, then compute action prob, i.e. likelihood of priv feat
+        print(self.ep_custom_rewards.keys())
+        print(custom_rewards.keys())
         for k in self.ep_custom_rewards:
+
             self.ep_custom_rewards[k] = self.ep_custom_rewards[k] + custom_rewards[k]
 
         self.scores = scores
@@ -163,7 +173,8 @@ class Game():
 
         while not ready:
             steps_done[self.current_player] += 1
-            self.play_turn(func_parse_timestep=self.current_player.func_parse_timestep)
+            func_parse_timestep = self.players[self.current_player]
+            self.play_turn()
             if nsteps is not None:
                 ready = min(steps_done > nsteps)
             for j, d in enumerate(self.ep_done):

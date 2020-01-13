@@ -9,12 +9,12 @@ class PublicAgent():
 
 
 class Player():
-    def __init__(self, num, num_envs, func_parse_timestep=game.parse_timestep, tmp_arg='network'):
+    def __init__(self, num, num_envs, tmp_arg='network'):
         # params
         self.num = num
         self.nenvs = num_envs
         self.reset()
-        self.func_parse_timestep = func_parse_timestep
+        # self.func_parse_timestep = func_parse_timestep
 
     def assign_model(self, model, belief_model=None):
         self.model = model
@@ -32,6 +32,7 @@ class Player():
     def reset(self):
         self.history_buffer = [defaultdict(list) for _ in range(self.nenvs)]
         self.waiting = [False for _ in range(self.nenvs)]
+
         if hasattr(self, 'model'):
             self.states = self.model.init_state
             self.states_v = self.model.init_state_v

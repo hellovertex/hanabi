@@ -59,6 +59,11 @@ class Runner(object):
         observations, reward, done, unused_info = self.environment.step(
             current_player_action)
         print('reward is {}'.format(reward))
+        # print(observations['player_observations'][0]['vectorized'][-10:])
+        # print(observations['player_observations'][1]['vectorized'][-10:])
+        # print('len')
+        # print(len(observations['player_observations'][1]['vectorized']))
+        # print(len(observations['player_observations'][0]['vectorized']))
         episode_reward += reward
       rewards.append(episode_reward)
 

@@ -34,7 +34,7 @@ def update_target_graph(from_scope, to_scope):
 
 class Population:
 
-    def __init__(self, num_actions, nobs, nplayers, sess, nmodels,
+    def __init__(self, num_actions, obs_size, num_players, sess, num_models,
                  model_config_base, rewards_config_base,
                  random_attributes, folder='./experiments/PBT/', name='test_run/',
                  eval_by_last=20):
@@ -42,11 +42,11 @@ class Population:
             name = name + '/'
         self.name = name
         self.path = folder + name
-        self.nmodels = nmodels
+        self.nmodels = num_models
         self.random_attributes = random_attributes
         self.evolve_epochs = 0
         self.models = []
-        for i in range(nmodels):
+        for i in range(num_models):
             config = dict(model_config_base)
             rewards_config = dict(randomize_dict(rewards_config_base, 0.66, 1.5))
             for attr in random_attributes:
@@ -55,12 +55,12 @@ class Population:
             config['scope'] = 'agent%d' % i
             config['path'] = self.path
             config['rewards_config'] = rewards_config
-            model = Model(num_actions, nobs, nplayers, sess=sess, **config)
+            model = Model(num_actions, obs_size, num_players, sess=sess, **config)
             self.models.append(model)
 
         self.avg_writer = tf.summary.FileWriter(self.path + '/avg params/')
-        self.recent_results = [deque(maxlen=eval_by_last) for _ in range(nmodels)]
-        self.history_buffer = [defaultdict(list) for _ in range(nmodels)]
+        self.recent_results = [deque(maxlen=eval_by_last) for _ in range(num_models)]
+        self.history_buffer = [defaultdict(list) for _ in range(num_models)]
 
         sess.run(tf.global_variables_initializer())
         for model in self.models:
@@ -80,13 +80,14 @@ class Population:
             for player in game.players:
                 player.assign_model(model)
             game.reset(model.rewards_config)
-            model_nsteps = model.sess.run(model.nsteps)
-            summary_every_upd = summary_every // (model_nsteps * game.nenvs)
+            print('ASDASKJDLASDHLJKASDHJLKASDJKHLADS')
+
+            summary_every_upd = summary_every // (model.nsteps * game.num_envs)
             start_ts = int(game.total_steps)
             nupd = 0
             # print(game.total_steps, start_ts)
             while game.total_steps - start_ts <= timesteps:
-                training_stats = game.play_untill_train(nsteps=model_nsteps)
+                training_stats = game.play_untill_train(nsteps=model.nsteps)
                 policy_loss, value_loss, policy_entropy = train_model(game, model, player_nums='all')
                 write_into_buffer(self.history_buffer[i], training_stats, policy_loss,
                                   value_loss, policy_entropy)

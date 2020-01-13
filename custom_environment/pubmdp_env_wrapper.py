@@ -44,7 +44,7 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
         # i.e. ['step_type', 'reward', 'discount', 'observation']
         self._episode_ended = False
-        observations = self.pub_mdp.reset()
+        observations = self.pub_mdp.reset(rewards_config)
         observation = observations['player_observations'][observations['current_player']]
         # reward is 0 on reset
         reward = np.asarray(0, dtype=np.float32)

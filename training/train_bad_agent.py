@@ -23,8 +23,14 @@ env_config = {
             "max_life_tokens":
                 3,
             "observation_type":
-                pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value
+                pyhanabi.AgentObservationType.CARD_KNOWLEDGE.value,
+            'use_custom_rewards':
+                True,
+            'open_hands':
+                False
         }
+
+obs_size, num_actions = game.load_specs(env_config)
 rewards_weights_base, _, model_config_base, random_attributes = util.get_confs()
 root_dir = './training'
 
@@ -42,10 +48,24 @@ tf.reset_default_graph()
 sess = tf.Session()
 
 # starts game with bad_agent.Player instances
-game = game.Game(num_players=env_config['players'],
+game = game.Game(population_size=env_config['players'],
                  num_envs=num_envs, env_config=env_config, wait_rewards=True)
 
 
-#population = population.Population(nactions, nobs, 2, sess, nmodels,
-#                                   model_config_base, rewards_weights_base, random_attributes,
-#                                   folder=root_dir, name=population_name)
+population = population.Population(num_actions=num_actions,
+                                   obs_size=obs_size,
+                                   num_players=2,
+                                   sess=sess,
+                                   num_models=nmodels,
+                                   model_config_base=model_config_base,
+                                   rewards_config_base=rewards_weights_base,
+                                   random_attributes=random_attributes,
+                                   folder=root_dir,
+                                   name=population_name)
+
+for epoch in range(2):
+    population.run_epoch(game=game,
+                         timesteps=100000,
+                         n_to_evolve=5,
+                         mutation_prob=.5,
+                         summary_every=20000)
