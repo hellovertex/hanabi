@@ -64,7 +64,7 @@ class Game():
         self.num_players = population_size
         self.wait_rewards = wait_rewards
         self.public_agent = bad_agent.Player(0, num_envs)
-        self.players = [bad_agent.Player(i, num_envs) for i in range(1, self.num_players + 1)]
+        self.players = [bad_agent.Player(i, num_envs) for i in range(self.num_players)]
         self.total_steps = 0
         self.reset()
 
@@ -73,7 +73,7 @@ class Game():
         self.obs, _, self.legal_moves, self.ep_done, self.scores, self.ep_custom_rewards, self.beliefs_prob_dict = \
             parse_timestep(self.env.reset(rewards_config))
         self.current_player = 0
-        self.steps_per_player = np.zeros(self.num_players + 1)
+        self.steps_per_player = np.zeros(self.num_players)
         self.prev_rewards = np.zeros((self.num_players, self.num_envs))
         self.prev_dones = np.ones((self.num_players, self.num_envs), dtype='bool')
         self.ep_stats = np.zeros((2, self.num_envs))
@@ -110,8 +110,7 @@ class Game():
             self.printed = True
         # it will have the observed action, together with the previous agents observation
         # need to cut private observation and sample it instead, then compute action prob, i.e. likelihood of priv feat
-        print(self.ep_custom_rewards.keys())
-        print(custom_rewards.keys())
+
         for k in self.ep_custom_rewards:
 
             self.ep_custom_rewards[k] = self.ep_custom_rewards[k] + custom_rewards[k]
@@ -209,41 +208,41 @@ class Game():
 
             p.waiting[j] = False
 
-    # def collect_data(self, player_nums='all'):
-    #     if player_nums == 'all':
-    #         player_nums = list(range(self.num_players))
-    #     (mb_obses, mb_obses_ext, mb_actions, mb_probs, mb_alogps, mb_legal_moves, mb_values,
-    #      mb_returns, mb_dones, mb_masks, mb_states, mb_states_v, mb_noise) = \
-    #         [], [], [], [], [], [], [], [], [], [], [], [], []
-    #     ts_take = int(np.min(self.steps_per_player)) - 1
-    #
-    #     # print('TS TAKE', ts_take)
-    #     for p in self.players:
-    #         if p.num not in player_nums:
-    #             continue
-    #
-    #         (obses, obses_ext, actions, probs, alogps, legal_moves, values,
-    #          returns, dones, masks, states, states_v, noise) = p.get_training_data(ts_take)
-    #         mb_obses.append(obses)
-    #         mb_obses_ext.append(obses_ext)
-    #         mb_actions.append(actions)
-    #         mb_probs.append(probs)
-    #         mb_alogps.append(alogps)
-    #         mb_legal_moves.append(legal_moves)
-    #         mb_values.append(values)
-    #         mb_returns.append(returns)
-    #         mb_dones.append(dones)
-    #         mb_masks.append(masks)
-    #         mb_states.append(states)
-    #         mb_states_v.append(states_v)
-    #         mb_noise.append(noise)
-    #     if states[0] is not None:
-    #         # print('concating states')
-    #         mb_states = np.concatenate(mb_states, 1)
-    #         if states_v[0] is not None:
-    #             mb_states_v = np.concatenate(mb_states_v, 1)
-    #     # print('Game output states shape', np.shape(states), np.shape(states_v))
-    #     return (np.concatenate(mb_obses), np.concatenate(mb_obses_ext), np.concatenate(mb_actions),
-    #             np.concatenate(mb_probs), np.concatenate(mb_alogps), np.concatenate(mb_legal_moves),
-    #             np.concatenate(mb_values), np.concatenate(mb_returns), np.concatenate(mb_dones),
-    #             np.concatenate(mb_masks), np.array(mb_states), np.array(mb_states_v), np.concatenate(mb_noise))
+    def collect_data(self, player_nums='all'):
+        if player_nums == 'all':
+            player_nums = list(range(self.num_players))
+        (mb_obses, mb_obses_ext, mb_actions, mb_probs, mb_alogps, mb_legal_moves, mb_values,
+         mb_returns, mb_dones, mb_masks, mb_states, mb_states_v, mb_noise) = \
+            [], [], [], [], [], [], [], [], [], [], [], [], []
+        ts_take = int(np.min(self.steps_per_player)) - 1
+
+        # print('TS TAKE', ts_take)
+        for p in self.players:
+            if p.num not in player_nums:
+                continue
+
+            (obses, obses_ext, actions, probs, alogps, legal_moves, values,
+             returns, dones, masks, states, states_v, noise) = p.get_training_data(ts_take)
+            mb_obses.append(obses)
+            mb_obses_ext.append(obses_ext)
+            mb_actions.append(actions)
+            mb_probs.append(probs)
+            mb_alogps.append(alogps)
+            mb_legal_moves.append(legal_moves)
+            mb_values.append(values)
+            mb_returns.append(returns)
+            mb_dones.append(dones)
+            mb_masks.append(masks)
+            mb_states.append(states)
+            mb_states_v.append(states_v)
+            mb_noise.append(noise)
+        if states[0] is not None:
+            # print('concating states')
+            mb_states = np.concatenate(mb_states, 1)
+            if states_v[0] is not None:
+                mb_states_v = np.concatenate(mb_states_v, 1)
+        # print('Game output states shape', np.shape(states), np.shape(states_v))
+        return (np.concatenate(mb_obses), np.concatenate(mb_obses_ext), np.concatenate(mb_actions),
+                np.concatenate(mb_probs), np.concatenate(mb_alogps), np.concatenate(mb_legal_moves),
+                np.concatenate(mb_values), np.concatenate(mb_returns), np.concatenate(mb_dones),
+                np.concatenate(mb_masks), np.array(mb_states), np.array(mb_states_v), np.concatenate(mb_noise))

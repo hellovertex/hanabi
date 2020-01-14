@@ -34,7 +34,6 @@ obs_size, num_actions = game.load_specs(env_config)
 rewards_weights_base, _, model_config_base, random_attributes = util.get_confs()
 root_dir = './training'
 
-nmodels = 20
 n_to_evolve = 5
 mutation_prob = 0.5
 ts_per_epoch = 600000
@@ -48,7 +47,7 @@ tf.reset_default_graph()
 sess = tf.Session()
 
 # starts game with bad_agent.Player instances
-game = game.Game(population_size=env_config['players'],
+game = game.Game(population_size=2,
                  num_envs=num_envs, env_config=env_config, wait_rewards=True)
 
 
@@ -56,7 +55,7 @@ population = population.Population(num_actions=num_actions,
                                    obs_size=obs_size,
                                    num_players=2,
                                    sess=sess,
-                                   num_models=nmodels,
+                                   num_models=8,
                                    model_config_base=model_config_base,
                                    rewards_config_base=rewards_weights_base,
                                    random_attributes=random_attributes,

@@ -474,7 +474,7 @@ class PubMDP(object):
                 'vectorized': s_bad}
 
     # LVL 0
-    def reset(self, rewards_config=None):
+    def reset(self, rewards_config={}):
         """
         Returns initial HLE observation + initial public belief state, i.e.
         calls self.env.reset() and augments the resulting observation

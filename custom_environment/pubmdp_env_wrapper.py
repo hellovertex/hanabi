@@ -40,7 +40,7 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
 
         return mask.astype(np.float32)
 
-    def _reset(self, rewards_config=None):
+    def _reset(self, rewards_config={}):
         """Must return a tf_agents.trajectories.time_step.TimeStep namedTubple obj"""
         # i.e. ['step_type', 'reward', 'discount', 'observation']
         self._episode_ended = False

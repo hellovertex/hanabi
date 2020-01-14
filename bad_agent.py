@@ -118,45 +118,45 @@ class Player():
 
         return actions, probs, alogps, values
 
-    # def get_training_data(self, ts_take):
-    #
-    #     noise = np.array(self.noise_val_list)
-    #     obses = np.concatenate([self.history_buffer[i]['obses'][:ts_take] for i in range(self.nenvs)])
-    #     obses_ext = np.concatenate([self.history_buffer[i]['obses_ext'][:ts_take] for i in range(self.nenvs)])
-    #     actions = np.concatenate([self.history_buffer[i]['actions'][:ts_take] for i in range(self.nenvs)])
-    #     masks = np.concatenate([self.history_buffer[i]['masks'][:ts_take] for i in range(self.nenvs)])
-    #     probs = np.concatenate([self.history_buffer[i]['probs'][:ts_take] for i in range(self.nenvs)])
-    #     alogps = np.concatenate([self.history_buffer[i]['alogps'][:ts_take] for i in range(self.nenvs)])
-    #     legal_moves = np.concatenate([self.history_buffer[i]['legal_moves'][:ts_take] for i in range(self.nenvs)])
-    #
-    #     states = [self.history_buffer[i]['states'][0] for i in range(self.nenvs)]
-    #     states_v = [self.history_buffer[i]['states_v'][0] for i in range(self.nenvs)]
-    #     if states[0] is not None:
-    #         states = np.swapaxes(states, 0, 1)
-    #         if states_v[0] is not None:
-    #             states_v = np.swapaxes(states_v, 0, 1)
-    #     dones = np.array([self.history_buffer[i]['dones'][: ts_take] for i in range(self.nenvs)])
-    #     rewards = np.array([self.history_buffer[i]['rewards'][: ts_take] for i in range(self.nenvs)])
-    #     values = np.array([self.history_buffer[i]['values'][: ts_take] for i in range(self.nenvs)])
-    #     last_values = np.array([self.history_buffer[i]['values'][ts_take] for i in range(self.nenvs)])
-    #
-    #     returns = np.zeros_like(rewards)
-    #     advs = np.zeros_like(rewards)
-    #     lastgaelam = 0
-    #
-    #     for t in reversed(range(dones.shape[1])):
-    #         nextnonterminal = 1.0 - dones[:, t]
-    #         if t == dones.shape[1] - 1:
-    #             nextvalues = last_values
-    #         else:
-    #             nextvalues = values[:, t + 1]
-    #         delta = rewards[:, t] + self.gamma * nextvalues * nextnonterminal - values[:, t]
-    #         advs[:, t] = lastgaelam = delta + self.gamma * .95 * nextnonterminal * lastgaelam
-    #
-    #     returns = advs + values
-    #     dones = np.concatenate(dones, 0)
-    #     returns = np.concatenate(returns, 0)
-    #     values = np.concatenate(values, 0)
-    #     self.history_buffer = [defaultdict(list) for _ in range(self.nenvs)]
-    #     return (obses, obses_ext, actions, probs, alogps, legal_moves, values,
-    #             returns, dones, masks, states, states_v, noise)
+    def get_training_data(self, ts_take):
+
+        noise = np.array(self.noise_val_list)
+        obses = np.concatenate([self.history_buffer[i]['obses'][:ts_take] for i in range(self.nenvs)])
+        obses_ext = np.concatenate([self.history_buffer[i]['obses_ext'][:ts_take] for i in range(self.nenvs)])
+        actions = np.concatenate([self.history_buffer[i]['actions'][:ts_take] for i in range(self.nenvs)])
+        masks = np.concatenate([self.history_buffer[i]['masks'][:ts_take] for i in range(self.nenvs)])
+        probs = np.concatenate([self.history_buffer[i]['probs'][:ts_take] for i in range(self.nenvs)])
+        alogps = np.concatenate([self.history_buffer[i]['alogps'][:ts_take] for i in range(self.nenvs)])
+        legal_moves = np.concatenate([self.history_buffer[i]['legal_moves'][:ts_take] for i in range(self.nenvs)])
+
+        states = [self.history_buffer[i]['states'][0] for i in range(self.nenvs)]
+        states_v = [self.history_buffer[i]['states_v'][0] for i in range(self.nenvs)]
+        if states[0] is not None:
+            states = np.swapaxes(states, 0, 1)
+            if states_v[0] is not None:
+                states_v = np.swapaxes(states_v, 0, 1)
+        dones = np.array([self.history_buffer[i]['dones'][: ts_take] for i in range(self.nenvs)])
+        rewards = np.array([self.history_buffer[i]['rewards'][: ts_take] for i in range(self.nenvs)])
+        values = np.array([self.history_buffer[i]['values'][: ts_take] for i in range(self.nenvs)])
+        last_values = np.array([self.history_buffer[i]['values'][ts_take] for i in range(self.nenvs)])
+
+        returns = np.zeros_like(rewards)
+        advs = np.zeros_like(rewards)
+        lastgaelam = 0
+
+        for t in reversed(range(dones.shape[1])):
+            nextnonterminal = 1.0 - dones[:, t]
+            if t == dones.shape[1] - 1:
+                nextvalues = last_values
+            else:
+                nextvalues = values[:, t + 1]
+            delta = rewards[:, t] + self.gamma * nextvalues * nextnonterminal - values[:, t]
+            advs[:, t] = lastgaelam = delta + self.gamma * .95 * nextnonterminal * lastgaelam
+
+        returns = advs + values
+        dones = np.concatenate(dones, 0)
+        returns = np.concatenate(returns, 0)
+        values = np.concatenate(values, 0)
+        self.history_buffer = [defaultdict(list) for _ in range(self.nenvs)]
+        return (obses, obses_ext, actions, probs, alogps, legal_moves, values,
+                returns, dones, masks, states, states_v, noise)
