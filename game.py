@@ -99,8 +99,6 @@ class Game():
 
         ts = self.env.step(np.array(actions))
 
-        # todo make parse_timestep a func_arg to make public agent applicable
-        # todo Q: how to access public agent from here
         network = player.model.step_network
 
         obs, rewards, legal_moves, dones, scores, custom_rewards, beliefs_prob_dict = parse_timestep(ts, actions, network)
