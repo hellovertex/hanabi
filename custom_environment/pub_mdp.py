@@ -44,6 +44,22 @@ class PublicAgent(object):
         self.util_mask_slots_hinted = list()
         self.deck_is_empty = False
 
+    def reset(self):
+        self.candidate_counts = np.tile([3, 2, 2, 2, 1][:self.num_ranks], self.num_colors)
+        self.candidate_counts = np.append(self.candidate_counts, 0)  # 1 if card is missing in last turn
+        self.hint_mask = np.ones((self.num_players * self.hand_size, self.num_colors * self.num_ranks + 1))
+        self.hint_mask[:, -1] = 0
+        self.util_mask_slots_hinted = list()
+        self.public_features = np.concatenate((self.candidate_counts, self.hint_mask.flatten()))
+        self.deck_is_empty = False
+        self.B_0 = None
+        self.BB = None
+        self.V1 = None
+        self.V2 = None
+        self._episode_ended = False
+        self.last_time_step = None
+        self.debug_utils_counter = 0
+
     def _reset_slot_hint_mask(self, last_move):
         """ After a card has been played, its corresponding row in the hint_mask must be reset """
         row = last_move.move().card_index()
@@ -70,9 +86,10 @@ class PublicAgent(object):
         When a card has been played or discarded, decrement in self.candidate_counts
         :returns card_candidate_idx: the index of the played/discarded card w.r.t. self.candidate_counts
          """
+
         card_candidate_idx = self._get_idx_candidate_count(last_move)
         assert card_candidate_idx in [i for i in range(len(self.candidate_counts))]
-        assert self.candidate_counts[card_candidate_idx] > 0
+        assert self.candidate_counts[card_candidate_idx] > 0, f'card_candidate_idx = {card_candidate_idx}\ncandidate counts = {self.candidate_counts}'
 
         self.candidate_counts[card_candidate_idx] -= 1
 
