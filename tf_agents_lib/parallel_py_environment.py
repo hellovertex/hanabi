@@ -115,7 +115,7 @@ class ParallelPyEnvironment(py_environment.PyEnvironment):
       time_steps = [promise() for promise in time_steps]
     return self._stack_time_steps(time_steps)
 
-  def _step(self, actions):
+  def _step(self, actions, network=None):
     """Forward a batch of actions to the wrapped environments.
 
     Args:
@@ -128,7 +128,7 @@ class ParallelPyEnvironment(py_environment.PyEnvironment):
       Batch of observations, rewards, and done flags.
     """
     time_steps = [
-        env.step(action, self._blocking)
+        env.step(action, self._blocking, network)
         for env, action in zip(self._envs, self._unstack_actions(actions))]
     # When blocking is False we get promises that need to be called.
     if not self._blocking:
@@ -288,7 +288,7 @@ class ProcessPyEnvironment(object):
       pass
     self._process.join(5)
 
-  def step(self, action, blocking=True):
+  def step(self, action, blocking=True, network=None):
     """Step the environment.
 
     Args:
@@ -298,7 +298,7 @@ class ProcessPyEnvironment(object):
     Returns:
       time step when blocking, otherwise callable that returns the time step.
     """
-    promise = self.call('step', action)
+    promise = self.call('step', action, network)
     if blocking:
       return promise()
     else:

@@ -59,8 +59,8 @@ class PyEnvironmentBaseWrapper(PyEnvironment):
   def _reset(self):
     return self._env.reset()
 
-  def _step(self, action):
-    return self._env.step(action)
+  def _step(self, action, network=None):
+    return self._env.step(action, network)
 
   def observation_spec(self):
     return self._env.observation_spec()

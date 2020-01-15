@@ -35,6 +35,7 @@ def parse_timestep(ts):
         lm = [-1e10 if lmi < 0 else 0 for lmi in lm]
         legal_moves[i] = lm
     obs = ts[3]['state']
+    print(ts[3]['state_bad'])
     # pyhanabi = ts[3]['pyhanabi']
     #beliefs_prob_dict = ts[3]['beliefs_prob_dict']
     score = ts[3]['score']
@@ -131,8 +132,9 @@ class Game():
         network = player.model.step_network
 
         obs, rewards, legal_moves, dones, scores, custom_rewards, pyhanabi = parse_timestep(ts)
+
         # obs = self.public_agent.update_belief(pyhanabi, actions, network)
-        # obs = self.env.public_agent.update_belief(self.env.observations, actions, network)  # doesnt work on parallel
+        # obs = self.env.update_belief(actions, network)  # doesnt work on parallel
 
         if not self.printed:
             print(f'actions are {actions}')

@@ -430,11 +430,11 @@ class PublicAgent(object):
         for player_dict in observations['player_observations']:
             player_dict['vectorized'] = np.append(s_bad_vectorized, player_dict['vectorized'])
         # todo from observations get target observation via offsetting
-        return observations
+        return [0]
 
     @staticmethod
     def initialize_belief(obs):
-        return obs
+        return [0]
 
 
 class PubMDP(object):
