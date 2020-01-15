@@ -154,7 +154,10 @@ class Population:
                     if np.random.uniform() < mutation_prob:
                         mutation = mutation_fun()
                         attr_val = getattr(model, attr)
-                        old_val = model.sess.run(attr_val)  # remove
+                        if not isinstance(attr_val, int):
+                            old_val = model.sess.run(attr_val)  # remove
+                        else:
+                            old_val = attr_val
                         model.sess.run(attr_val.assign(tf.cast(attr_val, tf.float32) * mutation))
                         #model.sess.run(attr_val.assign(attr_val * mutation))
                         print('%s mutated: %f -> %f' % (attr, old_val, int(old_val * mutation)))
@@ -164,7 +167,10 @@ class Population:
                     if np.random.uniform() < mutation_prob:
                         mutation = mutation_fun()
                         attr_val = getattr(model, attr)
-                        old_val = model.sess.run(attr_val)  # remove
+                        if not isinstance(attr_val, int):
+                            old_val = model.sess.run(attr_val)  # remove
+                        else:
+                            old_val = attr_val
                         model.sess.run(attr_val.assign(tf.cast(attr_val, tf.float32) * mutation))
                         #model.sess.run(attr_val.assign(attr_val * mutation))
                         print('%s mutated: %f -> %f' % (attr, old_val, old_val * mutation))
