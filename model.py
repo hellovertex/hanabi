@@ -39,8 +39,8 @@ class Model(object):
             self.use_lstm = False
         self.init_lr = lr
         self.gamma = gamma
-        self.ent_coef = ent_coef
-        self.vf_coef = vf_coef
+        #self.ent_coef = ent_coef
+        #self.vf_coef = vf_coef
         self.normalize_advs = normalize_advs
         self.sess = sess
         self.path = path + scope + '/'

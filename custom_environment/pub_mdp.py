@@ -9,6 +9,60 @@ MOVE_TYPES = [_.name for _ in pyhanabi.HanabiMoveType]
 COLOR_CHAR = ["R", "Y", "G", "W", "B"]  # consistent with hanabi_lib/util.cc
 
 
+class PublicAgent(object):
+    def __init__(self, env_config, observation_size, hand_size):
+        self.env_config = env_config
+        self.observation_size = observation_size
+
+        # pubmdp stats
+        self.num_colors = env_config['colors']
+        self.num_ranks = env_config['ranks']
+        self.num_players = env_config['players']
+        self.hand_size = hand_size
+        self.num_slots = self.num_players * self.hand_size
+        self.deck_is_empty = False
+        self.num_cards = self.num_colors * self.num_ranks + 1
+        self.hint_mask = np.ones((self.num_slots, self.num_cards))
+
+    def compute_public_state(self, observations, k=1):
+        """ Computes public belief state s_bad shared by all agents"""
+        if self.deck_is_empty:
+            self.hint_mask[observations['current_player']:, -1] = 1
+        last_moves = self.get_last_moves_from_obs(observations)  # may be empty
+        self.update_candidates_and_hint_mask(last_moves)
+        self.B_0 = self.compute_B0_belief()
+        if not last_moves:
+            self.V1 = self.B_0
+            self.BB = self.B_0 * self.uniform_likelihood()  # on first turn, there was no action
+        else:
+            self.V1 = self.compute_belief_at_convergence(self.B_0)
+            self.BB = self.compute_bayesian_belief(last_moves)
+        self.V2 = (1 - self.alpha) * self.BB + self.alpha * self.V1
+        self.public_features = np.concatenate(  # Card-counts and hint-mask
+            (self.candidate_counts, self.hint_mask.flatten())
+        )
+
+        s_bad = np.append(self.public_features, self.V2.flatten())
+        # print(f'len inside compute public state = {len(self.public_features), len(self.V2.flatten())}')
+        return {'B0': self.B_0,
+                'V1': self.V1,
+                'BB': self.BB,
+                'V2': self.V2,
+                'f_pub': self.public_features,
+                'vectorized': s_bad}
+
+    def update_belief(self, obs, actions=None, network=None):
+        public_belief_state = self.compute_public_state(obs)
+        s_bad_vectorized = public_belief_state['vectorized']
+        obs_ext = np.append(s_bad_vectorized, obs)
+
+        return obs_ext
+
+    @staticmethod
+    def initialize_belief(obs):
+        return obs
+
+
 class PubMDP(object):
     """ Sits on top of the hanabi-learning-environment and is responsible for computation of beliefs (-updates) that
     are used to augment an agents observation to match the state definition of Pub-MDPs

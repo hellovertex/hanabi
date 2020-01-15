@@ -2,11 +2,6 @@ import numpy as np
 from collections import defaultdict
 import game
 
-class PublicAgent():
-    def __init__(self):
-        # maybe store model here and update public belief from within game
-        pass
-
 
 class Player():
     def __init__(self, num, num_envs, tmp_arg='network'):

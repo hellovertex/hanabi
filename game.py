@@ -4,12 +4,29 @@ from tf_agents_lib import parallel_py_environment
 import bad_agent
 from custom_environment.pub_mdp import PubMDP
 from custom_environment.pubmdp_env_wrapper import PubMDPWrapper
+from custom_environment import pub_mdp
 
 
+# def parse_timestep(ts):
+#     # parse timestep, returns vectors for observation, rewards, legal_moves, dones
+#     # TimeStep(StepType.FIRST, reward, discount, obs) for nenvs
+#     dones = ts[0] == 2
+#     rewards = ts[1]
+#     legal_moves = ts[3]['mask']
+#     for i in range(len(legal_moves)):
+#         lm = legal_moves[i]
+#         lm = [-1e10 if lmi < 0 else 0 for lmi in lm]
+#         legal_moves[i] = lm
+#     obs = ts[3]['state']
+#     #beliefs_prob_dict = ts[3]['beliefs_prob_dict']
+#     score = ts[3]['score']
+#     custom_rewards = ts[3]['custom_rewards']
+#
+#     return obs, rewards, legal_moves, dones, score, custom_rewards, None#beliefs_prob_dict
 
-def parse_timestep(ts, actions=None, network=None):
+def parse_timestep(ts):
     # parse timestep, returns vectors for observation, rewards, legal_moves, dones
-
+    # TimeStep(StepType.FIRST, reward, discount, obs) for nenvs
     dones = ts[0] == 2
     rewards = ts[1]
     legal_moves = ts[3]['mask']
@@ -18,11 +35,12 @@ def parse_timestep(ts, actions=None, network=None):
         lm = [-1e10 if lmi < 0 else 0 for lmi in lm]
         legal_moves[i] = lm
     obs = ts[3]['state']
+    pyhanabi = ts[3]['pyhanabi']
     #beliefs_prob_dict = ts[3]['beliefs_prob_dict']
     score = ts[3]['score']
     custom_rewards = ts[3]['custom_rewards']
-    return obs, rewards, legal_moves, dones, score, custom_rewards, None#beliefs_prob_dict
 
+    return obs, rewards, legal_moves, dones, score, custom_rewards, pyhanabi
 
 def _load_hanabi_pub_mdp(game_config):
     assert isinstance(game_config, dict)
@@ -30,6 +48,13 @@ def _load_hanabi_pub_mdp(game_config):
     if env is not None:
         return PubMDPWrapper(env)
     return None
+
+
+def hand_size(env_config):
+    tf_pub_mdp_wrapped = _load_hanabi_pub_mdp(env_config)
+    hand_size = tf_pub_mdp_wrapped.pub_mdp.env.game.hand_size()
+
+    return
 
 
 def load_env(env_config, num_envs):
@@ -58,20 +83,23 @@ class Game():
         obs_size, num_actions = load_specs(env_config)
         self.observation_size = obs_size
         self.num_actions = num_actions
+        # self.hand_size = hand_size(env_config)
 
         # save params
         self.num_envs = num_envs
         self.num_players = population_size
         self.wait_rewards = wait_rewards
-        self.public_agent = bad_agent.Player(0, num_envs)
+        # self.public_agent = pub_mdp.PublicAgent(env_config, self.observation_size, self.hand_size)
         self.players = [bad_agent.Player(i, num_envs) for i in range(self.num_players)]
         self.total_steps = 0
         self.reset()
 
     def reset(self, rewards_config={}, ):
 
-        self.obs, _, self.legal_moves, self.ep_done, self.scores, self.ep_custom_rewards, self.beliefs_prob_dict = \
+        obs, _, self.legal_moves, self.ep_done, self.scores, self.ep_custom_rewards, self.beliefs_prob_dict = \
             parse_timestep(self.env.reset(rewards_config))
+        # self.obs = self.public_agent.initialize_belief(obs)
+        self.obs = obs
         self.current_player = 0
         self.steps_per_player = np.zeros(self.num_players)
         self.prev_rewards = np.zeros((self.num_players, self.num_envs))
@@ -101,7 +129,9 @@ class Game():
 
         network = player.model.step_network
 
-        obs, rewards, legal_moves, dones, scores, custom_rewards, beliefs_prob_dict = parse_timestep(ts, actions, network)
+        obs, rewards, legal_moves, dones, scores, custom_rewards, pyhanabi = parse_timestep(ts)
+        # obs = self.public_agent.update_belief(pyhanabi, actions, network)
+
         if not self.printed:
             print(f'actions are {actions}')
             print(f'sampled actions are {network.sample_action}')

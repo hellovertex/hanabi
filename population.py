@@ -124,8 +124,11 @@ class Population:
             for attr in self.random_attributes:
                 bad_attr_val = getattr(bad_model, attr)
                 good_attr_val = getattr(good_model, attr)
-                old_val = bad_model.sess.run(bad_attr_val)  # remove
-                bad_model.sess.run(bad_attr_val.assign(good_attr_val))
+                print(f'bad_attr_val = {bad_attr_val}')
+                print(f'good_attr_val = {good_attr_val}')
+                # old_val = bad_model.sess.run(bad_attr_val)  # remove
+                if not isinstance(bad_attr_val, int):
+                    bad_model.sess.run(bad_attr_val.assign(good_attr_val))
                 bad_model.sess.run(update_target_graph(good_model.scope, bad_model.scope))
                 # print('%s was %f, became %f' % (attr, old_val, bad_model.sess.run(bad_attr_val)))
 

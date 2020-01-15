@@ -57,7 +57,11 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
                           'play_reward': 0,
                           'discard_reward': 0}
 
-        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'score': score, 'custom_rewards': custom_rewards}
+        obs = {'state': obs_vec,
+               'mask': mask_valid_actions,
+               'score': score,
+               'custom_rewards': custom_rewards,
+               'pyhanabi': observation}
 
         timestep = TimeStep(StepType.FIRST, reward, discount, obs)
 
@@ -81,7 +85,11 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
         score = np.array(self.pub_mdp.env.state.score())
-        obs = {'state': obs_vec, 'mask': mask_valid_actions, 'score': score, 'custom_rewards': custom_rewards}
+        obs = {'state': obs_vec,
+               'mask': mask_valid_actions,
+               'score': score,
+               'custom_rewards': custom_rewards,
+               'pyhanabi': observation}
 
         if done:
             self._episode_ended = True
