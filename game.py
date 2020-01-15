@@ -35,18 +35,19 @@ def parse_timestep(ts):
         lm = [-1e10 if lmi < 0 else 0 for lmi in lm]
         legal_moves[i] = lm
     obs = ts[3]['state']
-    pyhanabi = ts[3]['pyhanabi']
+    # pyhanabi = ts[3]['pyhanabi']
     #beliefs_prob_dict = ts[3]['beliefs_prob_dict']
     score = ts[3]['score']
     custom_rewards = ts[3]['custom_rewards']
 
-    return obs, rewards, legal_moves, dones, score, custom_rewards, pyhanabi
+    return obs, rewards, legal_moves, dones, score, custom_rewards, None
+
 
 def _load_hanabi_pub_mdp(game_config):
     assert isinstance(game_config, dict)
     env = PubMDP(game_config)
     if env is not None:
-        return PubMDPWrapper(env)
+        return PubMDPWrapper(env, game_config)
     return None
 
 
@@ -131,6 +132,7 @@ class Game():
 
         obs, rewards, legal_moves, dones, scores, custom_rewards, pyhanabi = parse_timestep(ts)
         # obs = self.public_agent.update_belief(pyhanabi, actions, network)
+        # obs = self.env.public_agent.update_belief(self.env.observations, actions, network)  # doesnt work on parallel
 
         if not self.printed:
             print(f'actions are {actions}')

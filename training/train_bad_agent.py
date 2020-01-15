@@ -64,7 +64,7 @@ population = population.Population(num_actions=num_actions,
 
 for epoch in range(2):
     population.run_epoch(game=game,
-                         timesteps=100000,
+                         timesteps=1000,
                          n_to_evolve=5,
                          mutation_prob=.5,
                          summary_every=20000)

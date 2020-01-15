@@ -2,9 +2,10 @@ from tf_agents_lib.wrappers import PyEnvironmentBaseWrapper
 from tf_agents.trajectories.time_step import TimeStep, StepType
 from tf_agents.specs.array_spec import BoundedArraySpec, ArraySpec
 import numpy as np
-
+from custom_environment import pub_mdp
 discount = np.asarray(.999, dtype=np.float32)
 dtype_vectorized = 'float'
+import copy
 
 
 class PubMDPWrapper(PyEnvironmentBaseWrapper):
@@ -12,10 +13,16 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
     for the PubMDP sitting on the HLE
     """
 
-    def __init__(self, env):
+    def __init__(self, env, env_config):
         super(PyEnvironmentBaseWrapper, self).__init__()
+        #self.env_config = env_config
         self.pub_mdp = env
         self._episode_ended = False
+        #obs_size = self.pub_mdp.env.vectorized_observation_shape()
+        #hand_size = self.env.game.hand_size()
+        #self.observations = None
+        #self.public_agent = pub_mdp.PublicAgent(env_config, obs_size, hand_size)
+
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
@@ -45,6 +52,7 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         # i.e. ['step_type', 'reward', 'discount', 'observation']
         self._episode_ended = False
         observations = self.pub_mdp.reset(rewards_config)
+        # self.observations = observations
         observation = observations['player_observations'][observations['current_player']]
         # reward is 0 on reset
         reward = np.asarray(0, dtype=np.float32)
@@ -61,7 +69,8 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
                'mask': mask_valid_actions,
                'score': score,
                'custom_rewards': custom_rewards,
-               'pyhanabi': observation}
+               #'pyhanabi': obs_vec
+               }
 
         timestep = TimeStep(StepType.FIRST, reward, discount, obs)
 
@@ -78,6 +87,7 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         action = int(action)
         observations, reward, done, custom_rewards = self.pub_mdp.step(action)
         observation = observations['player_observations'][observations['current_player']]
+        # self.observations = observations
         # print(f'observation inside step function = {observation}')
 
         reward = np.asarray(reward, dtype=np.float32)
@@ -85,11 +95,13 @@ class PubMDPWrapper(PyEnvironmentBaseWrapper):
         obs_vec = np.array(observation['vectorized'], dtype=dtype_vectorized)
         mask_valid_actions = self.get_mask_legal_moves(observation)
         score = np.array(self.pub_mdp.env.state.score())
+        #cp_obs = copy.deepcopy(observations)
         obs = {'state': obs_vec,
                'mask': mask_valid_actions,
                'score': score,
                'custom_rewards': custom_rewards,
-               'pyhanabi': observation}
+               #'pyhanabi': obs_vec
+               }
 
         if done:
             self._episode_ended = True

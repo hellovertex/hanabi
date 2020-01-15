@@ -155,7 +155,8 @@ class Population:
                         mutation = mutation_fun()
                         attr_val = getattr(model, attr)
                         old_val = model.sess.run(attr_val)  # remove
-                        model.sess.run(attr_val.assign(attr_val * mutation))
+                        model.sess.run(attr_val.assign(tf.cast(attr_val, tf.float32) * mutation))
+                        #model.sess.run(attr_val.assign(attr_val * mutation))
                         print('%s mutated: %f -> %f' % (attr, old_val, int(old_val * mutation)))
                     else:
                         mutation = 1
@@ -164,7 +165,8 @@ class Population:
                         mutation = mutation_fun()
                         attr_val = getattr(model, attr)
                         old_val = model.sess.run(attr_val)  # remove
-                        model.sess.run(attr_val.assign(attr_val * mutation))
+                        model.sess.run(attr_val.assign(tf.cast(attr_val, tf.float32) * mutation))
+                        #model.sess.run(attr_val.assign(attr_val * mutation))
                         print('%s mutated: %f -> %f' % (attr, old_val, old_val * mutation))
                     else:
                         mutation = 1
