@@ -1,23 +1,3 @@
-# coding=utf-8
-# Copyright 2018 The Dopamine Authors and Google LLC.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-#
-#
-# This file is a fork of the original Dopamine code incorporating changes for
-# the multiplayer setting and the Hanabi Learning Environment.
-#
 """The entry point for population based training (PBT) of a Rainbow agent on Hanabi.
 Particularly, agents can be trained only in self-play, i.e. playing with exact copies of themselves.
 However, agents inherit directly from hanabi_learning_environment.rl_env.Agent and use the canonical ObservationEncoder
@@ -48,13 +28,9 @@ flags.DEFINE_string('base_dir', str(os.path.dirname(__file__)) + '/trained/PBTRa
                     'Path for logs and checkpoints')
 flags.DEFINE_string('checkpoint_dir', 'checkpoints',
                     'Directory where checkpoint files should be saved.')
-# flags.DEFINE_string('checkpoint_file_prefix', 'ckpt',
-#                     'Prefix to use for the checkpoint files.')
 flags.DEFINE_string('logging_dir', 'logs',
                     'Directory where experiment data will be saved. If empty '
                     'no checkpoints will be saved.')
-# flags.DEFINE_string('logging_file_prefix', 'log',
-#                     'Prefix to use for the log files.')
 flags.DEFINE_string('game_type', 'Hanabi-Full',
                     'Hanabi-Full or Hanabi-Small, etc.')
 FLAGS = flags.FLAGS
@@ -102,24 +78,24 @@ class Member(object):
         # training and evaluation step (run_one_iteration does both with params suitably set)
         for iteration in range(self.params["num_iterations"]):
             stats_curr = run_experiment.run_one_iteration(self.agent, self.environment, self.obs_stacker,
-                                                          iteration + 1,  # to trick iteration % evaluate_every_n == 0
+                                                          iteration,# + 1,  # to trick iteration % evaluate_every_n == 0
                                                           training_steps=self.params["training_steps"],
-                                                          evaluate_every_n=self.params["num_iterations"],
+                                                          evaluate_every_n=1,#self.params["num_iterations"],
                                                           num_evaluation_games=self.params["num_evaluation_games"],
                                                           observers=None)
             self.statistics.append(stats_curr)
         return stats_curr["eval_episode_returns"][0]
 
-    def save_agent(self):
-        """Save checkpoint of agent into self.ckpt_dir so that it can be loaded and training resumed later on.
-
-        save_ckpt uses this function to save the agent.
-        #TODO: check in what format agents need to have in order to be loaded into GUI, provide a second mode of
-        saving in this format here
-        """
-        agent_dictionary = self.agent.bundle_and_checkpoint(self.ckpt_dir, self.pbt_step)
-        self.checkpointer.save_checkpoint(self.pbt_step, agent_dictionary)
-        #agent can be loaded by initializing member in presence of ckpt_dir with corresponding name
+    # def save_agent(self):
+        # """Save checkpoint of agent into self.ckpt_dir so that it can be loaded and training resumed later on.
+        #
+        # save_ckpt uses this function to save the agent.
+        # #TODO: check in what format agents need to have in order to be loaded into GUI, provide a second mode of
+        # saving in this format here
+        # """
+        # agent_dictionary = self.agent.bundle_and_checkpoint(self.ckpt_dir, self.pbt_step)
+        # self.checkpointer.save_checkpoint(self.pbt_step, agent_dictionary)
+        # #agent can be loaded by initializing member in presence of ckpt_dir with corresponding name
 
     def save_ckpt(self):
         """Save entire member object by pickling crucial fields and using tf.saver functionality to save agent.
@@ -131,8 +107,10 @@ class Member(object):
         pickle.dump((self.params,self.parent_idx,self.statistics,self.pbt_step),
                     open(os.path.join(self.ckpt_dir, f"memberinfo.{self.pbt_step}"), "wb"))
         #save agent using agent's checkpointer
-        self.save_agent()
-        #environment has been recreated in init anyway, however #players and game_type cannot be changed anymore
+        run_experiment.checkpoint_experiment(self.checkpointer, self.agent, self.logger,
+                                  self.pbt_step, self.ckpt_dir, checkpoint_every_n=1)
+
+    #environment has been recreated in init anyway, however #players and game_type cannot be changed anymore
         #todo: clean up old memberinfo checkpoints (dopamine checkpointing deletes all but 3 last ones i think)
 
     def load_ckpt(self):
@@ -141,7 +119,7 @@ class Member(object):
         The agent is already loaded during initalization provided the correct ckpt_dir. Same for pbt_step.
         """
         (self.params, self.parent_idx,self.statistics,self.pbt_step) = pickle.load(
-                    open(os.path.join(self.ckpt_dir, "memberinfo.pickle"), "rb"))
+                    open(os.path.join(self.ckpt_dir, f'memberinfo.{self.pbt_step-1}'), "rb"))
         return self.pbt_step
 
     def pbt_copy(self, newMember):
@@ -181,8 +159,9 @@ def explore_template(mutables, mutprob, mutstren):
                 #TODO: apply parameters to agent if they were changed!!!
     return explore
 
-#TODO: so far logging occurs inside an agent, so if say member 1 is replaced by member 2, all of it's own logs will
+#TODO: so far logging occurs inside an agent, so if say member 1 is replaced by member 2, all of its own logs will
 # be lost -> implement pbt's own loggings to keep track of pbt-related stuff
+#TODO: also save all pbt parameters etc. into same place so that the entire experiment is properly documented
 
 #### checkpointing
 def load_or_create_population(pbt_popsize, def_params):
@@ -207,7 +186,7 @@ def main(unused_argv):
     """ Runs the self-play PBT training. """
     # pool = mp.Pool(mp.cpu_count())
     # set PBT hyperparameters
-    pbt_steps = 20
+    pbt_steps = 30
     pbt_popsize = 3
     # pbt_popsize = mp.cpu_count() #of course integer multiples of number of possible workers makes sense,
     # if that number is too small to allow for sufficient variability in the population, perhaps use an integer multiple
@@ -275,7 +254,5 @@ def main(unused_argv):
         #     member.sess.close()
 
 if __name__ == '__main__':
-    # flags.mark_flag_as_required('base_dir')
-    # flags.mark_flag_as_required('gin_files')
+    flags.mark_flag_as_required('base_dir')
     app.run(main)
-    # main(None)
