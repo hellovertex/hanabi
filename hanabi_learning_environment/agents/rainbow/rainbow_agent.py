@@ -92,7 +92,8 @@ class RainbowAgent(dqn_agent.DQNAgent):
                epsilon_decay_period=1000,
                learning_rate=0.000025,
                optimizer_epsilon=0.00003125,
-               tf_device='/cpu:*'):
+               tf_device='/cpu:*',
+               tf_session=None):
     """Initializes the agent and constructs its graph.
 
     Args:
@@ -137,7 +138,8 @@ class RainbowAgent(dqn_agent.DQNAgent):
         epsilon_eval=epsilon_eval,
         epsilon_decay_period=epsilon_decay_period,
         graph_template=graph_template,
-        tf_device=tf_device)
+        tf_device=tf_device,
+        tf_session=tf_session)
     tf.logging.info('\t learning_rate: %f', learning_rate)
     tf.logging.info('\t optimizer_epsilon: %f', optimizer_epsilon)
 

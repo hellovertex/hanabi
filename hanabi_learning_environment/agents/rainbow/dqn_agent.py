@@ -106,6 +106,7 @@ class DQNAgent(object):
                epsilon_decay_period=1000,
                graph_template=dqn_template,
                tf_device='/cpu:*',
+               tf_session=None,
                use_staging=True,
                optimizer=tf.train.RMSPropOptimizer(
                    learning_rate=.0025,
@@ -197,13 +198,17 @@ class DQNAgent(object):
 
       self._q_argmax = tf.argmax(self._q + self.legal_actions_ph, axis=1)[0]
 
-    # Set up a session and initialize variables.
-    self._sess = tf.Session(
-        '', config=tf.ConfigProto(allow_soft_placement=True))
-    self._init_op = tf.global_variables_initializer()
-    self._sess.run(self._init_op)
+    # If no session to connect to was passed, Set up a session and initialize variables.
+    if tf_session == None:
+      self._sess = tf.Session(
+          '', config=tf.ConfigProto(allow_soft_placement=True))
+      self._init_op = tf.global_variables_initializer()
+      self._sess.run(self._init_op)
+    else:
+      self._sess = tf_session
 
     self._saver = tf.train.Saver(max_to_keep=3)
+
 
     # This keeps tracks of the observed transitions during play, for each
     # player.
