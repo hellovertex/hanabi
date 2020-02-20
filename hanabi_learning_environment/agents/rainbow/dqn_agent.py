@@ -199,10 +199,10 @@ class DQNAgent(object):
       self._q_argmax = tf.argmax(self._q + self.legal_actions_ph, axis=1)[0]
 
     # If no session to connect to was passed, Set up a session and initialize variables.
+    self._init_op = tf.global_variables_initializer()
     if tf_session == None:
       self._sess = tf.Session(
           '', config=tf.ConfigProto(allow_soft_placement=True))
-      self._init_op = tf.global_variables_initializer()
       self._sess.run(self._init_op)
     else:
       self._sess = tf_session
@@ -278,9 +278,11 @@ class DQNAgent(object):
     # Get trainable variables from online and target networks.
     sync_qt_ops = []
     trainables_online = tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES, scope='Online')
+        tf.GraphKeys.TRAINABLE_VARIABLES, scope=tf.get_default_graph().get_name_scope() + '/Online')
+    print("trainable online")
+    print(trainables_online)
     trainables_target = tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES, scope='Target')
+        tf.GraphKeys.TRAINABLE_VARIABLES, scope=tf.get_default_graph().get_name_scope() + '/Target')
     for (w_online, w_target) in zip(trainables_online, trainables_target):
       # Assign weights from online to target network.
       sync_qt_ops.append(w_target.assign(w_online, use_locking=True))

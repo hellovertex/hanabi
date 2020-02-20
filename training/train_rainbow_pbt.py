@@ -64,10 +64,13 @@ class Member(object):
         # Initialize the agent.
         with tf.variable_scope("agent" + self.id, reuse=tf.AUTO_REUSE) as scope:
             self.agent = run_experiment.create_agent(self.environment, self.obs_stacker,
-                                                     agent_type=params["agent_type"],
-                                                     tf_session=session)  # TODO: pass config of agent here
+                                                     agent_type=self.params["agent_type"],
+                                                     tf_session=session,
+                                                     config = self.params["rainbow_config"])
 
-        self.statistics = []  # save statistics after every pbt step here
+        self.statistics = []  # save statistics after every pbt step here (so when copying the agent from a
+        self.mutables_vals = []
+        # member the training progress will not be lost
 
     def init_sess_vars_ckpting(self, session):
         """Tensorflow boilerplate to make a freshly created member's agent usable.
@@ -119,6 +122,46 @@ class Member(object):
             self.statistics.append(stats_curr) #TODO: nice logging and statistics taking
         return stats_curr["eval_episode_returns"][0]
 
+    def change_param(self, param, value):
+        """Applies changes in configuration of Rainbow agent.
+
+        Configuration parameters are contained in self.params.rainbow_config. Initialize a new Rainbow agent with
+        these parameters and copy weights accordingly, similar to pbt_copy().
+        """
+        if param in ["num_atoms", "tf_device"]: #can't change the size of Q-distribution support or tf-device on the fly
+            raise NotImplementedError("changes to the network design not implemented")
+
+        agent = self.agent
+        self.params["rainbow_config"][param] = value #overwrite value
+        #now reinitialize agent with upated config parameters.
+        # this is the safest way to ensure consistency among all modules
+        vars = {}
+        agent_scope = "agent" + self.id
+        #turns out it's enough to set reuse=tf.AUTO_REUSE so that "newly" created variables will just continue to exist
+        # with
+        # their current values as far as tensorflow is concerned. only the structure on top of them making a full
+        # agent out of them is changed.
+        with tf.variable_scope(agent_scope, reuse=True) as scope:
+            self.agent = run_experiment.create_agent(self.environment, self.obs_stacker,
+                                                     agent_type=self.params["agent_type"],
+                                                     tf_session=agent._sess,
+                                                     config=self.params["rainbow_config"])
+            own_vars = [var for var in tf.global_variables(scope=agent_scope)]
+            self.agent._sess.run(tf.initializers.variables(own_vars))
+
+        # with tf.variable_scope(agent_scope, reuse=True) as scope:
+        #     for var in tf.global_variables(scope=agent_scope):
+        #         print(var.name)
+        #         value = self.agent._sess.run(var.name) #look up value
+        #         vars[var.name] = value #save in dictionary for later
+        #     self.agent = run_experiment.create_agent(self.environment, self.obs_stacker,
+        #                                              agent_type=self.params["agent_type"],
+        #                                              tf_session=agent._sess,
+        #                                              config = self.params["rainbow_config"])
+        #     #now load variables' values
+        #     for var in tf.global_variables(scope=agent_scope):
+        #         var.load(vars[var.name], self.agent._sess)
+
     def export_agent(self):
         """Export agent in yet to determined format so it can play with others inside the GUI.
         TODO: implement ;)
@@ -131,7 +174,7 @@ class Member(object):
         Agent can be loaded by calling .load_ckpt() after initialization.
         """
         #save parameters, parent_idx and statistics "manually"
-        pickle.dump((self.params,self.parent_idx,self.statistics,self.pbt_step),
+        pickle.dump((self.params,self.parent_idx,self.statistics,self.mutables_vals,self.pbt_step),
                     open(os.path.join(self.ckpt_dir, f"memberinfo.{self.pbt_step}"), "wb"))
         #save agent using agent's checkpointer
         run_experiment.checkpoint_experiment(self.checkpointer, self.agent, self.logger,
@@ -151,7 +194,7 @@ class Member(object):
         The agent is already loaded during initalization provided the correct ckpt_dir. Same for pbt_step.
         """
         try:
-            (self.params, self.parent_idx,self.statistics,self.pbt_step) = pickle.load(
+            (self.params, self.parent_idx,self.statistics, self.mutables_vals, self.pbt_step) = pickle.load(
                 open(os.path.join(self.ckpt_dir, f'memberinfo.{self.pbt_step-1}'), "rb")) #TODO check correct global logging
             return self.pbt_step
         except FileNotFoundError:
@@ -177,11 +220,16 @@ class Member(object):
             var.load(value.copy(), self.agent._sess)  # load it, sessions of old and new agent should be the same
         # self.pbt_step and self.checkpointer also remain
 
+    def save_mutable_vals(self, mutables):
+        """ Appends current values of all mutable parameters to self.mutables_vars for plotting later on."""
+        current_vals = dict((par_name, self.params["rainbow_config"][par_name]) for par_name in mutables)
+        self.mutables_vals.append(current_vals)
+
 def exploit(member, good_population):
     """Overwrites hyperparams and parameters of agent in member with a randomly chosen member of good_population"""
     newMember = good_population[np.random.choice(range(len(good_population)))]
+    print(f"overwriting member {member.id} with member {newMember.id}")
     member.pbt_copy(newMember)
-    print(f"overwrote member {member.id} with member {newMember.id}")
 
 def explore_template(mutables, mutprob, mutstren):
     """Decorates explore function with PBT experiments mutation hyperparameters
@@ -197,8 +245,13 @@ def explore_template(mutables, mutprob, mutstren):
         """Mutates parameters in-place according to PBT experiments mutation hyperparameters."""
         for param in mutables:
             if np.random.uniform(0,1) < mutprob:
-                member.params[param] += member.params[param] * np.random.uniform(-1,1) * mutstren
-                #TODO: apply parameters to agent if they were changed!!!
+                print(f"mutating {param} of member {member.id}")
+                value = member.params["rainbow_config"][param] #modifies in-place but we are going to overwrite it
+                # anyway
+                value += value * np.random.uniform(-1,1) * mutstren
+                if param=="gamma":
+                    value = np.clip(value, 0,1)
+                member.change_param(param, value)
     return explore
 
 #TODO: so far logging occurs inside an agent, so if say member 1 is replaced by member 2, all of its own logs will
@@ -231,13 +284,53 @@ def load_or_create_population(pbt_popsize, def_params):
 
 def save_population(population):
     for member in population:
+        print(f"saving member {member.id}")
         member.save_ckpt()
+
+def plot_progress(population):
+    pass
+
+def fuck_up(unused_argv):
+    population, startstep, session = load_or_create_population(3, def_params)
+    [m0, m1, m2] = population  # for more convenient access
+    v1 = [v for v in tf.global_variables() if v.name == 'agent001/Online/fully_connected/weights:0'][0]
+    # writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
+    m0.stepEval()
+    m1.pbt_copy(m0)
+    val0 = session.run(v1)
+    print([v.name for v in tf.global_variables() if v.name.startswith('agent001')])
+
+    for par_name, par_val in {"vmax": 24.,  # try changing out all parameters
+                              "gamma": 0.95,  # temporal discount factor
+                              "update_horizon": 4,
+                              "min_replay_history": 400,
+                              "update_period": 5,
+                              "target_update_period": 400,
+                              "epsilon_train": 0.1,
+                              "epsilon_eval": 0.1,
+                              "epsilon_decay_period": 5000,
+                              "learning_rate": 0.00025,
+                              "optimizer_epsilon": 0.0003125}.items():
+        m1.change_param(par_name, par_val)
+    print("PARTYYYY")
+    print([v.name for v in tf.global_variables() if v.name.startswith('agent001')])
+    m1.stepEval()
+    val1 = session.run(v1)
+    if np.array_equal(val0, val1):
+        print("weights unchanged after changing hyperparam")
+    # okay so here we don#t really check all parameters because sometimes they are really stored far away,
+    # the point is that internally to the agent correct classes (like the replay memory are
+    if m1.agent.gamma == 0.95 and m0.agent.update_horizon == 4 and m0.agent._replay.memory._update_horizon == 4:
+        print("structure modified correctly")
+    m1.stepEval()
+    m1.save_ckpt()
+
 
 def create_and_test_population(unused_argv):
     """Some tests for PBT functionality.
 
     Doesn't test everything that happens internal to tensorflow, so not 100% guarantee that everything
-    works fine under the hood unfortunately.
+    works fine under the hood unfortunately, but if this goes through well it's a pretty safe bet.
     """
 
     # ## record all the funny business that's going on to display graph in tensorboard later on
@@ -247,15 +340,15 @@ def create_and_test_population(unused_argv):
     try:
         population, startstep, session = load_or_create_population(3, def_params)
         [m0, m1, m2] = population  # for more convenient access
-        m0.train()
-        m0.eval()
+        # m0.train()
+        # m0.eval()
         m0.stepEval()
         print("train/eval O.K.")
     except:
         session.close()
         raise Exception("problem with train/eval")
 
-    ## save / load
+    # save / load
     try:
         # overwrite base_dir so it can be deleted conveniently later
         FLAGS.base_dir = os.path.join(FLAGS.base_dir, "test")
@@ -274,6 +367,38 @@ def create_and_test_population(unused_argv):
         raise Exception("problem with saving/loading")
     finally:
         shutil.rmtree(FLAGS.base_dir) #delete directory
+
+    ### modify parameters
+    try:
+        v0 = [v for v in tf.global_variables() if v.name == 'agent000/Online/fully_connected/weights:0'][0]
+        # writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
+        m0.stepEval()
+        val0 = session.run(v0)
+        for par_name, par_val in {"vmax": 24., #try changing out all parameters
+                              "gamma": 0.95,                    #temporal discount factor
+                              "update_horizon": 4,
+                              "min_replay_history": 400,
+                              "update_period": 5,
+                              "target_update_period": 400,
+                              "epsilon_train": 0.1,
+                              "epsilon_eval": 0.1,
+                              "epsilon_decay_period": 5000,
+                              "learning_rate": 0.00025,
+                              "optimizer_epsilon": 0.0003125}.items():
+            m0.change_param(par_name, par_val)
+        m0.stepEval()
+        val1 = session.run(v0)
+        if np.array_equal(val0,val1):
+            print("weights unchanged after changing hyperparam")
+        #okay so here we don#t really check all parameters because sometimes they are really stored far away,
+        # the point is that internally to the agent correct classes (like the replay memory are
+        if m0.agent.gamma == 0.95 and m0.agent.update_horizon == 4 and m0.agent._replay.memory._update_horizon == 4:
+            print("structure modified correctly")
+    except:
+        raise Exception("Problem with modifying parameters of agent")
+    finally:
+        pass
+        # writer.close()
 
     ## copy other member, check whether variables are initialized correctly and are independent from now on
     session.close()
@@ -307,7 +432,7 @@ def create_and_test_population(unused_argv):
         raise Exception("copying member failed: tf Variables not copied copied correctly")
     #now train and see whether variables are independent IN BOTH DIRECTIONS
 
-    for _ in range(10): #turns out since this is the beginning of the training and we picked the first layer's
+    for _ in range(5): #turns out since this is the beginning of the training and we picked the first layer's
         # weights that sometimes the first stepEval doesn't change these weights _at all_ -> run a couple of iterations
         m1.stepEval() #changes variable in member 1
     val0_1 = session.run(v0) #this should not have changed first member's variables
@@ -333,123 +458,10 @@ def create_and_test_population(unused_argv):
     #graph can be displayed with this terminal command: tensorboard --logdir="./test_session_graph"
     session.close()
 
-#out of service
-# def fuck_up_2(unused_argv):
-#     population, startstep, session = load_or_create_population(3, def_params)
-#     [m0, m1, m2] = population  # for more convenient access
-#
-#     writer = tf.summary.FileWriter('test_session_graph', session.graph)
-#     #pick some tensor in first member's subgraph
-#     v0 = [v for v in tf.global_variables() if v.name == 'agent000/Online/fully_connected/weights:0'][0]
-#     v1 = [v for v in tf.global_variables() if v.name == 'agent001/Online/fully_connected/weights:0'][0]
-#     v2 = [v for v in tf.global_variables() if v.name == 'agent002/Online/fully_connected/weights:0'][0]
-#
-#     vals = []
-#     save = lambda: vals.append([session.run(v1), session.run(v2)])
-#     save() #0
-#
-#     #evaluate anything
-#     session.run(v0)
-#     session.run(v1)
-#     session.run(v2)
-#     save() #1
-#
-#     #copy m0 -> m1, m2
-#     m1.pbt_copy(m0)
-#     m2.pbt_copy(m0)
-#     save() #2
-#
-#     #step m1
-#     for _ in range(10):
-#         m1.stepEval()
-#     save()
-#
-#     #step m0
-#     for _ in range(10):
-#         m0.stepEval()
-#     save() #3
-#
-#     #step m1
-#     for _ in range(10):
-#         m1.stepEval()
-#     save() #4
-#
-#     #step m2
-#     for _ in range(10):
-#         m2.stepEval()
-#     save() #5
-#
-#     session.close()
-#     for i,elem in enumerate(vals):
-#         print(f"after operation {i}:")
-#         print(np.array_equal(elem[0],elem[1]))
-#     writer.close()
-
-#out of service
-# def fuck_up(unused_argv):
-#     population, startstep, session = load_or_create_population(3, def_params)
-#     [m0, m1, m2] = population  # for more convenient access
-#     m0.stepEval()
-#
-#     m1.pbt_copy(m0)
-#     m2.pbt_copy(m0)
-#
-#     v0 = [v for v in tf.global_variables() if v.name == 'agent000/Online/fully_connected/weights:0'][0]
-#     v1 = [v for v in tf.global_variables() if v.name == 'agent001/Online/fully_connected/weights:0'][0]
-#     v2 = [v for v in tf.global_variables() if v.name == 'agent002/Online/fully_connected/weights:0'][0]
-#
-#
-#     session.run(v1)
-#     session.run(v2)
-#     m1.stepEval()
-#     val1_0 = session.run(v1)
-#     val2_0 = session.run(v2)
-#     print(np.array_equal(val1_0,val2_0))
-#
-#     val0_1 = session.run(v0)
-#     val1_1 = session.run(v1)
-#     val2_1 = session.run(v2)
-#
-#     m0.stepEval()
-#
-#     val1_2 = session.run(v1)
-#     val2_2 = session.run(v2)
-#
-#     m1.stepEval()
-#
-#     val0_3 = session.run(v0)
-#     val1_3 = session.run(v1)
-#     val2_3 = session.run(v2)
-#
-#     m2.stepEval()
-#
-#     val1_4 = session.run(v1)
-#     val2_4 = session.run(v2)
-#
-#     m0.stepEval()
-#
-#     val1_5 = session.run(v1)
-#     val2_5 = session.run(v2)
-#
-#
-#     print("before and after copying:")
-#     print(np.array_equal(val1_0, val1_1))
-#     print("before and after stepping m0")
-#     print(np.array_equal(val1_1, val1_2))
-#     print("are m1 and m2 the same? after stepping m1?")
-#     print(np.array_equal(val1_3, val2_3))
-#     print("and what about m1 == m0?")
-#     print(np.array_equal(val1_3, val0_3))
-#     print("what about stepping m2? m1 and m2 the same?")
-#     print(np.array_equal(val1_4, val2_4))
-#     print("now m0 step? m1 and m2 the same?")
-#     print(np.array_equal(val1_5, val2_5))
-
 #### PBT hyperparameters and default model params
-
 pbt_steps = 50
 pbt_popsize = 3
-pbt_mutprob = 0.3  # probability for a parameter to mutate
+pbt_mutprob = 1  # probability for a parameter to mutate
 pbt_mutstren = 0.2  # size of interval around a parameter's value that new value is sampled from
 pbt_survivalrate = 0.5  # percentage of members of population to be mutated, rest will be replaced
 pbt_discardN = int(pbt_popsize * (1 - pbt_survivalrate))  # for convenience
@@ -462,19 +474,24 @@ def_params = {"game_type": 'Hanabi-Small',  # environment parameters
               "training_steps": 100,  # schedule for training and eval step for particular set of hyperparameters
               "num_iterations": 3,
               "num_evaluation_games": 20,
-              "RainbowAgent.update_horizon": 5,     #agent's params
-              "RainbowAgent.num_atoms": 51,
-              "RainbowAgent.min_replay_history": 500,  # agent steps
-              "RainbowAgent.target_update_period": 500,  # agent steps
-              "RainbowAgent.epsilon_train": 0.0,
-              "RainbowAgent.epsilon_eval": 0.0,
-              "RainbowAgent.epsilon_decay_period": 1000,  # agent steps
-              "RainbowAgent.tf_device": '/cpu:*',  # '/gpu:0' use for non-GPU version
-              "WrappedReplayMemory.replay_capacity": 50000,
-              "dummy": 1}
+              "rainbow_config": {
+                  "num_atoms": 51,                  #number of bins that constitute support of distribution over Q-values
+                  "vmax": 25.,                      #maximum and minimum value of the distribution
+                  "gamma": 0.99,                    #temporal discount factor
+                  "update_horizon": 5,              #"forward-view" of TD error, i.e. how many time steps are
+                                                        # optimized for at once
+                  "min_replay_history": 500,        #minimum samples contained in replay buffer
+                  "update_period": 4,               #
+                  "target_update_period": 500,      #length of interval in between two updates of the target network
+                  "epsilon_train": 0.0,
+                  "epsilon_eval": 0.0,
+                  "epsilon_decay_period": 1000,
+                  "learning_rate": 0.000025,
+                  "optimizer_epsilon": 0.00003125,
+                  "tf_device": '/cpu:*'}} #todo: decide whether to also change replay memories params
 
 # list mutable parameters
-pbt_mutables = ["dummy"]
+pbt_mutables = ["gamma"]
 # generate parameterized explore fn
 explore = explore_template(pbt_mutables, pbt_mutprob, pbt_mutstren)
 
@@ -485,8 +502,13 @@ def main(unused_argv):
     ### load or create population
     population, startstep, session = load_or_create_population(pbt_popsize, def_params)
 
+    vars_list = []
     ### pbt epoch loop
     for pbt_step in range(startstep, pbt_steps):
+        vars_list_curr =  [v.name for v in tf.global_variables()]
+        print("variables added")
+        print([v for v in vars_list_curr if v not in vars_list])
+        vars_list = vars_list_curr
         #TODO: implement parallel training or train members sequentially and let tensorflow organize to use
         # resources optimally?
         perfs = [member.stepEval() for member in population]
@@ -502,15 +524,24 @@ def main(unused_argv):
                 explore(member)
             else:
                 member.parent_idx.append(idx) #survived this step
+            #count step and save current values of mutables
             member.pbt_step += 1
-    pass
+            member.save_mutable_vals(pbt_mutables)
+    ### save and exit
+    save_population(population)
+    pickle.dump(FLAGS, open("save.p", "wb"))
     session.close()
 
 if __name__ == '__main__':
     # flags.mark_flag_as_required('base_dir')
-    app.run(create_and_test_population)
-    # app.run(main)
-        #todo: change verbosity of train steps
-        #todo: logging properly
-        #todo: passing variables properly
+    # app.run(create_and_test_population)
+    # app.run(fuck_up)
+    app.run(main)
+
+    #todo: logging properly, plotting progress
+    #todo: run "dry", estimate time
         #todo: parallelize code :'( -> really necessary though? let's check how tf arranges on the large machines
+    #todo: go through params to see whether they should be changed in the first place, write down
+        #todo: change only optimizer?
+        #todo: what about just no Adam optimizer?
+    #todo: custom rewards

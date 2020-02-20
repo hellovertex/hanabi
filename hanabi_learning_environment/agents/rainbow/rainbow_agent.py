@@ -232,7 +232,7 @@ class RainbowAgent(dqn_agent.DQNAgent):
     loss = tf.nn.softmax_cross_entropy_with_logits(
         labels=target_distribution,
         logits=chosen_action_logits)
-
+    # optimizer = tf.contrib.optimizer_v2.AdamOptimizer(
     optimizer = tf.train.AdamOptimizer(
         learning_rate=self.learning_rate,
         epsilon=self.optimizer_epsilon)
