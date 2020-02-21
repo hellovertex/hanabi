@@ -24,6 +24,10 @@ import hanabi_learning_environment.rl_env as rl_env
 
 import pickle
 import shutil
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from matplotlib.lines import Line2D
 
 import tensorflow as tf
 
@@ -38,7 +42,15 @@ flags.DEFINE_string('logging_dir', 'logs',
                     'no checkpoints will be saved.')
 flags.DEFINE_string('game_type', 'Hanabi-Full',
                     'Hanabi-Full or Hanabi-Small, etc.')
-FLAGS = flags.FLAGS
+# FLAGS = flags.FLAGS
+
+class Fake_flags(object):
+    def __init__(self):
+        self.base_dir = str(os.path.dirname(__file__)) + '/trained/PBTRainbow'
+        self.checkpoint_dir = 'checkpoints'
+        self.logging_dir = 'logs'
+        self.game_type = 'Hanabi-Full'
+
 
 #### PBT functionality
 class Member(object):
@@ -53,7 +65,7 @@ class Member(object):
         self.id = str(idx).zfill(3)  # identifier number string
         self.ckpt_dir = os.path.join(FLAGS.base_dir, FLAGS.checkpoint_dir, self.id)
         self.params = params  # members parameters
-        self.parent_idx = []  # save parent idx before every pbt step
+        self.parent_idx = None  # save parent idx before every pbt step
         # Initialize the environment.
         self.environment = run_experiment.create_environment(game_type=params["game_type"],
                                                              num_players=params["num_players"])
@@ -67,9 +79,8 @@ class Member(object):
                                                      agent_type=self.params["agent_type"],
                                                      tf_session=session,
                                                      config = self.params["rainbow_config"])
-
+        self.train_step = 0
         self.statistics = []  # save statistics after every pbt step here (so when copying the agent from a
-        self.mutables_vals = []
         # member the training progress will not be lost
 
     def init_sess_vars_ckpting(self, session):
@@ -119,48 +130,56 @@ class Member(object):
                                                           evaluate_every_n=1,#self.params["num_iterations"],
                                                           # #TODO: is this really correct?
                                                           num_evaluation_games=self.params["num_evaluation_games"])
-            self.statistics.append(stats_curr) #TODO: nice logging and statistics taking
+            self.train_step += self.params["training_steps"]
+            self.stats_clean = {"train_return": stats_curr["average_return"][0],
+                                "eval_episode_length": stats_curr["eval_episode_lengths"][0],
+                                "eval_episode_return": stats_curr["eval_episode_returns"][0]}
+            self.update_statistics(stats_curr)
         return stats_curr["eval_episode_returns"][0]
 
     def change_param(self, param, value):
-        """Applies changes in configuration of Rainbow agent.
+        self.params[param] = value #overwrite value
+        pass #TODO: IMPLEMENT
 
-        Configuration parameters are contained in self.params.rainbow_config. Initialize a new Rainbow agent with
-        these parameters and copy weights accordingly, similar to pbt_copy().
-        """
-        if param in ["num_atoms", "tf_device"]: #can't change the size of Q-distribution support or tf-device on the fly
-            raise NotImplementedError("changes to the network design not implemented")
-
-        agent = self.agent
-        self.params["rainbow_config"][param] = value #overwrite value
-        #now reinitialize agent with upated config parameters.
-        # this is the safest way to ensure consistency among all modules
-        vars = {}
-        agent_scope = "agent" + self.id
-        #turns out it's enough to set reuse=tf.AUTO_REUSE so that "newly" created variables will just continue to exist
-        # with
-        # their current values as far as tensorflow is concerned. only the structure on top of them making a full
-        # agent out of them is changed.
-        with tf.variable_scope(agent_scope, reuse=True) as scope:
-            self.agent = run_experiment.create_agent(self.environment, self.obs_stacker,
-                                                     agent_type=self.params["agent_type"],
-                                                     tf_session=agent._sess,
-                                                     config=self.params["rainbow_config"])
-            own_vars = [var for var in tf.global_variables(scope=agent_scope)]
-            self.agent._sess.run(tf.initializers.variables(own_vars))
-
-        # with tf.variable_scope(agent_scope, reuse=True) as scope:
-        #     for var in tf.global_variables(scope=agent_scope):
-        #         print(var.name)
-        #         value = self.agent._sess.run(var.name) #look up value
-        #         vars[var.name] = value #save in dictionary for later
-        #     self.agent = run_experiment.create_agent(self.environment, self.obs_stacker,
-        #                                              agent_type=self.params["agent_type"],
-        #                                              tf_session=agent._sess,
-        #                                              config = self.params["rainbow_config"])
-        #     #now load variables' values
-        #     for var in tf.global_variables(scope=agent_scope):
-        #         var.load(vars[var.name], self.agent._sess)
+    # def change_param(self, param, value):
+    #     """Applies changes in configuration of Rainbow agent.
+    #
+    #     Configuration parameters are contained in self.params.rainbow_config. Initialize a new Rainbow agent with
+    #     these parameters and copy weights accordingly, similar to pbt_copy().
+    #     """
+    #     if param in ["num_atoms", "tf_device"]: #can't change the size of Q-distribution support or tf-device on the fly
+    #         raise NotImplementedError("changes to the network design not implemented")
+    #
+    #     agent = self.agent
+    #     self.params["rainbow_config"][param] = value #overwrite value
+    #     #now reinitialize agent with upated config parameters.
+    #     # this is the safest way to ensure consistency among all modules
+    #     vars = {}
+    #     agent_scope = "agent" + self.id
+    #     #turns out it's enough to set reuse=tf.AUTO_REUSE so that "newly" created variables will just continue to exist
+    #     # with
+    #     # their current values as far as tensorflow is concerned. only the structure on top of them making a full
+    #     # agent out of them is changed.
+    #     with tf.variable_scope(agent_scope, reuse=True) as scope:
+    #         self.agent = run_experiment.create_agent(self.environment, self.obs_stacker,
+    #                                                  agent_type=self.params["agent_type"],
+    #                                                  tf_session=agent._sess,
+    #                                                  config=self.params["rainbow_config"])
+    #         own_vars = [var for var in tf.global_variables(scope=agent_scope)]
+    #         self.agent._sess.run(tf.initializers.variables(own_vars))
+    #
+    #     # with tf.variable_scope(agent_scope, reuse=True) as scope:
+    #     #     for var in tf.global_variables(scope=agent_scope):
+    #     #         print(var.name)
+    #     #         value = self.agent._sess.run(var.name) #look up value
+    #     #         vars[var.name] = value #save in dictionary for later
+    #     #     self.agent = run_experiment.create_agent(self.environment, self.obs_stacker,
+    #     #                                              agent_type=self.params["agent_type"],
+    #     #                                              tf_session=agent._sess,
+    #     #                                              config = self.params["rainbow_config"])
+    #     #     #now load variables' values
+    #     #     for var in tf.global_variables(scope=agent_scope):
+    #     #         var.load(vars[var.name], self.agent._sess)
 
     def export_agent(self):
         """Export agent in yet to determined format so it can play with others inside the GUI.
@@ -174,7 +193,7 @@ class Member(object):
         Agent can be loaded by calling .load_ckpt() after initialization.
         """
         #save parameters, parent_idx and statistics "manually"
-        pickle.dump((self.params,self.parent_idx,self.statistics,self.mutables_vals,self.pbt_step),
+        pickle.dump((self.params,self.parent_idx,self.statistics,self.pbt_step),
                     open(os.path.join(self.ckpt_dir, f"memberinfo.{self.pbt_step}"), "wb"))
         #save agent using agent's checkpointer
         run_experiment.checkpoint_experiment(self.checkpointer, self.agent, self.logger,
@@ -194,7 +213,7 @@ class Member(object):
         The agent is already loaded during initalization provided the correct ckpt_dir. Same for pbt_step.
         """
         try:
-            (self.params, self.parent_idx,self.statistics, self.mutables_vals, self.pbt_step) = pickle.load(
+            (self.params, self.parent_idx,self.statistics, self.pbt_step) = pickle.load(
                 open(os.path.join(self.ckpt_dir, f'memberinfo.{self.pbt_step-1}'), "rb")) #TODO check correct global logging
             return self.pbt_step
         except FileNotFoundError:
@@ -209,8 +228,11 @@ class Member(object):
         parent_idx. ckpt_dir, environment, obs_stacker, pbt_step and statistics belong to member and thus need not be
         changed.
         """
-        # self.id and self.ckpt_dir remains the same
-        self.params = newMember.params  # copy parameters and append parent index to history
+        # self.id and self.ckpt_dir remain the same
+        # copy parameters and append parent index to history
+        for field_name in ["params", "train_step", "pbt_step"]:
+            setattr(self,field_name,getattr(newMember,field_name))
+        self.parent_idx = newMember.id
         # self.environment, self.logger and self.obs_stacker also remain the same
         # now copy tf variables from other agent, rest remains the same
         old_scope = "agent" + self.id
@@ -219,11 +241,21 @@ class Member(object):
             value = self.agent._sess.run(var.name.replace(old_scope, new_scope)) #look up new value
             var.load(value.copy(), self.agent._sess)  # load it, sessions of old and new agent should be the same
         # self.pbt_step and self.checkpointer also remain
+        # self.statistics also remain untouched, otherwise information would be lost when copying
 
-    def save_mutable_vals(self, mutables):
-        """ Appends current values of all mutable parameters to self.mutables_vars for plotting later on."""
-        current_vals = dict((par_name, self.params["rainbow_config"][par_name]) for par_name in mutables)
-        self.mutables_vals.append(current_vals)
+    def update_statistics(self, stats_curr):
+        """append current training statistics and values of mutables together with some overhead information to
+        self.statistics
+        """
+        #append overhead business  to statistics so every entry in statistics is completely interpretable by itself
+        stats_curr["id"] = self.id
+        stats_curr["parent_idx"] = self.parent_idx
+        stats_curr["pbt_step"] = self.pbt_step
+        stats_curr["train_step"] = self.train_step
+        #look up all current values of mutable variables
+        current_mutable_vals = dict((par_name, self.params[par_name]) for par_name in self.params["pbt_mutables"])
+        #append everything together as one dictionary to self.statistics
+        self.statistics.append({**stats_curr, **current_mutable_vals})
 
 def exploit(member, good_population):
     """Overwrites hyperparams and parameters of agent in member with a randomly chosen member of good_population"""
@@ -231,7 +263,7 @@ def exploit(member, good_population):
     print(f"overwriting member {member.id} with member {newMember.id}")
     member.pbt_copy(newMember)
 
-def explore_template(mutables, mutprob, mutstren):
+def explore_template(mutprob, mutstren):
     """Decorates explore function with PBT experiments mutation hyperparameters
     Args:
         mutables: list of params.keys that are mutable
@@ -243,11 +275,11 @@ def explore_template(mutables, mutprob, mutstren):
     """
     def explore(member):
         """Mutates parameters in-place according to PBT experiments mutation hyperparameters."""
-        for param in mutables:
+        for param in member.params["pbt_mutables"]:
             if np.random.uniform(0,1) < mutprob:
                 print(f"mutating {param} of member {member.id}")
-                value = member.params["rainbow_config"][param] #modifies in-place but we are going to overwrite it
-                # anyway
+                # value = member.params["rainbow_config"][param] #modifies in-place but we are going to overwrite it
+                value = member.params[param]
                 value += value * np.random.uniform(-1,1) * mutstren
                 if param=="gamma":
                     value = np.clip(value, 0,1)
@@ -277,54 +309,137 @@ def load_or_create_population(pbt_popsize, def_params):
         if loaded_steps.count(loaded_steps[0]) != len(loaded_steps): #not all loaded pbt_steps are identical
             raise Exception("checkpointed models are at different pbt steps" + loaded_steps)
         startstep = loaded_steps[0]
+        for member in population:
+            member.pbt_step = startstep
     else: #start from fresh
         #members are good to run
         startstep = 0
     return(population, startstep, session)
 
 def save_population(population):
+    """Saves all members by calling their checkpointers and also dumps pbt statistics as df to disk.
+
+    Returns: statistics of pbt experiment as df
+    """
     for member in population:
         print(f"saving member {member.id}")
         member.save_ckpt()
+    stats_df = dump_statistics(population)
+    return stats_df
 
-def plot_progress(population):
-    pass
+def dump_statistics(population):
+    """Extract statistics from all members and save as dataframe"""
+    # for each member for each iteration create a list of entries
+    all_stats = []
+    for member in population:
+        all_stats += member.statistics #statistics should contain already all necessary information to interpret
+        # entries outside of member
+    # #clean-up
+    # for entry in all_stats:
+    #     del entry["train_episode_lengths"]
+    #     del entry["train_episode_returns"]
+    #     entry["average_return"] = entry["average_return"][0]
+    #     entry["eval_episode_lengths"] = entry["eval_episode_lengths"][0]
+    #     entry["eval_episode_returns"] = entry["eval_episode_returns"][0]
+    stats_df = pd.DataFrame(all_stats) #make df from list of dicts
+    try:
+        pickle.dump((stats_df, def_params), open(os.path.join(FLAGS.base_dir,"pbt_stats.pickle"), 'wb'))
+    except Exception as e:
+        print("writing statistics failed:")
+        print(e)
+    return stats_df
 
-def fuck_up(unused_argv):
-    population, startstep, session = load_or_create_population(3, def_params)
-    [m0, m1, m2] = population  # for more convenient access
-    v1 = [v for v in tf.global_variables() if v.name == 'agent001/Online/fully_connected/weights:0'][0]
-    # writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
-    m0.stepEval()
-    m1.pbt_copy(m0)
-    val0 = session.run(v1)
-    print([v.name for v in tf.global_variables() if v.name.startswith('agent001')])
+def plot_statistics(stats, def_params=None):
+    """Convenience function to plot statistics of PBT run
 
-    for par_name, par_val in {"vmax": 24.,  # try changing out all parameters
-                              "gamma": 0.95,  # temporal discount factor
-                              "update_horizon": 4,
-                              "min_replay_history": 400,
-                              "update_period": 5,
-                              "target_update_period": 400,
-                              "epsilon_train": 0.1,
-                              "epsilon_eval": 0.1,
-                              "epsilon_decay_period": 5000,
-                              "learning_rate": 0.00025,
-                              "optimizer_epsilon": 0.0003125}.items():
-        m1.change_param(par_name, par_val)
-    print("PARTYYYY")
-    print([v.name for v in tf.global_variables() if v.name.startswith('agent001')])
-    m1.stepEval()
-    val1 = session.run(v1)
-    if np.array_equal(val0, val1):
-        print("weights unchanged after changing hyperparam")
-    # okay so here we don#t really check all parameters because sometimes they are really stored far away,
-    # the point is that internally to the agent correct classes (like the replay memory are
-    if m1.agent.gamma == 0.95 and m0.agent.update_horizon == 4 and m0.agent._replay.memory._update_horizon == 4:
-        print("structure modified correctly")
-    m1.stepEval()
-    m1.save_ckpt()
+    Args:
+        stats_ref: either pandas DataFrame or filepath to pickle file
+    """
+    if os.path.isfile(stats):
+        (stats, def_params) = pickle.load(open(stats, 'rb'))
+    if not type(stats) == pd.DataFrame:
+        raise TypeError("Statistics are no Pandas DataFrame")
+    if def_params == None:
+        raise Exception("Default parameters missing")
 
+    #stats now is assumed to be a correctly formatted DataFrame
+    #get ids and corresponding colors globally to keep colors consistent across plots
+    ids = list(set(stats.id))
+    n_membs = len(ids)
+    # colors = cm.get_cmap("gist_rainbow", n_membs)
+    marker_style = dict(linestyle=':', marker='o',
+                        markersize=10, markerfacecoloralt='white')
+
+    #evaluation accuracy of all models
+    fig, ax = plt.subplots()
+    ax.set_title("Members' eval. accuracy")
+    for i, id in enumerate(ids): #iterate over members
+        id_df = stats[stats.id==id] #pick subset of data
+        ax.plot(id_df.train_step, id_df.eval_episode_returns, color=f'C{i}', label='member '+id)
+    ax.legend()
+    ax.set_ylabel(f'Accuracy averaged over {def_params["num_evaluation_games"]} evaluation epochs')
+    ax.set_xlabel("Train Step")
+
+    #values of mutables over time
+    fig, ax = plt.subplots()
+    ax.set_title("Members' mutable variable values")
+    for i, id in enumerate(ids): #iterate over members
+        id_df = stats[stats.id==id] #pick subset of data
+        for mutable, fillstyle in zip(def_params["pbt_mutables"],Line2D.fillStyles):
+            ax.plot(id_df.train_step, id_df[mutable], color=f'C{i}', label=f'member {id}: {mutable}',
+                    fill_style = fillstyle, **marker_style)
+    ax.legend()
+    ax.set_ylabel("Value of mutable variables")
+    ax.set_xlabel("Train Step")
+
+    #winning model average return, eval episode lengths and eval episode returns
+    winning_model_id = stats.iloc[stats.eval_episode_returns.idxmax()].id
+    id_df = stats[stats.id == winning_model_id]  # pick subset of data
+    measures = ["eval_episode_lengths", "eval_episode_returns"]
+    fig, ax = plt.subplots()
+    ax.set_title("Winning Model")
+    for measure, fillstyle in zip(measures,Line2D.fillStyles):
+        ax.plot(id_df.train_step, id_df[measure], color=f'C{ids.index(winning_model_id)}', label=f'member '
+                f'{winning_model_id}: {measure}', fillstyle = fillstyle, **marker_style)
+    ax.legend()
+    ax.set_ylabel("Performance measure")
+    ax.set_xlabel("Train Step")
+
+
+# def fuck_up(unused_argv):
+#     population, startstep, session = load_or_create_population(3, def_params)
+#     [m0, m1, m2] = population  # for more convenient access
+#     v1 = [v for v in tf.global_variables() if v.name == 'agent001/Online/fully_connected/weights:0'][0]
+#     # writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
+#     m0.stepEval()
+#     m1.pbt_copy(m0)
+#     val0 = session.run(v1)
+#     print([v.name for v in tf.global_variables() if v.name.startswith('agent001')])
+#
+#     for par_name, par_val in {"vmax": 24.,  # try changing out all parameters
+#                               "gamma": 0.95,  # temporal discount factor
+#                               "update_horizon": 4,
+#                               "min_replay_history": 400,
+#                               "update_period": 5,
+#                               "target_update_period": 400,
+#                               "epsilon_train": 0.1,
+#                               "epsilon_eval": 0.1,
+#                               "epsilon_decay_period": 5000,
+#                               "learning_rate": 0.00025,
+#                               "optimizer_epsilon": 0.0003125}.items():
+#         m1.change_param(par_name, par_val)
+#     print("PARTYYYY")
+#     print([v.name for v in tf.global_variables() if v.name.startswith('agent001')])
+#     m1.stepEval()
+#     val1 = session.run(v1)
+#     if np.array_equal(val0, val1):
+#         print("weights unchanged after changing hyperparam")
+#     # okay so here we don#t really check all parameters because sometimes they are really stored far away,
+#     # the point is that internally to the agent correct classes (like the replay memory are
+#     if m1.agent.gamma == 0.95 and m0.agent.update_horizon == 4 and m0.agent._replay.memory._update_horizon == 4:
+#         print("structure modified correctly")
+#     m1.stepEval()
+#     m1.save_ckpt()
 
 def create_and_test_population(unused_argv):
     """Some tests for PBT functionality.
@@ -459,7 +574,7 @@ def create_and_test_population(unused_argv):
     session.close()
 
 #### PBT hyperparameters and default model params
-pbt_steps = 50
+pbt_steps = 20
 pbt_popsize = 3
 pbt_mutprob = 1  # probability for a parameter to mutate
 pbt_mutstren = 0.2  # size of interval around a parameter's value that new value is sampled from
@@ -488,13 +603,13 @@ def_params = {"game_type": 'Hanabi-Small',  # environment parameters
                   "epsilon_decay_period": 1000,
                   "learning_rate": 0.000025,
                   "optimizer_epsilon": 0.00003125,
-                  "tf_device": '/cpu:*'}} #todo: decide whether to also change replay memories params
+                  "tf_device": '/cpu:*'},
+              "dummy": 1,
+              "pbt_mutables": ["dummy"]  # list mutable parameters
+            } #todo: decide whether to also change replay memories params
 
-# list mutable parameters
-pbt_mutables = ["gamma"]
 # generate parameterized explore fn
-explore = explore_template(pbt_mutables, pbt_mutprob, pbt_mutstren)
-
+explore = explore_template(pbt_mutprob, pbt_mutstren)
 
 #### PBT runner
 def main(unused_argv):
@@ -502,13 +617,8 @@ def main(unused_argv):
     ### load or create population
     population, startstep, session = load_or_create_population(pbt_popsize, def_params)
 
-    vars_list = []
     ### pbt epoch loop
     for pbt_step in range(startstep, pbt_steps):
-        vars_list_curr =  [v.name for v in tf.global_variables()]
-        print("variables added")
-        print([v for v in vars_list_curr if v not in vars_list])
-        vars_list = vars_list_curr
         #TODO: implement parallel training or train members sequentially and let tensorflow organize to use
         # resources optimally?
         perfs = [member.stepEval() for member in population]
@@ -522,26 +632,54 @@ def main(unused_argv):
                 exploit(member, [population[idx] for idx in live_idxs]) #overwrite with better performing member in
                 # population
                 explore(member)
-            else:
-                member.parent_idx.append(idx) #survived this step
+            else: #else just note that member survived this step and is its own parent
+                member.parent_idx = idx #survived this step
             #count step and save current values of mutables
             member.pbt_step += 1
-            member.save_mutable_vals(pbt_mutables)
     ### save and exit
     save_population(population)
-    pickle.dump(FLAGS, open("save.p", "wb"))
     session.close()
 
-if __name__ == '__main__':
-    # flags.mark_flag_as_required('base_dir')
-    # app.run(create_and_test_population)
-    # app.run(fuck_up)
-    app.run(main)
 
-    #todo: logging properly, plotting progress
-    #todo: run "dry", estimate time
-        #todo: parallelize code :'( -> really necessary though? let's check how tf arranges on the large machines
-    #todo: go through params to see whether they should be changed in the first place, write down
-        #todo: change only optimizer?
-        #todo: what about just no Adam optimizer?
-    #todo: custom rewards
+FLAGS = Fake_flags()
+population, startstep, session = load_or_create_population(pbt_popsize, def_params)
+### pbt epoch loop
+for pbt_step in range(startstep, pbt_steps):
+    # TODO: implement parallel training or train members sequentially and let tensorflow organize to use
+    # resources optimally?
+    perfs = [member.stepEval() for member in population]
+    ### checkpointing and bookkeeping
+    save_population(population)
+    ### evolving members before next step
+    die_idxs = list(np.argsort(perfs)[:pbt_discardN])  # idxs corresponding to worst 1-survRate members of population
+    live_idxs = list(np.argsort(perfs)[pbt_discardN:])
+    for idx, member in enumerate(population):
+        if idx in die_idxs:
+            exploit(member, [population[idx] for idx in live_idxs])  # overwrite with better performing member in
+            # population
+            explore(member)
+        else: #else just note that member survived this step and is its own parent
+            member.parent_idx = idx  # survived this step
+
+    for member in population: # count step and save current values of mutables
+        member.pbt_step += 1
+### save and exit
+stats_df = save_population(population)
+plot_statistics(stats_df, def_params)
+session.close()
+
+
+# if __name__ == '__main__':
+#     # flags.mark_flag_as_required('base_dir')
+#     # app.run(create_and_test_population)
+#     # app.run(fuck_up)
+#     app.run(main)
+#
+#     #todo: logging properly, plotting progress
+#     #todo: run "dry", estimate time
+#         #todo: parallelize code :'( -> really necessary though? let's check how tf arranges on the large machines
+#     #todo: go through params to see whether they should be changed in the first place, write down
+#         #todo: change only optimizer?
+#         #todo: what about just no Adam optimizer?
+#     #todo: custom rewards
+#     #todo: why does graph still grow?

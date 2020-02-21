@@ -164,15 +164,13 @@ def create_agent(environment, obs_stacker, agent_type='DQN', tf_session=None, co
     return dqn_agent.DQNAgent(observation_size=obs_stacker.observation_size(),
                               num_actions=environment.num_moves(),
                               num_players=environment.players,
-                              tf_session=tf_session,
-                              **config)
+                              tf_session=tf_session)
   elif agent_type == 'Rainbow':
     return rainbow_agent.RainbowAgent(
         observation_size=obs_stacker.observation_size(),
         num_actions=environment.num_moves(),
         num_players=environment.players,
-        tf_session=tf_session,
-        **config)
+        tf_session=tf_session)
   else:
     raise ValueError('Expected valid agent_type, got {}'.format(agent_type))
 
