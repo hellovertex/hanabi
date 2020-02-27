@@ -32,7 +32,7 @@ from __future__ import print_function
 from third_party.dopamine import sum_tree
 import gin.tf
 import numpy as np
-import replay_memory
+from . import replay_memory
 import tensorflow as tf
 
 DEFAULT_PRIORITY = 100.0

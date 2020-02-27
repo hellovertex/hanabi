@@ -206,7 +206,7 @@ class RewardMetrics(object):
             if card_played.rank() == fireworks[card_played.color()]:
                 reward = 2 ** card_played.rank()
             if card_played.rank() != fireworks[card_played.color()]:
-                reward= -50
+                reward= -10 #todo: this is maybe a little much?
         return reward
 
     @staticmethod
@@ -245,26 +245,27 @@ class RewardMetrics(object):
 
         return reward
 
-def customize_reward(agent, raw_reward, action):
-    reward = 0
-    prev_player_hands = self.state.player_hands()
-    # needed for hamming distance
-    cur_pid = self.state.cur_player()  # absolute pid
-    next_pid = (cur_pid + 1) % self.game.num_players()  # absolute next_pid
-
-    old_obs_next_player = self.state.observation(next_pid)
-    vectorized_old = self.observation_encoder.encode(old_obs_next_player)
-
-
-    if self.USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
-        hint_reward = self.reward_metrics.maybe_change_hint_reward(action, self.state)
-        reward += hint_reward
-        info["hint_reward"] = hint_reward
-    if self.USE_PLAY_REWARD and (action.type() == PLAY):
-        play_reward = self.reward_metrics.maybe_change_play_reward(action, self.state)
-        reward += play_reward
-        info["play_reward"] = play_reward
-    if self.USE_DISCARD_REWARD and (action.type() == DISCARD):
-        discard_reward = self.reward_metrics.maybe_change_discard_reward(action, self.state)
-        reward += discard_reward + 3 #TODO: discard_reward is not balanced yet,this is only a quick and dirty fix
-        info["discard_reward"] = discard_reward
+# #todo: this should probably be inside class?
+# def customize_reward(agent, raw_reward, action):
+#     reward = 0
+#     prev_player_hands = self.state.player_hands()
+#     # needed for hamming distance
+#     cur_pid = self.state.cur_player()  # absolute pid
+#     next_pid = (cur_pid + 1) % self.game.num_players()  # absolute next_pid
+#
+#     old_obs_next_player = self.state.observation(next_pid)
+#     vectorized_old = self.observation_encoder.encode(old_obs_next_player)
+#
+#
+#     if self.USE_HINT_REWARD and (action.type() in [REVEAL_COLOR, REVEAL_RANK]):
+#         hint_reward = self.reward_metrics.maybe_change_hint_reward(action, self.state)
+#         reward += hint_reward
+#         info["hint_reward"] = hint_reward
+#     if self.USE_PLAY_REWARD and (action.type() == PLAY):
+#         play_reward = self.reward_metrics.maybe_change_play_reward(action, self.state)
+#         reward += play_reward
+#         info["play_reward"] = play_reward
+#     if self.USE_DISCARD_REWARD and (action.type() == DISCARD):
+#         discard_reward = self.reward_metrics.maybe_change_discard_reward(action, self.state)
+#         reward += discard_reward + 3 #TODO: discard_reward is not balanced yet,this is only a quick and dirty fix
+#     info["discard_reward"] = discard_reward

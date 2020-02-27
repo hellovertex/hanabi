@@ -31,12 +31,12 @@ import time
 
 from third_party.dopamine import checkpointer
 from third_party.dopamine import iteration_statistics
-import dqn_agent
+from . import dqn_agent
 import gin.tf
 # import rl_env
 import hanabi_learning_environment.rl_env_custom as rl_env
 import numpy as np
-import rainbow_agent
+from . import rainbow_agent
 import tensorflow as tf
 
 LENIENT_SCORE = False

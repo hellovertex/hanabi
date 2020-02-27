@@ -20,8 +20,9 @@ import sys
 print(sys.path)
 from hanabi_learning_environment.agents.rainbow.third_party.dopamine import logger
 from hanabi_learning_environment.agents.rainbow.third_party.dopamine import iteration_statistics
+# import hanabi_learning_environment.agents.rainbow
 import hanabi_learning_environment.agents.rainbow.run_experiment as run_experiment
-import hanabi_learning_environment.rl_env as rl_env
+# import hanabi_learning_environment.rl_env_custom as rl_env
 
 import pickle
 import shutil
@@ -293,12 +294,12 @@ class Member(object):
         #checkpoint_experiment retains the previous 3 checkpoints and deletes all older ones (inside the definition
         # of DQNAgent tf.train.Saver(max_to_keep=3). Now do the same cleanup for memberinfo
         try:
-            os.remove(os.path.join(self.ckpt_dir, f"memberinfo.{self.pbt_step-4}"))
+            for filename in os.listdir(self.ckpt_dir):
+                if filename.startswith("memberinfo") and int(filename.split('.')[-1]) <= self.pbt_step - 30:
+                    os.remove(os.path.join(self.ckpt_dir, filename))
         except:
             pass
-        #todo: clean up old memberinfo checkpoints (dopamine checkpointing deletes all but 3 last ones
-        #TODO: clean up old tf_ckpt meta, data and index, this makes the ckpt folder grow large over iterations
-
+        #todo: check if tf meta files clutter directory
     def load_ckpt(self):
         """Load the pickled information from checkpoint after "empty" member was initialized.
 
@@ -306,7 +307,7 @@ class Member(object):
         """
         try:
             (self.params, self.parent_idx,self.statistics, self.pbt_step, self.train_step) = pickle.load(
-                open(os.path.join(self.ckpt_dir, f'memberinfo.{self.pbt_step-1}'), "rb")) #TODO check correct global logging
+                open(os.path.join(self.ckpt_dir, f'memberinfo.{self.pbt_step-1}'), "rb"))
             return self.pbt_step
         except FileNotFoundError:
             print(f"No ckpt file found for Member {self.id}, starting from step zero")
@@ -393,7 +394,10 @@ def load_or_create_population(pbt_popsize, def_params):
 
     # set up tensorflow session and graph, tensorflow boilerplate
     tf.reset_default_graph()
-    session = tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))#, inter_op_parallelism_threads=4))
+    session = tf.Session('', config=tf.ConfigProto(allow_soft_placement=True)) #,
+    #                                                device_count={ "CPU": os.cpu_count()},
+    #                                                inter_op_parallelism_threads=os.cpu_count(),
+    #                                                intra_op_parallelism_threads=2))#, inter_op_parallelism_threads=4))
 
     #initialize members in population, init_sess_cars_ckpting initializes all tensorflow-related stuff
     population = []
@@ -675,21 +679,22 @@ def create_and_test_population(unused_argv):
     session.close()
 
 #### PBT hyperparameters and default model params
-pbt_steps = 10
-pbt_popsize = os.cpu_count() -1
-pbt_mutprob = 0.5  # probability for a parameter to mutate
-pbt_mutstren = 0.1  # size of interval around a parameter's value that new value is sampled from
-pbt_survivalrate = 0.5  # percentage of members of population to be mutated, rest will be replaced
+#in "The Hanabi Challenge" paper, total number of training samples, i.e. steps from the environment, is limited to 1e8
+pbt_steps = 4000
+pbt_popsize = os.cpu_count()
+pbt_mutprob = 0.25  # probability for a parameter to mutate
+pbt_mutstren = 0.5  # size of interval around a parameter's current value that new value is sampled from, relative to current value
+pbt_survivalrate = 0.75  # percentage of members of population to survive, rest will be discarded, replaced and mutated
 pbt_discardN = int(pbt_popsize * (1 - pbt_survivalrate))  # for convenience
 
 ### define default config for currently trained agent and decide which parameters can be mutated
 # so far using rl_env.make encapsulation of config when creating the environment
-def_params = {"game_type": 'Hanabi-Small',  # environment parameters
+def_params = {"game_type": 'Hanabi-Full',  # environment parameters
               "agent_type": 'Rainbow',
               "num_players": 2,
-              "training_steps": 100,  # schedule for training and eval step for particular set of hyperparameters
+              "training_steps": 5000,  # schedule for training and eval step for particular set of hyperparameters
               "num_iterations": 5,
-              "num_evaluation_games": 5,
+              "num_evaluation_games": 20,
               "rainbow_config": {
                   "num_atoms": 51,                  #number of bins that constitute support of distribution over Q-values
                   "vmax": 25.,                      #maximum and minimum value of the distribution
@@ -710,7 +715,7 @@ def_params = {"game_type": 'Hanabi-Small',  # environment parameters
               "w_disc":1,
               "dummy": 1,
               "pbt_mutables": ["dummy", "w_hint", "w_play", "w_disc"]  # list mutable parameters
-            } #todo: decide whether to also change replay memories params
+            }
 
 # generate parameterized explore fn
 explore = explore_template(pbt_mutprob, pbt_mutstren)
@@ -747,17 +752,18 @@ def main(unused_argv):
 
 FLAGS = Fake_flags()
 population, startstep, session = load_or_create_population(pbt_popsize, def_params)
+# writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
 ### pbt epoch loop
 for pbt_step in range(startstep, pbt_steps):
     # TODO: implement parallel training or train members sequentially and let tensorflow organize to use
     # resources optimally?
-    print(f"training pbt step {pbt_step}")
-    with ThreadPoolExecutor(max_workers=pbt_popsize) as executor:
-        [executor.submit(member.stepEval()) for member in population]
-    perfs = [member.statistics[-1]["eval_episode_returns"] for member in population]
+    print(f"{time.strftime('%a %d %b %H:%M:%S', time.gmtime())}: training pbt step {pbt_step}")
+    perfs = [member.stepEval() for member in population]
+
+    # with ThreadPoolExecutor(max_workers=pbt_popsize) as executor:
+    #     [executor.submit(member.stepEval()) for member in population]
+    # perfs = [member.statistics[-1]["eval_episode_returns"] for member in population]
     print(perfs)
-    ### checkpointing and bookkeeping
-    save_population(population)
     ### evolving members before next step
     die_idxs = list(np.argsort(perfs)[:pbt_discardN])  # idxs corresponding to worst 1-survRate members of population
     live_idxs = list(np.argsort(perfs)[pbt_discardN:])
@@ -771,7 +777,11 @@ for pbt_step in range(startstep, pbt_steps):
 
     for member in population: # count step and save current values of mutables
         member.pbt_step += 1
-### save and exit
+
+    ## checkpointing and bookkeeping
+    if True: #pbt_step != 0 and pbt_step % 10 == 0:
+        stats_df = save_population(population)
+# writer.close()
 stats_df = save_population(population)
 plot_statistics(stats_df, def_params)
 session.close()

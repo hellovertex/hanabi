@@ -31,7 +31,7 @@ import random
 
 import gin.tf
 import numpy as np
-import replay_memory
+from . import replay_memory
 import tensorflow as tf
 
 
@@ -279,8 +279,8 @@ class DQNAgent(object):
     sync_qt_ops = []
     trainables_online = tf.get_collection(
         tf.GraphKeys.TRAINABLE_VARIABLES, scope=tf.get_default_graph().get_name_scope() + '/Online')
-    print("trainable online")
-    print(trainables_online)
+    # print("trainable online")
+    # print(trainables_online)
     trainables_target = tf.get_collection(
         tf.GraphKeys.TRAINABLE_VARIABLES, scope=tf.get_default_graph().get_name_scope() + '/Target')
     for (w_online, w_target) in zip(trainables_online, trainables_target):
