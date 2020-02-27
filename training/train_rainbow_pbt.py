@@ -19,15 +19,20 @@ import numpy as np
 import sys
 print(sys.path)
 from hanabi_learning_environment.agents.rainbow.third_party.dopamine import logger
+from hanabi_learning_environment.agents.rainbow.third_party.dopamine import iteration_statistics
 import hanabi_learning_environment.agents.rainbow.run_experiment as run_experiment
 import hanabi_learning_environment.rl_env as rl_env
 
 import pickle
 import shutil
 import pandas as pd
+import time
 import matplotlib.pyplot as plt
+
 import matplotlib.cm as cm
 from matplotlib.lines import Line2D
+# import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import tensorflow as tf
 
@@ -51,6 +56,22 @@ class Fake_flags(object):
         self.logging_dir = 'logs'
         self.game_type = 'Hanabi-Full'
 
+def acc_dicts(list_of_dicts):
+    """Accumulate list of dicts into individual dict, assuming all have the same keys as first dictionary in list.
+
+    Args:
+        list_of_dicts: list of dictionaries
+
+    Returns: Dict with same keys, for each key mean of all corresponding entries.
+
+    """
+    final_dict = {}
+    for key in list_of_dicts[0].keys():
+        # print(key)
+        # print(list_of_dicts[0][key])
+        # print([elem[key] for elem in list_of_dicts])
+        final_dict[key] = np.mean([np.mean(elem[key]) for elem in list_of_dicts])
+    return final_dict
 
 #### PBT functionality
 class Member(object):
@@ -68,7 +89,8 @@ class Member(object):
         self.parent_idx = None  # save parent idx before every pbt step
         # Initialize the environment.
         self.environment = run_experiment.create_environment(game_type=params["game_type"],
-                                                             num_players=params["num_players"])
+                                                             num_players=params["num_players"],
+                                                             )
         # Initialize the Logger object.
         self.logger = logger.Logger(os.path.join(FLAGS.base_dir, FLAGS.logging_dir, self.id))
         # Initialize the observation stacker.
@@ -102,20 +124,66 @@ class Member(object):
                                                     self.ckpt_dir))
 
     def train(self):
-        for iteration in range(self.params["num_iterations"]):
-            stats_curr = run_experiment.run_one_iteration(self.agent, self.environment, self.obs_stacker,
-                                                          iteration,
-                                                          training_steps=self.params["training_steps"],
-                                                          evaluate_every_n=None)
+        """Perform a training phase of given number of training iterations.
+        self.params["training_steps"] corresponds to length of "glued-together" training episodes s.t. they have at
+        least training_steps number of game steps, not overall episodes!"""
+        start_time = time.time()
+
+        statistics = iteration_statistics.IterationStatistics()
+
+        # First perform the training phase, during which the agent learns.
+        self.agent.eval_mode = False
+        number_steps, sum_returns, num_episodes = (
+            run_experiment.run_one_phase(self.agent, self.environment, self.obs_stacker, self.params["training_steps"],
+                                         statistics, run_mode_str='train'))
+        #custom rewards, episode lengths and returns are directly added to statistics inside run_one_phase
+        time_delta = time.time() - start_time
+        tf.logging.info('Average training steps per second: %.2f',
+                        number_steps / time_delta)
+
+        average_return = sum_returns / num_episodes
+        tf.logging.info('Average per episode return: %.2f', average_return)
+        # statistics.append({'average_return': average_return,
+        #                    'eval_episode_lengths': -1, #since it's a training phase
+        #                    'eval_episode_returns': -1
+        #                   })
+
+        return statistics.data_lists
+
     def eval(self):
-        #TODO: IMPLEMENT PROPERLY
-        pass
-        # stats_curr = run_experiment.run_one_iteration(self.agent, self.environment, self.obs_stacker,
-        #                                               iteration=1,
-        #                                               training_steps=0,
-        #                                               evaluate_every_n=1,  # self.params["num_iterations"],
-        #                                               num_evaluation_games=self.params["num_evaluation_games"])
-        # return stats_curr["eval_episode_returns"][0]
+        """Perform an evaluation phase of given number of evaluation iterations."""
+        start_time = time.time()
+        statistics = iteration_statistics.IterationStatistics()
+        self.agent.eval_mode = True
+
+        e_lengths = []
+        e_returns = []
+        e_reward_info = {"environment_reward": 0,
+                       "hint_reward": 0,
+                       "play_reward": 0,
+                       "discard_reward": 0}
+        # Collect episode data for all games.
+        for _ in range(self.params["num_evaluation_games"]):
+            length, reward, info = run_experiment.run_one_episode(self.agent, self.environment, self.obs_stacker)
+            e_lengths.append(length)
+            e_returns.append(reward)
+            for key in info.keys():  # aggregate step's custom reward info
+                e_reward_info[key] += info[key]
+
+        #Agglomerate values and add to statistics
+        statistics.append({
+            'eval_episode_lengths': np.mean(e_lengths),
+            'eval_episode_returns': np.mean(e_returns),
+            **dict([(f"eval_episode_{key}s", e_reward_info[key]/self.params["num_evaluation_games"]) for key in
+                   e_reward_info.keys()])})
+
+        tf.logging.info('Average eval. episode length: %.2f  Return: %.2f', e_lengths, e_returns)
+
+        time_delta = time.time() - start_time
+        tf.logging.info(f'Evaluating took {time_delta} seconds')
+        return statistics.data_lists
+
+
     def stepEval(self):
         """For convenience: Training step followed by evaluation of learned model.
         A bit more convenient as checkpointing works cleaner for this at the moment, needs to be improved for
@@ -123,23 +191,47 @@ class Member(object):
 
         Returns: average performance over evaluation epochs"""
         # training and evaluation step (run_one_iteration does both with params suitably set)
+        train_stats = []
         for iteration in range(self.params["num_iterations"]):
-            stats_curr = run_experiment.run_one_iteration(self.agent, self.environment, self.obs_stacker,
-                                                          iteration,# + 1,  # to trick iteration % evaluate_every_n == 0
-                                                          training_steps=self.params["training_steps"],
-                                                          evaluate_every_n=1,#self.params["num_iterations"],
-                                                          # #TODO: is this really correct?
-                                                          num_evaluation_games=self.params["num_evaluation_games"])
+            train_stats.append(self.train())
             self.train_step += self.params["training_steps"]
-            self.stats_clean = {"train_return": stats_curr["average_return"][0],
-                                "eval_episode_length": stats_curr["eval_episode_lengths"][0],
-                                "eval_episode_return": stats_curr["eval_episode_returns"][0]}
-            self.update_statistics(stats_curr)
-        return stats_curr["eval_episode_returns"][0]
+            # stats_clean = {"train_return": stats_curr["average_return"][0],
+            #                "eval_episode_length": stats_curr["eval_episode_lengths"][0],
+            #                "eval_episode_return": stats_curr["eval_episode_returns"][0]}
+        # for iteration in range(self.params["num_evaluation_games"]):
+        eval_stats = self.eval()
+            # stats_clean = {"train_return": stats_curr["average_return"][0],
+            #                "eval_episode_length": stats_curr["eval_episode_lengths"][0],
+            #                "eval_episode_return": stats_curr["eval_episode_returns"][0]}
+
+        self.update_statistics(dict(**acc_dicts(train_stats), **eval_stats))
+        return self.statistics[-1]["eval_episode_returns"]
+
+    # def stepEval(self):
+    #     """For convenience: Training step followed by evaluation of learned model.
+    #     A bit more convenient as checkpointing works cleaner for this at the moment, needs to be improved for
+    #     individual train() and eval() functions.
+    #
+    #     Returns: average performance over evaluation epochs"""
+    #     # training and evaluation step (run_one_iteration does both with params suitably set)
+    #     for iteration in range(self.params["num_iterations"]):
+    #         stats_curr = run_experiment.run_one_iteration(self.agent, self.environment, self.obs_stacker,
+    #                                                       iteration,# + 1,  # to trick iteration % evaluate_every_n == 0
+    #                                                       training_steps=self.params["training_steps"],
+    #                                                       evaluate_every_n=1,#self.params["num_iterations"],
+    #                                                       # #TODO: is this really correct?
+    #                                                       num_evaluation_games=self.params["num_evaluation_games"])
+    #         self.train_step += self.params["training_steps"]
+    #         stats_clean = {"train_return": stats_curr["average_return"][0],
+    #                             "eval_episode_length": stats_curr["eval_episode_lengths"][0],
+    #                             "eval_episode_return": stats_curr["eval_episode_returns"][0]}
+    #         self.update_statistics(stats_clean)
+    #     return stats_curr["eval_episode_returns"][0]
 
     def change_param(self, param, value):
         self.params[param] = value #overwrite value
-        pass #TODO: IMPLEMENT
+        if param in ["w_hint", "w_play", "w_disc"]: #these need to be set inside environment to become effective
+            setattr(self.environment, param, value)
 
     # def change_param(self, param, value):
     #     """Applies changes in configuration of Rainbow agent.
@@ -193,7 +285,7 @@ class Member(object):
         Agent can be loaded by calling .load_ckpt() after initialization.
         """
         #save parameters, parent_idx and statistics "manually"
-        pickle.dump((self.params,self.parent_idx,self.statistics,self.pbt_step),
+        pickle.dump((self.params,self.parent_idx,self.statistics,self.pbt_step, self.train_step),
                     open(os.path.join(self.ckpt_dir, f"memberinfo.{self.pbt_step}"), "wb"))
         #save agent using agent's checkpointer
         run_experiment.checkpoint_experiment(self.checkpointer, self.agent, self.logger,
@@ -213,7 +305,7 @@ class Member(object):
         The agent is already loaded during initalization provided the correct ckpt_dir. Same for pbt_step.
         """
         try:
-            (self.params, self.parent_idx,self.statistics, self.pbt_step) = pickle.load(
+            (self.params, self.parent_idx,self.statistics, self.pbt_step, self.train_step) = pickle.load(
                 open(os.path.join(self.ckpt_dir, f'memberinfo.{self.pbt_step-1}'), "rb")) #TODO check correct global logging
             return self.pbt_step
         except FileNotFoundError:
@@ -247,6 +339,10 @@ class Member(object):
         """append current training statistics and values of mutables together with some overhead information to
         self.statistics
         """
+        #clean up: lists with single entries to single entry in dict
+        for key, value in stats_curr.items():
+            if type(value) == list and len(value)==1:
+                stats_curr[key] = value[0]
         #append overhead business  to statistics so every entry in statistics is completely interpretable by itself
         stats_curr["id"] = self.id
         stats_curr["parent_idx"] = self.parent_idx
@@ -295,12 +391,17 @@ def load_or_create_population(pbt_popsize, def_params):
     #initializing the agents creates an empty ckpt directory, so we have to check before whether checkpoint dir exists
     ckpt_dir_exists = os.path.isdir(os.path.join(FLAGS.base_dir, FLAGS.checkpoint_dir))
 
-    # set up tensorflow session and graph
+    # set up tensorflow session and graph, tensorflow boilerplate
     tf.reset_default_graph()
-    session = tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))  # more tensorflow boilerplate
+    session = tf.Session('', config=tf.ConfigProto(allow_soft_placement=True))#, inter_op_parallelism_threads=4))
 
     #initialize members in population, init_sess_cars_ckpting initializes all tensorflow-related stuff
-    population = [Member(def_params.copy(), i, 'empty') for i in range(pbt_popsize)]
+    population = []
+    for i in range(pbt_popsize):
+        #"personalize" config s.t. member's tf graph gets assigned to "personal" core
+        own_params = def_params.copy()
+        # own_params["rainbow_config"]["tf_device"] =  f'/cpu:{i}'
+        population.append(Member(own_params, i, 'empty'))
     for member in population:
         member.init_sess_vars_ckpting(session)
 
@@ -355,7 +456,7 @@ def plot_statistics(stats, def_params=None):
     Args:
         stats_ref: either pandas DataFrame or filepath to pickle file
     """
-    if os.path.isfile(stats):
+    if type(stats) == 'str' and os.path.isfile(stats):
         (stats, def_params) = pickle.load(open(stats, 'rb'))
     if not type(stats) == pd.DataFrame:
         raise TypeError("Statistics are no Pandas DataFrame")
@@ -387,7 +488,7 @@ def plot_statistics(stats, def_params=None):
         id_df = stats[stats.id==id] #pick subset of data
         for mutable, fillstyle in zip(def_params["pbt_mutables"],Line2D.fillStyles):
             ax.plot(id_df.train_step, id_df[mutable], color=f'C{i}', label=f'member {id}: {mutable}',
-                    fill_style = fillstyle, **marker_style)
+                    fillstyle = fillstyle, **marker_style)
     ax.legend()
     ax.set_ylabel("Value of mutable variables")
     ax.set_xlabel("Train Step")
@@ -574,10 +675,10 @@ def create_and_test_population(unused_argv):
     session.close()
 
 #### PBT hyperparameters and default model params
-pbt_steps = 20
-pbt_popsize = 3
-pbt_mutprob = 1  # probability for a parameter to mutate
-pbt_mutstren = 0.2  # size of interval around a parameter's value that new value is sampled from
+pbt_steps = 10
+pbt_popsize = os.cpu_count() -1
+pbt_mutprob = 0.5  # probability for a parameter to mutate
+pbt_mutstren = 0.1  # size of interval around a parameter's value that new value is sampled from
 pbt_survivalrate = 0.5  # percentage of members of population to be mutated, rest will be replaced
 pbt_discardN = int(pbt_popsize * (1 - pbt_survivalrate))  # for convenience
 
@@ -587,8 +688,8 @@ def_params = {"game_type": 'Hanabi-Small',  # environment parameters
               "agent_type": 'Rainbow',
               "num_players": 2,
               "training_steps": 100,  # schedule for training and eval step for particular set of hyperparameters
-              "num_iterations": 3,
-              "num_evaluation_games": 20,
+              "num_iterations": 5,
+              "num_evaluation_games": 5,
               "rainbow_config": {
                   "num_atoms": 51,                  #number of bins that constitute support of distribution over Q-values
                   "vmax": 25.,                      #maximum and minimum value of the distribution
@@ -604,8 +705,11 @@ def_params = {"game_type": 'Hanabi-Small',  # environment parameters
                   "learning_rate": 0.000025,
                   "optimizer_epsilon": 0.00003125,
                   "tf_device": '/cpu:*'},
+              "w_hint":1,
+              "w_play":1,
+              "w_disc":1,
               "dummy": 1,
-              "pbt_mutables": ["dummy"]  # list mutable parameters
+              "pbt_mutables": ["dummy", "w_hint", "w_play", "w_disc"]  # list mutable parameters
             } #todo: decide whether to also change replay memories params
 
 # generate parameterized explore fn
@@ -647,7 +751,11 @@ population, startstep, session = load_or_create_population(pbt_popsize, def_para
 for pbt_step in range(startstep, pbt_steps):
     # TODO: implement parallel training or train members sequentially and let tensorflow organize to use
     # resources optimally?
-    perfs = [member.stepEval() for member in population]
+    print(f"training pbt step {pbt_step}")
+    with ThreadPoolExecutor(max_workers=pbt_popsize) as executor:
+        [executor.submit(member.stepEval()) for member in population]
+    perfs = [member.statistics[-1]["eval_episode_returns"] for member in population]
+    print(perfs)
     ### checkpointing and bookkeeping
     save_population(population)
     ### evolving members before next step
@@ -675,11 +783,10 @@ session.close()
 #     # app.run(fuck_up)
 #     app.run(main)
 #
-#     #todo: logging properly, plotting progress
 #     #todo: run "dry", estimate time
 #         #todo: parallelize code :'( -> really necessary though? let's check how tf arranges on the large machines
 #     #todo: go through params to see whether they should be changed in the first place, write down
 #         #todo: change only optimizer?
 #         #todo: what about just no Adam optimizer?
-#     #todo: custom rewards
+#     #todo: re-work custom rewards
 #     #todo: why does graph still grow?

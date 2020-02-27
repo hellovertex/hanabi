@@ -33,7 +33,8 @@ from third_party.dopamine import checkpointer
 from third_party.dopamine import iteration_statistics
 import dqn_agent
 import gin.tf
-import rl_env
+# import rl_env
+import hanabi_learning_environment.rl_env_custom as rl_env
 import numpy as np
 import rainbow_agent
 import tensorflow as tf
@@ -112,7 +113,7 @@ def load_gin_configs(gin_files, gin_bindings):
 
 
 @gin.configurable
-def create_environment(game_type='Hanabi-Full', num_players=2):
+def create_environment(game_type='Hanabi-Full', num_players=2, w_hint=1, w_play=1, w_disc=1):
   """Creates the Hanabi environment.
 
   Args:
@@ -120,12 +121,14 @@ def create_environment(game_type='Hanabi-Full', num_players=2):
       Hanabi-Full: Regular game.
       Hanabi-Small: The small version of Hanabi, with 2 cards and 2 colours.
     num_players: Int, number of players to play this game.
+     w_hint, w_play, w_disc: Weights for hint, play and discard rewards individually
 
   Returns:
     A Hanabi environment.
   """
   return rl_env.make(
-      environment_name=game_type, num_players=num_players, pyhanabi_path=None)
+      environment_name=game_type, num_players=num_players, w_hint=w_hint, w_play=w_hint, w_disc=w_hint,
+      pyhanabi_path=None)
 
 
 @gin.configurable
@@ -164,13 +167,15 @@ def create_agent(environment, obs_stacker, agent_type='DQN', tf_session=None, co
     return dqn_agent.DQNAgent(observation_size=obs_stacker.observation_size(),
                               num_actions=environment.num_moves(),
                               num_players=environment.players,
-                              tf_session=tf_session)
+                              tf_session=tf_session,
+                              **config)
   elif agent_type == 'Rainbow':
     return rainbow_agent.RainbowAgent(
         observation_size=obs_stacker.observation_size(),
         num_actions=environment.num_moves(),
         num_players=environment.players,
-        tf_session=tf_session)
+        tf_session=tf_session,
+        **config)
   else:
     raise ValueError('Expected valid agent_type, got {}'.format(agent_type))
 
@@ -302,12 +307,18 @@ def run_one_episode(agent, environment, obs_stacker):
   step_number = 0
 
   has_played = {current_player}
+  reward_info = {"environment_reward": 0,
+                 "hint_reward": 0,
+                 "play_reward": 0,
+                 "discard_reward": 0}
 
   # Keep track of per-player reward.
   reward_since_last_action = np.zeros(environment.players)
 
   while not is_done:
-    observations, reward, is_done, _ = environment.step(action.item())
+    observations, reward, is_done, info = environment.step(action.item(), agent.eval_mode)
+    for key in info.keys(): #aggregate step's custom reward info
+        reward_info[key] += info[key]
 
     modified_reward = max(reward, 0) if LENIENT_SCORE else reward
     total_reward += modified_reward
@@ -335,7 +346,7 @@ def run_one_episode(agent, environment, obs_stacker):
   agent.end_episode(reward_since_last_action)
 
   tf.logging.debug('EPISODE: %d %g', step_number, total_reward)
-  return step_number, total_reward
+  return step_number, total_reward, reward_info
 
 
 def run_one_phase(agent, environment, obs_stacker, min_steps, statistics,
@@ -360,12 +371,12 @@ def run_one_phase(agent, environment, obs_stacker, min_steps, statistics,
   sum_returns = 0.
 
   while step_count < min_steps:
-    episode_length, episode_return = run_one_episode(agent, environment,
-                                                     obs_stacker)
+    episode_length, episode_return, episode_rewardinfo = run_one_episode(agent, environment, obs_stacker)
+
     statistics.append({
         '{}_episode_lengths'.format(run_mode_str): episode_length,
-        '{}_episode_returns'.format(run_mode_str): episode_return
-    })
+        '{}_episode_returns'.format(run_mode_str): episode_return,
+        **dict(zip([f"{run_mode_str}_episode_{key}" for key in episode_rewardinfo.keys()],episode_rewardinfo.values()))})
 
     step_count += episode_length
     sum_returns += episode_return
