@@ -11,7 +11,7 @@ from __future__ import print_function
 import os
 
 import sys
-sys.path.insert(0,"/home/ma/uni/hanabi/hanabi")
+# sys.path.insert(0,os.path.expanduser("~/hanabi"))
 
 from absl import app
 from absl import flags
@@ -383,8 +383,8 @@ def plot_statistics(stats, def_params=None):
 
 #### PBT hyperparameters and default model params
 #in "The Hanabi Challenge" paper, total number of training samples, i.e. steps from the environment, is limited to 1e8
-pbt_steps = 5 # 4000
-pbt_popsize = 1
+pbt_steps = 100 # 4000
+pbt_popsize = 16
 pbt_mutprob = 0.25  # probability for a parameter to mutate
 pbt_mutstren = 0.5  # size of interval around a parameter's current value that new value is sampled from, relative to current value
 pbt_survivalrate = 0.75  # percentage of members of population to survive, rest will be discarded, replaced and mutated
@@ -393,7 +393,7 @@ pbt_discardN = int(pbt_popsize * (1 - pbt_survivalrate))  # for convenience
 
 ### define default config for currently trained agent and decide which parameters can be mutated
 # so far using rl_env.make encapsulation of config when creating the environment
-def_params = {"game_type": 'Hanabi-Full',  # environment parameters
+def_params = {"game_type": 'Hanabi-Small',  # environment parameters
               "agent_type": 'Rainbow',
               "num_players": 2,
               "training_steps": 500,  # schedule for training and eval step for particular set of hyperparameters
@@ -419,8 +419,7 @@ def_params = {"game_type": 'Hanabi-Full',  # environment parameters
               "w_hint":1,
               "w_play":1,
               "w_disc":1,
-              "dummy": 1,
-              "pbt_mutables": ["dummy", "w_hint", "w_play", "w_disc"]  # list mutable parameters
+              "pbt_mutables": ["w_hint", "w_play", "w_disc"]  # list mutable parameters
             }
 
 #### PBT runner
@@ -463,8 +462,7 @@ class Fake_flags(object):
     def __init__(self):
         self.base_dir = str(os.path.dirname(__file__)) + '/trained/PBTRainbow'
         self.checkpoint_dir = 'checkpoints'
-        self.logging_dir = 'logs'
-        self.game_type = 'Hanabi-Full'
+        self.logging_dir = 'training/logs'
 FLAGS = Fake_flags()
 
 stats_df, stats = main("hello")
