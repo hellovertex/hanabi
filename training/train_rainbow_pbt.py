@@ -17,7 +17,6 @@ from absl import flags
 import numpy as np
 
 import sys
-print(sys.path)
 from hanabi_learning_environment.agents.rainbow.third_party.dopamine import logger
 from hanabi_learning_environment.agents.rainbow.third_party.dopamine import iteration_statistics
 # import hanabi_learning_environment.agents.rainbow
@@ -32,7 +31,6 @@ import matplotlib.pyplot as plt
 
 import matplotlib.cm as cm
 from matplotlib.lines import Line2D
-# import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import tensorflow as tf
@@ -430,7 +428,7 @@ def save_population(population):
         print(f"saving member {member.id}")
         member.save_ckpt()
     stats_df = dump_statistics(population)
-    return stats_df
+    return stats_df 
 
 def dump_statistics(population):
     """Extract statistics from all members and save as dataframe"""
@@ -460,7 +458,7 @@ def plot_statistics(stats, def_params=None):
     Args:
         stats_ref: either pandas DataFrame or filepath to pickle file
     """
-    if type(stats) == 'str' and os.path.isfile(stats):
+    if type(stats) == str and os.path.isfile(stats):
         (stats, def_params) = pickle.load(open(stats, 'rb'))
     if not type(stats) == pd.DataFrame:
         raise TypeError("Statistics are no Pandas DataFrame")
@@ -508,6 +506,19 @@ def plot_statistics(stats, def_params=None):
                 f'{winning_model_id}: {measure}', fillstyle = fillstyle, **marker_style)
     ax.legend()
     ax.set_ylabel("Performance measure")
+    ax.set_xlabel("Train Step")
+
+    #handpicked models' mutables over time
+    fig, ax = plt.subplots()
+    ax.set_title("Selected members' mutable variable values")
+    good_ids = ['011','015']
+    for i, id in enumerate(good_ids): #iterate over members
+        id_df = stats[stats.id==id] #pick subset of data
+        for mutable, fillstyle in zip(def_params["pbt_mutables"],Line2D.fillStyles):
+            ax.plot(id_df.train_step, id_df[mutable], color=f'C{i}', label=f'member {id}: {mutable}',
+                    fillstyle = fillstyle, **marker_style)
+    ax.legend()
+    ax.set_ylabel("Value of mutable variables")
     ax.set_xlabel("Train Step")
 
 
@@ -678,6 +689,101 @@ def create_and_test_population(unused_argv):
     #graph can be displayed with this terminal command: tensorboard --logdir="./test_session_graph"
     session.close()
 
+def time_estimates(unused_argv):
+    """Plot per-member rough time estimates of some core aspects of pbt training.
+
+    Parcticularly used to monitor how time scales with size of training steps and iterations, population size.
+    Also tries out several parallelization libraries.
+
+    Args:
+        unused_argv:
+
+    Returns:
+
+    """
+    n_reps = 10
+    for game_type in ["Hanabi-Full", "Hanabi-Small"]:
+        print(f"printing {n_reps}-repetition time estimates per member for game mode {game_type}")
+        def_params["game_type"] = game_type
+        a = time.time()
+        population, startstep, session = load_or_create_population(pbt_popsize, def_params)
+        # writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
+        b = time.time()
+        print(f"{b-a}s to create population")
+        #throw away first 5 train steps, they are always very short, probably because replay buffer is not filled
+        # completely
+        for _ in range(5):
+            perfs = [member.stepEval() for member in population]
+
+        c = time.time()
+        for rep in range(n_reps):
+            c_1 = time.time()
+            perfs = [member.stepEval() for member in population]
+            c_2 = time.time()
+            print(f"{(c_2-c_1)/pbt_popsize}s per member for #{rep} sequential iteration")
+        d = time.time()
+        print(f"{(d - c)/pbt_popsize/n_reps}s average for sequential execution of one pbt step")
+
+        #concurrent.futures
+        for rep in range(n_reps):
+            d_1 = time.time()
+            with ThreadPoolExecutor(max_workers=pbt_popsize) as executor:
+                [executor.submit(member.stepEval()) for member in population]
+            d_2 = time.time()
+            print(f"{(d_2-d_1)/pbt_popsize}s per member for #{rep} parallel iteration")
+        e = time.time()
+        print(f"{(e - d)/pbt_popsize/n_reps}s average for concurrent.futures parallel execution of one pbt step")
+        #using python multiprocessing module doesn't work because tensorflow objects can't be pickled...
+
+        m0 = population[0]
+        m0.train()
+        f = time.time()
+        print(f"{f - e}s for single member train step, {m0.params['training_steps']} train steps, " \
+              f"{m0.params['num_iterations']} iterations.")
+        m0.params["training_steps"] = 1000
+        m0.train()
+        g = time.time()
+        print(f"{g - f}s for single member train step, {m0.params['training_steps']} train steps, " \
+              f"{m0.params['num_iterations']} iterations.")
+        m0.params["training_steps"] = 5000
+        m0.train()
+        h = time.time()
+        print(f"{h - g}s for single member train step, {m0.params['training_steps']} train steps, " \
+              f"{m0.params['num_iterations']} iterations.")
+        m0.params["training_steps"] = 10000
+        m0.train()
+        i = time.time()
+        print(f"{i - h}s for single member train step, {m0.params['training_steps']} train steps, " \
+              f"{m0.params['num_iterations']} iterations.")
+
+        m0.eval()
+        j = time.time()
+        print(f"{j - i}s for single member evaluation step, {m0.params['num_evaluation_games']} eval games")
+        if game_type == "Hanabi-Small":
+            die_idxs = list(np.argsort(perfs)[:pbt_discardN])  # idxs corresponding to worst 1-survRate members of pop
+            live_idxs = list(np.argsort(perfs)[pbt_discardN:])
+            for idx, member in enumerate(population):
+                if idx in die_idxs:
+                    k_1 = time.time()
+                    exploit(member, [population[idx] for idx in live_idxs])  # overwrite with better performing mem in pop
+                    k_2 = time.time()
+                    explore(member)
+                    k_3 = time.time()
+                    print(f"mem {member.id} took {k_2 - k_1}s to exploit and {k_3 - k_2}s to explore ")
+                else: #else just note that member survived this step and is its own parent
+                    member.parent_idx = idx  # survived this step
+
+            for member in population: # count step and save current values of mutables
+                member.pbt_step += 1
+            l = time.time()
+            ## checkpointing and bookkeeping
+            if True: #pbt_step != 0 and pbt_step % 10 == 0:
+                stats_df = save_population(population)
+            m = time.time()
+            print(f"saving population took {m - l}s")
+        session.close()
+
+
 #### PBT hyperparameters and default model params
 #in "The Hanabi Challenge" paper, total number of training samples, i.e. steps from the environment, is limited to 1e8
 pbt_steps = 4000
@@ -692,8 +798,8 @@ pbt_discardN = int(pbt_popsize * (1 - pbt_survivalrate))  # for convenience
 def_params = {"game_type": 'Hanabi-Full',  # environment parameters
               "agent_type": 'Rainbow',
               "num_players": 2,
-              "training_steps": 5000,  # schedule for training and eval step for particular set of hyperparameters
-              "num_iterations": 5,
+              "training_steps": 500,  # schedule for training and eval step for particular set of hyperparameters
+              "num_iterations": 1,
               "num_evaluation_games": 20,
               "rainbow_config": {
                   "num_atoms": 51,                  #number of bins that constitute support of distribution over Q-values
@@ -725,66 +831,118 @@ def main(unused_argv):
     """ Runs the self-play PBT training. """
     ### load or create population
     population, startstep, session = load_or_create_population(pbt_popsize, def_params)
-
+    # writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
     ### pbt epoch loop
     for pbt_step in range(startstep, pbt_steps):
-        #TODO: implement parallel training or train members sequentially and let tensorflow organize to use
+        # TODO: implement parallel training or train members sequentially and let tensorflow organize to use
         # resources optimally?
+        print(f"{time.strftime('%a %d %b %H:%M:%S', time.gmtime())}: training pbt step {pbt_step}")
         perfs = [member.stepEval() for member in population]
-        ### checkpointing and bookkeeping
-        save_population(population)
+
+        # with ThreadPoolExecutor(max_workers=pbt_popsize) as executor:
+        #     [executor.submit(member.stepEval()) for member in population]
+        # perfs = [member.statistics[-1]["eval_episode_returns"] for member in population]
+        print(perfs)
         ### evolving members before next step
-        die_idxs = list(np.argsort(perfs)[:pbt_discardN]) #idxs corresponding to worst 1-survRate members of population
+        die_idxs = list(
+            np.argsort(perfs)[:pbt_discardN])  # idxs corresponding to worst 1-survRate members of population
         live_idxs = list(np.argsort(perfs)[pbt_discardN:])
         for idx, member in enumerate(population):
             if idx in die_idxs:
-                exploit(member, [population[idx] for idx in live_idxs]) #overwrite with better performing member in
+                exploit(member, [population[idx] for idx in live_idxs])  # overwrite with better performing member in
                 # population
                 explore(member)
-            else: #else just note that member survived this step and is its own parent
-                member.parent_idx = idx #survived this step
-            #count step and save current values of mutables
+            else:  # else just note that member survived this step and is its own parent
+                member.parent_idx = idx  # survived this step
+
+        for member in population:  # count step and save current values of mutables
             member.pbt_step += 1
-    ### save and exit
-    save_population(population)
+
+        ## checkpointing and bookkeeping
+        if True:  # pbt_step != 0 and pbt_step % 10 == 0:
+            stats_df = save_population(population)
+    # writer.close()
+    stats_df = save_population(population)
+    plot_statistics(stats_df, def_params)
     session.close()
 
 
 FLAGS = Fake_flags()
-population, startstep, session = load_or_create_population(pbt_popsize, def_params)
-# writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
-### pbt epoch loop
-for pbt_step in range(startstep, pbt_steps):
-    # TODO: implement parallel training or train members sequentially and let tensorflow organize to use
-    # resources optimally?
-    print(f"{time.strftime('%a %d %b %H:%M:%S', time.gmtime())}: training pbt step {pbt_step}")
-    perfs = [member.stepEval() for member in population]
-
-    # with ThreadPoolExecutor(max_workers=pbt_popsize) as executor:
-    #     [executor.submit(member.stepEval()) for member in population]
-    # perfs = [member.statistics[-1]["eval_episode_returns"] for member in population]
-    print(perfs)
-    ### evolving members before next step
-    die_idxs = list(np.argsort(perfs)[:pbt_discardN])  # idxs corresponding to worst 1-survRate members of population
-    live_idxs = list(np.argsort(perfs)[pbt_discardN:])
-    for idx, member in enumerate(population):
-        if idx in die_idxs:
-            exploit(member, [population[idx] for idx in live_idxs])  # overwrite with better performing member in
-            # population
-            explore(member)
-        else: #else just note that member survived this step and is its own parent
-            member.parent_idx = idx  # survived this step
-
-    for member in population: # count step and save current values of mutables
-        member.pbt_step += 1
-
-    ## checkpointing and bookkeeping
-    if True: #pbt_step != 0 and pbt_step % 10 == 0:
-        stats_df = save_population(population)
-# writer.close()
-stats_df = save_population(population)
-plot_statistics(stats_df, def_params)
-session.close()
+time_estimates(1)
+# a = time.time()
+# population, startstep, session = load_or_create_population(pbt_popsize, def_params)
+# # writer = tf.summary.FileWriter('test_reload_agent_graph', session.graph) #so graph can be visualized
+# b = time.time()
+# print(f"{b-a}s to create population")
+# ### pbt epoch loop
+# for pbt_step in range(startstep, pbt_steps):
+#     # TODO: implement parallel training or train members sequentially and let tensorflow organize to use
+#     # resources optimally?
+#     print(f"{time.strftime('%a %d %b %H:%M:%S', time.gmtime())}: training pbt step {pbt_step}")
+#     c = time.time()
+#     perfs = [member.stepEval() for member in population]
+#     d = time.time()
+#     print(f"{d-c}s for sequential execution of one pbt step")
+#     with ThreadPoolExecutor(max_workers=pbt_popsize) as executor:
+#         [executor.submit(member.stepEval()) for member in population]
+#     e = time.time()
+#     print(f"{e-d}s for parallel execution of one pbt step")
+#
+#     m0 = population[0]
+#     m0.train()
+#     f = time.time()
+#     print(f"{f-e}s for single member train step, {m0.params['training_steps']} train steps, " \
+#                                                     f"{m0.params['num_iterations']} iterations.")
+#     m0.params["training_steps"] = 1000
+#     m0.train()
+#     g = time.time()
+#     print(f"{g-f}s for single member train step, {m0.params['training_steps']} train steps, " \
+#                                                     f"{m0.params['num_iterations']} iterations.")
+#     m0.params["training_steps"] = 5000
+#     m0.train()
+#     h = time.time()
+#     print(f"{h-g}s for single member train step, {m0.params['training_steps']} train steps, " \
+#                                                     f"{m0.params['num_iterations']} iterations.")
+#     m0.params["training_steps"] = 500
+#     m0.params["num_iterations"] = 5
+#     m0.train()
+#     i = time.time()
+#     print(f"{i-h}s for single member train step, {m0.params['training_steps']} train steps, " \
+#                                                     f"{m0.params['num_iterations']} iterations.")
+#     m0.params["num_iterations"] = 20
+#     m0.train()
+#     j = time.time()
+#     print(f"{j-i}s for single member train step, {m0.params['training_steps']} train steps, " \
+#                                                     f"{m0.params['num_iterations']} iterations.")
+#     m0.eval()
+#     k = time.time()
+#     print(f"{k-j}s for single member evaluation step, {m0.params['num_evaluation_games']} eval games")
+#
+#
+#
+#     perfs = [member.statistics[-1]["eval_episode_returns"] for member in population]
+#     print(perfs)
+#     ### evolving members before next step
+#     die_idxs = list(np.argsort(perfs)[:pbt_discardN])  # idxs corresponding to worst 1-survRate members of population
+#     live_idxs = list(np.argsort(perfs)[pbt_discardN:])
+#     for idx, member in enumerate(population):
+#         if idx in die_idxs:
+#             exploit(member, [population[idx] for idx in live_idxs])  # overwrite with better performing member in
+#             # population
+#             explore(member)
+#         else: #else just note that member survived this step and is its own parent
+#             member.parent_idx = idx  # survived this step
+#
+#     for member in population: # count step and save current values of mutables
+#         member.pbt_step += 1
+#
+#     ## checkpointing and bookkeeping
+#     if True: #pbt_step != 0 and pbt_step % 10 == 0:
+#         stats_df = save_population(population)
+# # writer.close()
+# stats_df = save_population(population)
+# plot_statistics(stats_df, def_params)
+# session.close()
 
 
 # if __name__ == '__main__':
@@ -795,6 +953,7 @@ session.close()
 #
 #     #todo: run "dry", estimate time
 #         #todo: parallelize code :'( -> really necessary though? let's check how tf arranges on the large machines
+#     #todo: visualize custom rewards
 #     #todo: go through params to see whether they should be changed in the first place, write down
 #         #todo: change only optimizer?
 #         #todo: what about just no Adam optimizer?
