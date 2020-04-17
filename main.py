@@ -384,7 +384,7 @@ def plot_statistics(stats, def_params=None):
 #### PBT hyperparameters and default model params
 #in "The Hanabi Challenge" paper, total number of training samples, i.e. steps from the environment, is limited to 1e8
 pbt_steps = 100 # 4000
-pbt_popsize = 16
+pbt_popsize = 2
 pbt_mutprob = 0.25  # probability for a parameter to mutate
 pbt_mutstren = 0.5  # size of interval around a parameter's current value that new value is sampled from, relative to current value
 pbt_survivalrate = 0.75  # percentage of members of population to survive, rest will be discarded, replaced and mutated
