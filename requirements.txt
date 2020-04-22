@@ -24,4 +24,5 @@ tf-estimator-nightly==1.14.0.dev2019070401
 tf-nightly==1.15.0.dev20190704         
 websocket==0.2.1               
 websocket-client==0.56.0
-gast==0.2.2                        
+gast==0.2.2
+jupyter==4.6.3

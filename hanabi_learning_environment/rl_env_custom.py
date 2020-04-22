@@ -408,9 +408,9 @@ class HanabiEnv(Environment):
                 info["hint_reward"] = hint_reward
                 # print(f"hint reward: {hint_reward}")
             if action.type() == PLAY:
-                #TODO: what's with the -50 play reward???
+                #TODO: what's with the -50 play reward??? Set it to -10, but not properly balanced.
                 play_reward = self.reward_metrics.maybe_change_play_reward(action, self.state) * self.w_play
-                custom_reward += play_reward * self.w_play
+                custom_reward += play_reward
                 info["play_reward"] = play_reward
                 # print(f"play reward: {play_reward}")
             if action.type() == DISCARD:

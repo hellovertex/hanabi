@@ -82,7 +82,6 @@ class RewardMetrics(object):
             self.history.append((action, vectorized_obs))
 
     def maybe_change_hint_reward(self, action, state):
-
         assert action.type() in [REVEAL_COLOR, REVEAL_RANK]
 
         reward = 0
@@ -222,10 +221,10 @@ class RewardMetrics(object):
 
         if fireworks[card_discarded.color()] > card_discarded.rank():
             reward=0.5
-        elif card_discarded.rank()==4:
+        elif card_discarded.rank()==4: #todo: irrelevant for Hanabi-small, should it be adapted?
             reward=-1
         elif card_is_last_copy(card_discarded, state.discard_pile()):
-            reward= -20 * float(2 / (card_discarded.rank() + 1))
+            reward= -float(10 / (card_discarded.rank() + 1))
         else:
             reward=-float(1/ (card_discarded.rank() + 1))
         return reward

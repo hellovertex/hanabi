@@ -152,7 +152,7 @@ class Member(object):
         # training and evaluation step (run_one_iteration does both with params suitably set)
         train_stats = []
         for _ in range(self.params["num_iterations"]):
-            train_stats.append(self.train()) #todo: make all function calls remote?
+            train_stats.append(self.train())
             self.train_step += self.params["training_steps"]
         eval_stat = self.eval()
         self.pbt_step += 1
@@ -238,7 +238,7 @@ class Member(object):
 
     def get_state(self):
         # self.id and self.ckpt_dir  self.environment, self.logger and self.obs_stacker remain the same
-        var_dict = {[(var.name, self.agent._sess.run(var).copy()) for var in self.tf.global_variables()]}
+        var_dict = dict([(var.name, self.agent._sess.run(var).copy()) for var in self.tf.global_variables()])
         return(var_dict, self.params, self.train_step)
 
     def set_state(self, var_dict, params, train_step):
@@ -251,25 +251,28 @@ class Member(object):
         """Mutates parameters in-place according to PBT experiments mutation hyperparameters."""
         for param in self.params["pbt_mutables"]:
             if np.random.uniform(0, 1) < self.params["mutprob"]:
-                print(f"mutating {param} of member {self.id}")
+                # print(f"{time.strftime('%a %d %b %H:%M:%S', time.time())}: mutating {param} of member {self.id}")
                 # value = member.params["rainbow_config"][param] #modifies in-place but we are going to overwrite it
                 value = self.params[param]
                 value += value * np.random.uniform(-1, 1) * self.params["mutstren"]
                 if param == "gamma":
                     value = np.clip(value, 0, 1)
-            self.change_param(param, value) #self change_param encapsulates information how to effectively change
-            # a parameter
+                self.change_param(param, value) #self change_param encapsulates information how to effectively change
+                # a parameter
 
 
 ### PBT evolutionary functionality
-def exploit(member, good_population):
+def exploit_and_explore(member, good_population):
     """Overwrites hyperparams and parameters of agent in member with a randomly chosen member of good_population"""
     newMember = good_population[np.random.choice(range(len(good_population)))]
-    print(f"overwriting member {member.id} with member {newMember.id}")
+    #print(f"overwriting member {member.id} with member {newMember.id}")
     #get weights from newMember
-    weights = newMember.get_weights()
+    newState = ray.get(newMember.get_state.remote())
     #write into member
-    member.set_weights(weights)
+    ray.get(member.set_state.remote(*newState))
+    # pbt explore step
+    ray.get(member.mutate.remote())
+
 
 #### various convenience and checkpointing fns
 def load_or_create_population(pbt_popsize, def_params):
@@ -282,7 +285,7 @@ def load_or_create_population(pbt_popsize, def_params):
     for i in range(pbt_popsize):
         population.append(Member.remote(def_params, i)) #.remote creates an actor instance of Member
 
-    if False: #ckpt_dir_exists: #load parameters and parameters of each member from checkpoint
+    if ckpt_dir_exists: #load parameters and parameters of each member from checkpoint
         ckpt_steps = set(ray.get([m.load_ckpt.remote() for m in population]))
         if len(ckpt_steps) > 1:
             raise Exception(f"inconsistent member checkpoints found: {ckpt_steps}")
@@ -383,11 +386,12 @@ def plot_statistics(stats, def_params=None):
 
 #### PBT hyperparameters and default model params
 #in "The Hanabi Challenge" paper, total number of training samples, i.e. steps from the environment, is limited to 1e8
-pbt_steps = 100 # 4000
-pbt_popsize = 2
+pbt_steps = 1000 # 4000
+pbt_popsize = 10
 pbt_mutprob = 0.25  # probability for a parameter to mutate
-pbt_mutstren = 0.5  # size of interval around a parameter's current value that new value is sampled from, relative to current value
-pbt_survivalrate = 0.75  # percentage of members of population to survive, rest will be discarded, replaced and mutated
+pbt_mutstren = 0.5  # size of interval around a parameter's current value that new value is sampled from, relative to
+# current value
+pbt_survivalrate = 0.25  # percentage of members of population to survive, rest will be discarded, replaced and mutated
 pbt_discardN = int(pbt_popsize * (1 - pbt_survivalrate))  # for convenience
 
 
@@ -397,10 +401,10 @@ def_params = {"game_type": 'Hanabi-Small',  # environment parameters
               "agent_type": 'Rainbow',
               "num_players": 2,
               "training_steps": 500,  # schedule for training and eval step for particular set of hyperparameters
-              "num_iterations": 1,
+              "num_iterations": 50,
               "num_evaluation_games": 10,
               "mutprob": pbt_mutprob, #probability of a parameter to mutate
-              "mustren": pbt_mutstren, # mutation strength (see above)
+              "mutstren": pbt_mutstren, # mutation strength (see above)
               "rainbow_config": {
                   "num_atoms": 51,                  #number of bins that constitute support of distribution over Q-values
                   "vmax": 25.,                      #maximum and minimum value of the distribution
@@ -430,23 +434,23 @@ def main(unused_argv):
     stats = [] #list of dicts that will be converted to pandas df
     ### pbt epoch loop
     for pbt_step in range(startstep, pbt_steps):
-        print(f"{time.strftime('%a %d %b %H:%M:%S', time.gmtime())}: training pbt step {pbt_step}")
+        starttime = time.time()
+        print(f"{time.strftime('%a %d %b %H:%M:%S', time.localtime())}: training pbt step {pbt_step}")
         stats_curr = ray.get([member.stepEval.remote() for member in population])
         #append global pbt step to dict and append to stats
-        stats += stats_curr #append flat
+        stats += stats_curr #append current statistics (list) flatly to list of all statistics
         ### evolving members before next step
         perfs = [np.mean(stat_member["eval_episode_returns"]) for stat_member in stats_curr]
-        print(perfs)
+        print(f"epsisode took {time.time()-starttime}s. avg eval performance: {perfs}")
         die_idxs = list(
             np.argsort(perfs)[:pbt_discardN])  # idxs corresponding to worst 1-survRate members of population
         live_idxs = list(np.argsort(perfs)[pbt_discardN:])
         for idx, member in enumerate(population):
             if idx in die_idxs:
                 # overwrite with better performing member in population
-                exploit(member, [population[idx] for idx in live_idxs])
-                member.mutate.remote() # pbt explore step
+                exploit_and_explore(member, [population[i] for i in live_idxs])
 
-        ## checkpointing and bookkeeping
+        ### checkpointing and bookkeeping
         if True:  # pbt_step != 0 and pbt_step % 10 == 0:
             save_population(population, stats)
     # writer.close()
@@ -457,10 +461,9 @@ def main(unused_argv):
     return stats_df, stats
 
 
-
 class Fake_flags(object):
     def __init__(self):
-        self.base_dir = str(os.path.dirname(__file__)) + '/trained/PBTRainbow'
+        self.base_dir = os.path.expanduser('./trained/PBTRainbow_TEST')
         self.checkpoint_dir = 'checkpoints'
         self.logging_dir = 'training/logs'
 FLAGS = Fake_flags()
