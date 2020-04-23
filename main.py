@@ -30,6 +30,7 @@ import shutil
 import pandas as pd
 import time
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 import ray
 #tensorflow is imported inside Ray actor to avoid problems with global tensorflow state
@@ -309,83 +310,10 @@ def save_population(population, stats):
         print(e)
     return stats_df, stats
 
-def plot_statistics(stats, def_params=None):
-    """Convenience function to plot statistics of PBT run
-
-    Args:
-        stats_ref: either pandas DataFrame or filepath to pickle file
-    """
-    if type(stats) == str and os.path.isfile(stats):
-        (stats, def_params) = pickle.load(open(stats, 'rb'))
-    if not type(stats) == pd.DataFrame:
-        raise TypeError("Statistics are no Pandas DataFrame")
-    if def_params == None:
-        raise Exception("Default parameters missing")
-
-    #stats now is assumed to be a correctly formatted DataFrame
-    #aggregate lists into mean and std for given axes
-    for measure in ['train_episode_lengths', 'train_episode_returns',
-                   'train_episode_environment_reward', 'train_episode_hint_reward',
-                   'train_episode_play_reward', 'train_episode_discard_reward',
-                   'eval_episode_lengths', 'eval_episode_returns',
-                   'eval_episode_environment_rewards', 'eval_episode_hint_rewards',
-                   'eval_episode_play_rewards', 'eval_episode_discard_rewards']:
-        stats[f"mean_{measure}"] = stats[measure].apply(np.mean)
-        stats[f"std_{measure}"] = stats[measure].apply(np.std)
-    #get ids and corresponding colors globally to keep colors consistent across plots
-    ids = list(set(stats["id"]))
-    n_membs = len(ids)
-    # colors = cm.get_cmap("gist_rainbow", n_membs)
-    marker_style = dict(linestyle=':', marker='o',
-                        markersize=10, markerfacecoloralt='white')
-
-    #evaluation accuracy of all models
-    fig, ax = plt.subplots()
-    ax.set_title("Members' eval. accuracy")
-    for i, id in enumerate(ids): #iterate over members
-        id_df = stats[stats.id==id] #pick subset of data
-        ax.plot(id_df.train_step, id_df.mean_eval_episode_returns, color=f'C{i}', label='member '+id, alpha=0.8)
-        ax.fill_between(id_df.train_step,
-                        id_df.mean_eval_episode_returns - id_df.std_eval_episode_returns,
-                        id_df.mean_eval_episode_returns + id_df.std_eval_episode_returns,
-                        color=f'C{i}', alpha=0.2)
-    ax.legend()
-    ax.set_ylabel(f'Accuracy averaged over {def_params["num_evaluation_games"]} evaluation epochs')
-    ax.set_xlabel("Train Steps")
-
-    #values of mutables over time
-    fig, ax = plt.subplots()
-    ax.set_title("Members' mutable variable values")
-    for i, id in enumerate(ids): #iterate over members
-        id_df = stats[stats.id==id] #pick subset of data
-        for mutable, fillstyle in zip(def_params["pbt_mutables"],Line2D.fillStyles):
-            ax.plot(id_df.train_step, id_df[mutable], color=f'C{i}', label=f'member {id}: {mutable}',
-                    fillstyle = fillstyle, **marker_style)
-    ax.legend()
-    ax.set_ylabel("Value of mutable variables")
-    ax.set_xlabel("Train Step")
-
-    #winning model average return, eval episode lengths and eval episode returns
-    winning_model_id = stats.iloc[stats.mean_eval_episode_returns.idxmax()].id
-    id_df = stats[stats.id == winning_model_id]  # pick subset of data
-    measures = ["eval_episode_lengths", "eval_episode_returns"]
-    fig, ax = plt.subplots()
-    ax.set_title("Winning Model")
-    for measure,fillstyle in zip(measures,Line2D.fillStyles):
-        ax.plot(id_df.train_step, id_df[f"mean_{measure}"], color=f'C{ids.index(winning_model_id)}', label=f'member '
-                f'{winning_model_id}: {measure}', fillstyle = fillstyle, **marker_style)
-        ax.fill_between(id_df.train_step,
-                        id_df[f"mean_{measure}"] - id_df[f"std_{measure}"],
-                        id_df[f"mean_{measure}"] + id_df[f"mean_{measure}"],
-                        color=f'C{i}', alpha=0.2)
-    ax.legend()
-    ax.set_ylabel("Performance measure")
-    ax.set_xlabel("Train Step")
-
 #### PBT hyperparameters and default model params
 #in "The Hanabi Challenge" paper, total number of training samples, i.e. steps from the environment, is limited to 1e8
 pbt_steps = 1000 # 4000
-pbt_popsize = 10
+pbt_popsize = 20
 pbt_mutprob = 0.25  # probability for a parameter to mutate
 pbt_mutstren = 0.5  # size of interval around a parameter's current value that new value is sampled from, relative to
 # current value
@@ -453,7 +381,6 @@ def main(unused_argv):
             save_population(population, stats)
     # writer.close()
     stats_df, stats = save_population(population, stats)
-    plot_statistics(stats_df, def_params)
     # for member in population:
     #     member.agent._sess.close()
     return stats_df, stats
@@ -467,7 +394,7 @@ class Fake_flags(object):
 FLAGS = Fake_flags()
 
 if __name__ == "__main__":
-    stats_df, stats = main("hello")
+    stats_df, stats = main("")
 
 
 
