@@ -26,6 +26,6 @@ hanabi_lib/libhanabi.a
 libpyhanabi.so
 *.pyc
 __pycache__/*
-agents/rainbow_10kit/*
+agents_unused/rainbow_10kit/*
 training/hanabi_small/logs/*
 training/hanabi_small/summaries/*

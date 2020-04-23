@@ -31,8 +31,6 @@ import pandas as pd
 import time
 import matplotlib.pyplot as plt
 
-import matplotlib.cm as cm
-from matplotlib.lines import Line2D
 import ray
 #tensorflow is imported inside Ray actor to avoid problems with global tensorflow state
 
@@ -231,9 +229,9 @@ class Member(object):
         """
         try: #load hyperparameters
             (self.params, self.train_step) = pickle.load(
-                open(os.path.join(self.ckpt_dir, f"memberinfo.{self.pbt_step}"), "rb"))
+                open(os.path.join(self.ckpt_dir, f"memberinfo.{self.pbt_step-1}"), "rb"))
         except FileNotFoundError:
-            raise Exception("No ckpt file found for Member {self.id} at pbt_step {self.pbt_step}")
+            raise Exception(f"No ckpt file found for Member {self.id} at pbt_step {self.pbt_step-1}")
         return self.pbt_step
 
     def get_state(self):
@@ -317,7 +315,7 @@ def plot_statistics(stats, def_params=None):
     Args:
         stats_ref: either pandas DataFrame or filepath to pickle file
     """
-    if type(stats) == 'str' and os.path.isfile(stats):
+    if type(stats) == str and os.path.isfile(stats):
         (stats, def_params) = pickle.load(open(stats, 'rb'))
     if not type(stats) == pd.DataFrame:
         raise TypeError("Statistics are no Pandas DataFrame")
@@ -402,7 +400,7 @@ def_params = {"game_type": 'Hanabi-Small',  # environment parameters
               "num_players": 2,
               "training_steps": 500,  # schedule for training and eval step for particular set of hyperparameters
               "num_iterations": 50,
-              "num_evaluation_games": 10,
+              "num_evaluation_games": 50,
               "mutprob": pbt_mutprob, #probability of a parameter to mutate
               "mutstren": pbt_mutstren, # mutation strength (see above)
               "rainbow_config": {
@@ -468,7 +466,8 @@ class Fake_flags(object):
         self.logging_dir = 'training/logs'
 FLAGS = Fake_flags()
 
-stats_df, stats = main("hello")
+if __name__ == "__main__":
+    stats_df, stats = main("hello")
 
 
 

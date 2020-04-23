@@ -208,7 +208,7 @@ class WrappedPrioritizedReplayMemory(replay_memory.WrappedReplayMemory):
                observation_size,
                stack_size,
                use_staging=True,
-               replay_capacity=1000000,
+               replay_capacity=10000,
                batch_size=32,
                update_horizon=1,
                gamma=1.0):
