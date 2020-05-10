@@ -79,9 +79,12 @@ class Member(object):
                                                  agent_type=self.params["agent_type"],
                                                  tf_session=None, #new session will be created, private to ray actor
                                                  config = self.params["rainbow_config"])
+        #Randomize mutable values
+        for variable in self.params["pbt_mutables"]:
+            self.params["variable"] = np.random.normal(self.params["variable"],1)
+
         self.train_step = 0
-        self.statistics = []  # save statistics after every pbt step here (so when copying the agent from a
-        # member the training progress will not be lost
+        # self.statistics = []  # statistics currently saved globally
         self.pbt_step, self.checkpointer = (  # pbt_step is current pbt_step
             run_experiment.initialize_checkpointing(self.agent,
                                                     self.logger,
@@ -295,7 +298,7 @@ def load_or_create_population(pbt_popsize, def_params):
         startstep = 0
     return(population, startstep)
 
-def save_population(population, stats):
+def save_population(population, stats, pbt_step):
     """Saves all members by calling their checkpointers and also dumps pbt statistics as df to disk.
 
     Returns: statistics of pbt experiment as df
@@ -304,7 +307,8 @@ def save_population(population, stats):
         member.save_ckpt.remote()
     stats_df = pd.DataFrame.from_records(stats) #make df from list of dicts
     try:
-        pickle.dump((stats_df, def_params), open(os.path.join(FLAGS.base_dir,"pbt_stats.pickle"), 'wb'))
+        pickle.dump(def_params, open(os.path.join(FLAGS.base_dir,f"params.pickle.{pbt_step}"), 'wb'))
+        pickle.dump(stats_df, open(os.path.join(FLAGS.base_dir,f"stats.pickle.{pbt_step}"), 'wb'))
     except Exception as e:
         print("writing statistics failed:")
         print(e)
@@ -323,7 +327,7 @@ pbt_discardN = int(pbt_popsize * (1 - pbt_survivalrate))  # for convenience
 
 ### define default config for currently trained agent and decide which parameters can be mutated
 # so far using rl_env.make encapsulation of config when creating the environment
-def_params = {"game_type": 'Hanabi-Small',  # environment parameters
+def_params = {"game_type": 'Hanabi-3',  # environment parameters
               "agent_type": 'Rainbow',
               "num_players": 2,
               "training_steps": 500,  # schedule for training and eval step for particular set of hyperparameters
@@ -346,9 +350,10 @@ def_params = {"game_type": 'Hanabi-Small',  # environment parameters
                   "learning_rate": 0.000025,
                   "optimizer_epsilon": 0.00003125,
                   "tf_device": '/cpu:*'},
-              "w_hint":1,
-              "w_play":1,
-              "w_disc":1,
+              "w_hint":1, #means of N(mean, 1) distribution over initial values of each member taken from first tryout
+              "w_play":0.25,
+              "w_disc":0,
+              "dummy":1,
               "pbt_mutables": ["w_hint", "w_play", "w_disc"]  # list mutable parameters
             }
 
@@ -378,12 +383,12 @@ def main(unused_argv):
 
         ### checkpointing and bookkeeping
         if True:  # pbt_step != 0 and pbt_step % 10 == 0:
-            save_population(population, stats)
+            save_population(population, stats, pbt_step)
+            stats = []
     # writer.close()
-    stats_df, stats = save_population(population, stats)
+    save_population(population, stats)
     # for member in population:
     #     member.agent._sess.close()
-    return stats_df, stats
 
 
 class Fake_flags(object):
@@ -394,7 +399,7 @@ class Fake_flags(object):
 FLAGS = Fake_flags()
 
 if __name__ == "__main__":
-    stats_df, stats = main("")
+    main("")
 
 
 
