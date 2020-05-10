@@ -81,7 +81,7 @@ class Member(object):
                                                  config = self.params["rainbow_config"])
         #Randomize mutable values
         for variable in self.params["pbt_mutables"]:
-            self.params["variable"] = np.random.normal(self.params["variable"],1)
+            self.params[variable] = np.random.normal(self.params["variable"],1)
 
         self.train_step = 0
         # self.statistics = []  # statistics currently saved globally
@@ -393,7 +393,7 @@ def main(unused_argv):
 
 class Fake_flags(object):
     def __init__(self):
-        self.base_dir = os.path.expanduser('./trained/PBTRainbow_TEST')
+        self.base_dir = os.path.expanduser('./trained/PBTRainbow_3')
         self.checkpoint_dir = 'checkpoints'
         self.logging_dir = 'training/logs'
 FLAGS = Fake_flags()
