@@ -3,7 +3,7 @@
 from game_state_wrapper import GameStateWrapper
 import config as conf, utils, commands_websocket as cmd
 from agents.simple_agent import SimpleAgent
-from evaluation.rainbow_gui import RainbowPlayer
+# from evaluation.rainbow_gui import RainbowPlayer
 """ PYTHON IMPORTS """
 from typing import Dict
 import requests
