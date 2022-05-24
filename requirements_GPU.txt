@@ -1,5 +1,5 @@
 requests==2.21.0
-tensorflow-gpu==1.15.2
+tensorflow-gpu==2.6.4
 cffi==1.12.3                                                    
 dopamine-rl==2.0.3                       
 gin-config==0.1.3                           
